@@ -1,5 +1,5 @@
 import {
-  App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, TFile, normalizePath,
+  App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, TFile, normalizePath, requestUrl,
   type SettingDefinition, type SettingDefinitionItem,
 } from "obsidian";
 import { Store, TLTSettings, DEFAULT_SETTINGS } from "./store";
@@ -202,6 +202,29 @@ export default class TLTPlugin extends Plugin {
 
   /* ---------- 示例数据 ---------- */
 
+  /** 测一下消息服务能不能通（发布端看 /feeds，订阅端看 /subscriptions） */
+  async pingHub(kind: "publish" | "sync", silent = false) {
+    const base = (kind === "publish" ? this.settings.hubPublish : this.settings.hubSync).replace(/\/$/, "");
+    const label = kind === "publish" ? "发布服务" : "拉取服务";
+    if (!base) { if (!silent) new Notice(`还没填${label}地址`); return false; }
+    try {
+      const res = await requestUrl({
+        url: `${base}${kind === "publish" ? "/feeds" : "/subscriptions"}`,
+        method: "GET", throw: false,
+      });
+      if (res.status >= 400) { if (!silent) new Notice(`${label}返回 HTTP ${res.status}`); return false; }
+      const body = res.json as { feeds?: unknown[]; subs?: unknown[] };
+      const n = kind === "publish" ? (body.feeds?.length ?? 0) : (body.subs?.length ?? 0);
+      if (!silent) {
+        new Notice(kind === "publish" ? `发布服务通，已注册 ${n} 个源` : `拉取服务通，已订阅 ${n} 个源`);
+      }
+      return true;
+    } catch (e) {
+      if (!silent) new Notice(`${label}连不上：${errMsg(e)}`);
+      return false;
+    }
+  }
+
   async seedDemo() {
     const s = this.store.settings;
     await this.store.ensureVault();
@@ -284,143 +307,197 @@ desc: 宣贯、团建、制度变更、值班安排
   }
 }
 
-class TLTSettingTab extends PluginSettingTab {
+/**
+ * 设置页。
+ * 组织方式与 pickme 一致：不加顶级标题、通用项放最上面、分节用 setSetting 标题、
+ * 每项都写清「改了会怎样」，动作类集中在各自小节里。
+ * 声明式（1.13+ 的设置搜索）与命令式（老客户端 / 需要按钮的地方）两套字段保持一致。
+ */
+export class TLTSettingTab extends PluginSettingTab {
   plugin: TLTPlugin;
   constructor(app: App, plugin: TLTPlugin) { super(app, plugin); this.plugin = plugin; }
 
-  /**
-   * 声明式设置：1.13+ 的设置搜索读这里。
-   * display() 保留给更老的客户端，两边字段保持一致。
-   */
+  /** 1.13+ 的设置搜索读这里 */
   getSettingDefinitions(): SettingDefinitionItem[] {
-    const text = (key: PathKey, name: string, desc: string): SettingDefinition => ({
-      name, desc, control: { type: "text", key },
+    const text = (key: PathKey, name: string, desc: string, dflt: string): SettingDefinition => ({
+      name, desc, control: { type: "text", key, placeholder: dflt, defaultValue: dflt },
     });
     const pick = (
       key: "defaultPeriod" | "autoSyncMin" | "autoPushMin" | "theme",
       name: string, desc: string, options: Record<string, string>,
     ): SettingDefinition => ({ name, desc, control: { type: "dropdown", key, options } });
     const every = { "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" };
+    const d = DEFAULTS;
 
     return [
+      pick("theme", "主题", "跟随 Obsidian，或强制深色/浅色。主界面右上角也能切。",
+        { auto: "跟随 Obsidian", dark: "深色", light: "浅色" }),
       {
         type: "group", heading: "目录",
         items: [
-          text("tasksFolder", "任务目录", "一个项目一个 md，里程碑用 ## 分节，任务一行一条"),
-          text("teamFolder", "人员目录", "一人一个 md，frontmatter 写 role / capacity / days / skills"),
-          text("feedsFolder", "消息源目录", "一源一个 md，正文列表里一行一条消息"),
-          text("logsFolder", "记录目录", "按月一个文件，正文用 ## 日期 分节"),
-          text("ideasFile", "随手记文件", "单文件，一行一条"),
-          text("tagsFile", "标签库文件", "单文件，一行一个标签"),
+          text("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder),
+          text("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder),
+          text("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder),
+          text("logsFolder", "记录目录", "按月一个文件，正文用 ## 日期 分节。", d.logsFolder),
+          text("ideasFile", "随手记文件", "单文件，一行一条。", d.ideasFile),
+          text("tagsFile", "标签库文件", "单文件，一行一个标签。", d.tagsFile),
         ],
       },
       {
         type: "group", heading: "口径",
-        items: [pick("defaultPeriod", "默认占比周期", "任务占比与饱和度的默认口径",
-          { w: "本周", m: "本月", q: "本季度" })],
+        items: [
+          pick("defaultPeriod", "默认占比周期", "占比与饱和度的默认口径，界面上随时可切。",
+            { w: "本周", m: "本月", q: "本季度" }),
+        ],
       },
       {
         type: "group", heading: "消息服务",
         items: [
-          text("hubPublish", "发布服务地址", "把「我发布的源」推到这里"),
-          text("hubSync", "拉取服务地址", "从订阅代理同步别人的源"),
-          pick("autoSyncMin", "自动同步间隔", "从拉取服务同步别人的源", every),
-          pick("autoPushMin", "自动推送间隔", "把我发布的源推到发布服务", every),
+          text("hubPublish", "发布服务地址", "把「我发布的源」推到这里。发布端与订阅端可以是同一个地址。", d.hubPublish),
+          text("hubSync", "拉取服务地址", "从这里同步订阅的源。留空则完全离线，只用库内 Markdown。", d.hubSync),
+          pick("autoSyncMin", "自动同步间隔", "按这个间隔自动拉取订阅的源。", every),
+          pick("autoPushMin", "自动推送间隔", "按这个间隔把我发布的源推上去。", every),
         ],
       },
       {
-        type: "group", heading: "外观",
-        items: [pick("theme", "主题", "跟随 Obsidian，或强制深/浅色",
-          { auto: "跟随 Obsidian", dark: "深色", light: "浅色" })],
+        type: "group", heading: "维护",
+        items: [
+          { name: "推送到发布服务", desc: "立刻把所有「我发布的源」推一遍。", action: () => { void this.plugin.publishAll(); } },
+          { name: "从拉取服务同步", desc: "立刻拉取一次订阅的源。", action: () => { void this.plugin.syncAll(); } },
+          { name: "生成示例数据", desc: "在目录里写一份最小可用的样例，已存在的不覆盖。", action: () => { void this.plugin.seedDemo(); } },
+        ],
       },
     ];
   }
 
-  // 老版本客户端（< 1.13）只认 display()，所以两边都要有
-  display() {
+  /** 声明式界面改完值之后的副作用（主题要立刻应用） */
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const bag = this.plugin.settings as unknown as Record<string, unknown>;
+    bag[key] = value;
+    await this.plugin.saveSettings();
+    if (key === "theme") this.plugin.applyTheme();
+  }
+
+  /** 老版本客户端（< 1.13）只认 display()，转发到 renderSettings 以便内部重建这一页 */
+  display() { this.renderSettings(); }
+
+  renderSettings() {
     const { containerEl } = this;
     containerEl.empty();
-    new Setting(containerEl).setName("目录与口径").setHeading();
-    containerEl.createEl("p", {
-      text: "插件不复用现有目录：任务、人员、消息源、记录都放在下面四个目录里（不存在会自动创建）。",
-      cls: "setting-item-description",
-    });
+    const p = this.plugin;
 
-    const folder = (name: PathKey, label: string, desc: string) =>
+    // 通用项：不加标题，放最上面
+    new Setting(containerEl)
+      .setName("主题")
+      .setDesc("跟随 Obsidian，或强制深色/浅色。主界面右上角的按钮也能切。")
+      .addDropdown((d) =>
+        d.addOptions({ auto: "跟随 Obsidian", dark: "深色", light: "浅色" })
+          .setValue(p.settings.theme)
+          .onChange((v) => {
+            p.settings.theme = v as ThemeMode;
+            p.applyTheme();
+            void p.saveSettings();
+          })
+      );
+
+    /* ---------- 目录 ---------- */
+    new Setting(containerEl).setName("目录").setHeading();
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "插件只读这几个目录，不扫全库，也不和别的任务插件共用文件。目录不存在会自动创建；路径改完会重新扫描一次，原来的文件不会搬也不会删。",
+    });
+    const folder = (name: PathKey, label: string, desc: string, dflt: string) =>
       new Setting(containerEl)
         .setName(label)
         .setDesc(desc)
-        .addText((t) =>
-          t.setValue(this.plugin.settings[name]).onChange((v) => {
-            this.plugin.settings[name] = v.trim();
-            void this.plugin.saveSettings();
-          })
-        );
+        .addText((t) => {
+          t.setPlaceholder(dflt).setValue(p.settings[name]);
+          // 路径不逐字保存（每敲一个字就重扫一遍库），失焦或回车才落盘
+          const commit = () => {
+            const v = t.inputEl.value.trim();
+            if (v === p.settings[name]) return;
+            p.settings[name] = v;
+            void p.saveSettings();
+            new Notice("目录已更新");
+          };
+          t.inputEl.addEventListener("blur", commit);
+          t.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") t.inputEl.blur(); });
+        });
+    const d = DEFAULTS;
+    folder("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder);
+    folder("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder);
+    folder("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder);
+    folder("logsFolder", "记录目录", "按月一个文件，正文用 ## 日期 分节。", d.logsFolder);
+    folder("ideasFile", "随手记文件", "单文件，一行一条。", d.ideasFile);
+    folder("tagsFile", "标签库文件", "单文件，一行一个标签。", d.tagsFile);
 
-    folder("tasksFolder", "任务目录", "一个项目一个 md，里程碑用 ## 分节，任务一行一条");
-    folder("teamFolder", "人员目录", "一人一个 md，frontmatter 写 role / capacity / days / skills");
-    folder("feedsFolder", "消息源目录", "一源一个 md，正文列表里一行一条消息");
-    folder("logsFolder", "记录目录", "按月一个文件，正文用 ## 日期 分节");
-    folder("ideasFile", "想法文件", "单文件，一行一个想法");
-
+    /* ---------- 口径 ---------- */
+    new Setting(containerEl).setName("口径").setHeading();
     new Setting(containerEl)
       .setName("默认占比周期")
-      .setDesc("任务占比与饱和度的默认口径")
-      .addDropdown((d) =>
-        d
-          .addOptions({ w: "本周", m: "本月", q: "本季度" })
-          .setValue(this.plugin.settings.defaultPeriod)
-          .onChange(async (v) => {
-            this.plugin.settings.defaultPeriod = v as Period;
-            await this.plugin.saveSettings();
+      .setDesc("占比与饱和度的默认口径，界面上随时可切。")
+      .addDropdown((dd) =>
+        dd.addOptions({ w: "本周", m: "本月", q: "本季度" })
+          .setValue(p.settings.defaultPeriod)
+          .onChange((v) => {
+            p.settings.defaultPeriod = v as Period;
+            void p.saveSettings();
           })
       );
 
-    folder("hubPublish", "发布服务地址", "把「我发布的源」推到这里（测试：http://127.0.0.1:8787）");
-    folder("hubSync", "拉取服务地址", "从订阅代理同步别人的源（测试：http://127.0.0.1:8788）");
-
+    /* ---------- 消息服务 ---------- */
+    new Setting(containerEl).setName("消息服务").setHeading();
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "服务是可选的：不填就完全离线，只用库内的 Markdown。发布端与订阅端可以是同一个地址（仓库里的 services-py 就是同进程同端口）。",
+    });
+    const intervals = { "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" };
+    folder("hubPublish", "发布服务地址", "把「我发布的源」推到这里。", d.hubPublish);
+    folder("hubSync", "拉取服务地址", "从这里同步订阅的源。", d.hubSync);
     new Setting(containerEl)
       .setName("自动同步间隔")
-      .setDesc("从拉取服务同步别人的源")
-      .addDropdown((d) =>
-        d.addOptions({ "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" })
-          .setValue(String(this.plugin.settings.autoSyncMin))
-          .onChange((v) => { this.plugin.settings.autoSyncMin = Number(v); void this.plugin.saveSettings(); })
+      .setDesc("按这个间隔自动拉取订阅的源。")
+      .addDropdown((dd) =>
+        dd.addOptions(intervals).setValue(String(p.settings.autoSyncMin))
+          .onChange((v) => { p.settings.autoSyncMin = Number(v); void p.saveSettings(); })
       );
-
     new Setting(containerEl)
       .setName("自动推送间隔")
-      .setDesc("把我发布的源推到发布服务")
-      .addDropdown((d) =>
-        d.addOptions({ "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" })
-          .setValue(String(this.plugin.settings.autoPushMin))
-          .onChange((v) => { this.plugin.settings.autoPushMin = Number(v); void this.plugin.saveSettings(); })
+      .setDesc("按这个间隔把我发布的源推上去。")
+      .addDropdown((dd) =>
+        dd.addOptions(intervals).setValue(String(p.settings.autoPushMin))
+          .onChange((v) => { p.settings.autoPushMin = Number(v); void p.saveSettings(); })
       );
-
+    const hub = p.hubState();
     new Setting(containerEl)
-      .setName("主题")
-      .setDesc("跟随 Obsidian，或强制深/浅色")
-      .addDropdown((d) =>
-        d
-          .addOptions({ auto: "跟随 Obsidian", dark: "深色", light: "浅色" })
-          .setValue(this.plugin.settings.theme)
-          .onChange((v) => {
-            this.plugin.settings.theme = v as ThemeMode;
-            this.plugin.applyTheme();
-            void this.plugin.saveSettings();
-          })
-      );
-
-    const s = this.plugin.store;
-    new Setting(containerEl).setName("当前读取").setHeading();
+      .setName("推送与同步")
+      .setDesc(hub.lastSync
+        ? `上次同步 ${hub.lastSync} · ${hub.lastResult || "无变化"}${hub.lastError ? ` · ${hub.lastError}` : ""}`
+        : "还没同步过。也可以点下面的按钮手动来一次。")
+      .addButton((b) => b.setButtonText("推送我的源").onClick(() => { void p.publishAll(); }))
+      .addButton((b) => b.setButtonText("同步订阅").onClick(() => { void p.syncAll(); }))
+      .addButton((b) => b.setButtonText("测试连接").onClick(() => { void this.testBoth(); }));
     containerEl.createEl("p", {
-      text: `${s.tasks.length} 条任务 · ${s.logs.length} 条记录 · ${s.staff.length} 位成员 · ${s.feeds.length} 个源（${s.feeds.reduce((n, f) => n + f.items.length, 0)} 条消息）· ${s.ideas.length} 条想法`,
       cls: "setting-item-description",
+      text: "「测试连接」会分别请求发布服务的 /feeds 与拉取服务的 /subscriptions，只读、不改数据。",
     });
 
+    /* ---------- 维护 ---------- */
+    new Setting(containerEl).setName("维护").setHeading();
     new Setting(containerEl)
       .setName("生成示例数据")
-      .setDesc("在四个目录里写一份最小可用的样例，方便先看效果")
-      .addButton((b) => b.setButtonText("生成").onClick(() => { void this.plugin.seedDemo(); }));
+      .setDesc("在目录里写一份最小可用的样例，方便先看效果。已存在的文件不覆盖。")
+      .addButton((b) => b.setButtonText("生成").onClick(() => { void p.seedDemo(); }));
+    const store = p.store;
+    new Setting(containerEl)
+      .setName("当前读取")
+      .setDesc(`${store.tasks.length} 条任务 · ${store.logs.length} 条记录 · ${store.staff.length} 位成员 · ${store.feeds.length} 个源（${store.feeds.reduce((n, f) => n + f.items.length, 0)} 条消息）· ${store.ideas.length} 条随手记`);
+  }
+
+  /** 一次性把两个地址都测一遍，结果合并成一条提示 */
+  private async testBoth(): Promise<void> {
+    const okPublish = await this.plugin.pingHub("publish", true);
+    const okSync = await this.plugin.pingHub("sync", true);
+    new Notice(`发布服务${okPublish ? "正常" : "连不上"} · 拉取服务${okSync ? "正常" : "连不上"}`);
   }
 }

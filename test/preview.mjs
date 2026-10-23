@@ -44,11 +44,11 @@ EP.createEl = function (tag, o = {}) {
 };
 
 await esbuild.build({
-  stdin: { contents: `export { WorkbenchView } from "./src/views/workbench"; export { MessagesView } from "./src/views/messages"; export { Store } from "./src/store"; export { TFile } from "obsidian";`, resolveDir: process.cwd(), sourcefile: "p.ts", loader: "ts" },
+  stdin: { contents: `export { WorkbenchView } from "./src/views/workbench"; export { MessagesView } from "./src/views/messages"; export { Store } from "./src/store"; export { TFile } from "obsidian"; export { TLTSettingTab } from "./src/main";`, resolveDir: process.cwd(), sourcefile: "p.ts", loader: "ts" },
   bundle: true, format: "esm", platform: "node", outfile: "test/bundle.mjs",
   alias: { obsidian: "./test/obsidian-stub.ts" }, logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TLTSettingTab } = await import("./bundle.mjs?" + Date.now());
 
 const now = new Date();
 const pad = (n) => String(n).padStart(2, "0");
@@ -165,7 +165,19 @@ const app = { vault, metadataCache: { getFileCache: (f) => ({ frontmatter: fm[f.
 const store = new Store(app, { tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds", logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的工作动态" });
 await store.load();
 
-const plugin = { settings: { defaultPeriod: "m" }, store, isLight: () => false, toggleTheme: () => {}, activateMessages: async () => {}, refreshAll: () => {}, hubState: () => ({ publish: "http://127.0.0.1:8787", sync: "http://127.0.0.1:8788", lastSync: "", lastResult: "", lastError: "" }), setHubState: () => {} };
+const plugin = {
+  settings: {
+    defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
+    logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md",
+    theme: "auto", hubPublish: "http://127.0.0.1:8787", hubSync: "http://127.0.0.1:8788",
+    autoSyncMin: 15, autoPushMin: 0, mineFeed: "我的工作动态", feedIds: {}, feedNames: {},
+  },
+  store, isLight: () => false, toggleTheme: () => {}, activateMessages: async () => {}, refreshAll: () => {},
+  applyTheme: () => {}, publishAll: async () => {}, syncAll: async () => {}, seedDemo: async () => {},
+  pingHub: async () => true,
+  hubState: () => ({ publish: "http://127.0.0.1:8787", sync: "http://127.0.0.1:8788", lastSync: "15:04", lastResult: "新增 2 条", lastError: "" }),
+  setHubState: () => {},
+};
 const css = fs.readFileSync("styles.css", "utf8");
 
 function mount(cls) {
@@ -244,3 +256,32 @@ await msgShot("card", "dark", "preview-messages");
 await msgShot("axis", "light", "preview-messages-axis");
 await msgShot("heat", "dark", "preview-messages-heat");
 await msgShot("bands", "dark", "preview-messages-bands");
+
+/* ---- 设置页 ---- */
+for (const theme of ["dark", "light"]) {
+  document.body.empty();
+  document.body.className = theme === "light" ? "theme-light" : "theme-dark";
+  const tab = new TLTSettingTab({ app }, plugin);
+  tab.containerEl = document.createElement("div");
+  tab.containerEl.className = "tlt-settings";
+  tab.renderSettings();
+  fs.writeFileSync(`test/preview-settings-${theme}.html`, `<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;height:100%;background:${theme === "light" ? "#E4E6ED" : "#07070A"}} body{padding:16px}
+  .frame{width:760px;max-height:1180px;border-radius:12px;overflow:auto;border:1px solid ${theme === "light" ? "#D9DDE8" : "#26262E"};background:var(--tlt-bg2)}
+  .tlt-settings{padding:18px 22px}
+  /* 下面这段是模拟 Obsidian 设置容器自带的核心样式，预览里才需要 */
+  .setting-item{display:flex;align-items:center;gap:18px;padding:13px 0;border-top:1px solid ${theme === "light" ? "#E2E5EE" : "#22222A"}}
+  .setting-item:first-child,.setting-item-heading{border-top:0}
+  .setting-item-info{flex:1 1 auto;min-width:0}
+  .setting-item-name{font-size:13px;color:var(--tlt-ink);line-height:1.6}
+  .setting-item-description{font-size:11.5px;color:var(--tlt-ink3);line-height:1.75;margin-top:4px;white-space:normal}
+  .setting-item-heading{padding:20px 0 6px}
+  .setting-item-heading .setting-item-name{font-size:14px;font-weight:650}
+  .setting-item-control{flex:0 0 auto;display:flex;gap:8px;align-items:center}
+  .setting-item-control input,.setting-item-control select{height:30px;border-radius:8px;border:1px solid var(--tlt-line2);background:var(--tlt-surface2);color:var(--tlt-ink);padding:0 9px;font-size:12px;font-family:inherit;min-width:180px}
+  .setting-item-control button{height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--tlt-line2);background:var(--tlt-surface2);color:var(--tlt-ink2);font-size:11.5px;font-family:inherit;cursor:pointer}
+  .setting-item-control button:hover{color:var(--tlt-ink);border-color:var(--tlt-line3)}
+  ${css}
+</style></head><body class="${theme === "light" ? "theme-light" : "theme-dark"}"><div class="frame">${tab.containerEl.innerHTML}</div></body></html>`);
+  console.log("wrote", `test/preview-settings-${theme}.html`);
+}

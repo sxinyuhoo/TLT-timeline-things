@@ -20,6 +20,7 @@
 | ![可缩放时间轴](docs/screenshots/07-messages-axis.png) | 形态之一：**可缩放时间轴**（滚轮缩放、拖动平移） |
 | ![按源分带](docs/screenshots/08-messages-bands.png) | 形态之一：**按源分带**（一个源一条泳道） |
 | ![月度热力](docs/screenshots/09-messages-heat.png) | 形态之一：**月度热力**（颜色深浅 = 当天条数） |
+| ![设置页·深色](docs/screenshots/10-settings-dark.png) | **设置页**：通用项在最上，目录 / 口径 / 消息服务 / 维护分节，每项都写清默认值与影响 |
 
 ## 安装
 

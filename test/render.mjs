@@ -59,6 +59,7 @@ await esbuild.build({
       export { MessagesView } from "./src/views/messages";
       export { Store } from "./src/store";
       export { TFile } from "obsidian";
+      export { TLTSettingTab } from "./src/main";
     `,
     resolveDir: process.cwd(),
     sourcefile: "test-entry.ts",
@@ -71,7 +72,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TLTSettingTab, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 
 /* ---------- 3) 假 vault ---------- */
@@ -182,10 +183,20 @@ await t("想法正文（为什么做）能写回并重读", async () => {
 /* ---------- 5) 渲染冒烟 ---------- */
 console.log("\n渲染（jsdom）");
 const plugin = {
-  settings: { defaultPeriod: "m", tasksFolder: "TLT/tasks" },
+  settings: {
+    defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
+    logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md",
+    theme: "auto", hubPublish: "http://127.0.0.1:8787", hubSync: "http://127.0.0.1:8788",
+    autoSyncMin: 15, autoPushMin: 0, mineFeed: "我的工作动态", feedIds: {}, feedNames: {},
+  },
   store,
   isLight: () => false,
   toggleTheme: () => {},
+  applyTheme: () => {},
+  publishAll: async () => {},
+  syncAll: async () => {},
+  seedDemo: async () => {},
+  pingHub: async () => true,
   activateMessages: async () => {},
   refreshAll: () => {},
   hubState: () => ({ publish: "http://127.0.0.1:8787", sync: "http://127.0.0.1:8788", lastSync: "", lastResult: "", lastError: "" }),
@@ -348,6 +359,34 @@ await t("源名称可改，id 不变", async () => {
   const text = files[`TLT/feeds/${oldId}.md`] || "";
   assert.ok(/^title:\s*我的随手记$/m.test(text), `文件里没写进去：\n${text}`);
   await mv.store.renameFeed(f, "个人");   // 还原，别影响后面的用例
+});
+
+await t("设置页：无顶级标题、分节顺序、动作按钮", async () => {
+  document.body.empty();
+  const tab = new TLTSettingTab(app, plugin);
+  tab.containerEl = document.createElement("div");
+  tab.renderSettings();
+  const el2 = tab.containerEl;
+  assert.equal(el2.querySelectorAll("h1, h2, h3").length, 0, "不该手写标题元素");
+  const names = [...el2.querySelectorAll(".setting-item-name")].map((e) => e.textContent);
+  assert.equal(names[0], "主题", `第一项应是主题（通用项不放标题下），实际 ${names[0]}`);
+  const heads = [...el2.querySelectorAll(".setting-item-heading .setting-item-name")].map((e) => e.textContent);
+  assert.deepEqual(heads, ["目录", "口径", "消息服务", "维护"], `分节：${heads}`);
+  const buttons = [...el2.querySelectorAll("button")].map((b) => b.textContent);
+  assert.ok(buttons.includes("推送我的源") && buttons.includes("同步订阅") && buttons.includes("测试连接"), `按钮：${buttons}`);
+  assert.ok(el2.textContent.includes("当前读取"), "缺少当前读取");
+  // 目录项：显示当前值，占位符是默认值
+  const inputs = [...el2.querySelectorAll("input")];
+  const tasks = inputs.find((i) => i.placeholder === "TLT/tasks");
+  assert.ok(tasks, "任务目录输入框没有默认值占位");
+  assert.equal(tasks.value, "TLT/tasks", "任务目录没显示当前值");
+  const phs = inputs.map((i) => i.placeholder).filter(Boolean);
+  ["TLT/tasks", "TLT/team", "TLT/feeds", "TLT/logs", "TLT/ideas.md", "TLT/tags.md"].forEach((d) => {
+    assert.ok(phs.includes(d), `缺少默认值占位 ${d}`);
+  });
+  // 消息服务：间隔下拉的选项
+  const selects = [...el2.querySelectorAll("select")];
+  assert.ok(selects.some((x) => [...x.options].some((o) => o.textContent === "15 分钟")), "间隔下拉选项不对");
 });
 
 await t("星图滚轮缩放", async () => {

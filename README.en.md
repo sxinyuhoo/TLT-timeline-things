@@ -20,6 +20,7 @@ Everything is plain Markdown inside your vault. Uninstall the plugin and your da
 | ![Zoomable timeline](docs/screenshots/07-messages-axis.png) | Layout: **zoomable timeline** (wheel to zoom, drag to pan) |
 | ![Source lanes](docs/screenshots/08-messages-bands.png) | Layout: **source lanes** (one lane per feed) |
 | ![Month heatmap](docs/screenshots/09-messages-heat.png) | Layout: **month heatmap** (darker = more messages that day) |
+| ![Settings](docs/screenshots/10-settings-dark.png) | **Settings**: general options on top, then folders / period / message service / maintenance |
 
 ## Install
 
