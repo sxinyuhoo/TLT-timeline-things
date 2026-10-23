@@ -407,6 +407,19 @@ function monthBounds(ref = /* @__PURE__ */ new Date()) {
 }
 
 // src/store.ts
+var DEFAULT_SETTINGS = {
+  root: "",
+  tasksFolder: "TLT/tasks",
+  teamFolder: "TLT/crew",
+  feedsFolder: "TLT/feeds",
+  logsFolder: "TLT/logs",
+  ideasFile: "TLT/ideas.md",
+  tagsFile: "TLT/tags.md",
+  defaultPeriod: "m",
+  mineFeed: "\u6211\u7684\u5DE5\u4F5C\u52A8\u6001",
+  feedIds: {},
+  feedNames: {}
+};
 var PEOPLE_COLORS = ["#F0C24B", "#6C8CFF", "#27C1A3", "#B57BFF", "#F2994A", "#FF7A9C", "#5FD6B4", "#7C8BA1"];
 var Store = class {
   constructor(app, settings) {
@@ -430,6 +443,20 @@ var Store = class {
   filesIn(folder) {
     return this.app.vault.getMarkdownFiles().filter((f) => this.inFolder(f.path, folder));
   }
+  /**
+   * 建文件。冷启动时 Obsidian 的库索引可能还不认识已存在的文件，
+   * getAbstractFileByPath 返回 null 于是走到 create，而 create 抛
+   * 「File already exists.」——只要文件确实在，就不算失败。
+   */
+  async createSafe(path, content) {
+    try {
+      await this.app.vault.create(path, content);
+    } catch (e) {
+      const exists = await this.app.vault.adapter.exists(path).catch(() => false);
+      if (exists) return;
+      throw e;
+    }
+  }
   async ensureFolder(folder) {
     const parts = normalizePath(folder).split("/");
     let cur = "";
@@ -448,7 +475,7 @@ var Store = class {
     const path = normalizePath(`${this.settings.feedsFolder}/\u4E2A\u4EBA.md`);
     if (this.app.vault.getAbstractFileByPath(path)) return;
     await this.ensureFolder(this.settings.feedsFolder);
-    await this.app.vault.create(
+    await this.createSafe(
       path,
       `---
 title: \u4E2A\u4EBA
@@ -637,7 +664,7 @@ ${milestone ? `## ${milestone}
 
 ` : ""}${line}
 `;
-      await this.app.vault.create(path, head);
+      await this.createSafe(path, head);
       return;
     }
     await this.app.vault.process(file, (data) => {
@@ -668,7 +695,7 @@ ${milestone ? `## ${milestone}
     let file = await this.fileByPath(path);
     const body = newLogLine(rec);
     if (!file) {
-      await this.app.vault.create(path, `# \u8BB0\u5F55 ${month}
+      await this.createSafe(path, `# \u8BB0\u5F55 ${month}
 
 ## ${dateISO}
 
@@ -701,7 +728,7 @@ ${body}
     const path = normalizePath(`${this.settings.feedsFolder}/${safe}.md`);
     if (this.app.vault.getAbstractFileByPath(path)) return { ok: false, path };
     await this.ensureFolder(this.settings.feedsFolder);
-    await this.app.vault.create(path, `---
+    await this.createSafe(path, `---
 title: ${name}
 owner: me
 mine: true
@@ -796,7 +823,7 @@ ${data}`;
     let moved = 0;
     if (!file) {
       await this.ensureFolder(this.settings.feedsFolder);
-      await this.app.vault.create(target, head + msgs.map(lineOf).join("\n") + "\n");
+      await this.createSafe(target, head + msgs.map(lineOf).join("\n") + "\n");
       moved = msgs.length;
     } else {
       const old = await this.app.vault.cachedRead(file);
@@ -844,7 +871,7 @@ ${tail}
     if (!pf) {
       const t2 = personal ? personal.name : "\u4E2A\u4EBA";
       await this.ensureFolder(this.settings.feedsFolder);
-      await this.app.vault.create(home, `---
+      await this.createSafe(home, `---
 title: ${t2}
 personal: true
 owner: me
@@ -906,7 +933,7 @@ owner: me
 
 ${line}
 `;
-      await this.app.vault.create(path, head);
+      await this.createSafe(path, head);
       return;
     }
     await this.app.vault.process(file, (data) => `${data.replace(/\s*$/, "")}
@@ -1003,7 +1030,7 @@ ${line}
     let file = await this.fileByPath(path);
     if (!file) {
       await this.ensureFolder(path.split("/").slice(0, -1).join("/") || ".");
-      await this.app.vault.create(path, `# \u6807\u7B7E
+      await this.createSafe(path, `# \u6807\u7B7E
 
 `);
       file = await this.fileByPath(path);
@@ -1057,7 +1084,7 @@ ${line}
     const line = `- ${it.title} [at:: ${todayISO()}]` + (it.tags && it.tags.length ? ` [tags:: ${it.tags.join(", ")}]` : "") + (it.body ? `
   > ${it.body}` : "");
     if (!file) {
-      await this.app.vault.create(path, `# \u60F3\u6CD5\u6C60
+      await this.createSafe(path, `# \u60F3\u6CD5\u6C60
 
 ${line}
 `);
@@ -1109,7 +1136,7 @@ ${line}
     const path = normalizePath(`${this.settings.teamFolder}/${name}.md`);
     if (this.app.vault.getAbstractFileByPath(path)) return false;
     await this.ensureFolder(this.settings.teamFolder);
-    await this.app.vault.create(path, `---
+    await this.createSafe(path, `---
 tlt: staff
 role: \u7B97\u6CD5\u5DE5\u7A0B\u5E08
 capacity: 100
@@ -1224,7 +1251,7 @@ status: active
       let file = this.asFile(this.app.vault.getAbstractFileByPath(path));
       if (!file) {
         await this.ensureFolder(this.settings.feedsFolder);
-        file = await this.app.vault.create(
+        await this.createSafe(
           path,
           `---
 title: ${title}
@@ -1236,6 +1263,8 @@ own: false
 
 `
         );
+        file = this.asFile(this.app.vault.getAbstractFileByPath(path));
+        if (!file) return;
       }
       await this.app.vault.process(file, (text) => {
         const lines = text.split(/\r?\n/);
@@ -1303,6 +1332,7 @@ var EN = {
   "\u53D1\u5E03": "Publish",
   "\u786E\u5B9A": "OK",
   "\u672A\u77E5\u9519\u8BEF": "Unknown error",
+  "TLT \u52A0\u8F7D\u51FA\u9519\uFF1A{msg}": "TLT failed to load: {msg}",
   "\u5173\u95ED": "Off",
   "\u5168\u90E8": "All",
   "\u672C\u5468": "This week",
@@ -1326,10 +1356,12 @@ var EN = {
   /* ---------- 设置：目录 ---------- */
   "\u76EE\u5F55": "Folders",
   "\u6839\u76EE\u5F55": "Root folder",
-  "\u4E0B\u9762\u516D\u9879\u9ED8\u8BA4\u90FD\u653E\u5728\u8FD9\u4E2A\u76EE\u5F55\u4E0B\uFF1B\u7559\u7A7A\u8868\u793A\u76F4\u63A5\u7528\u5E93\u7684\u6839\u76EE\u5F55\u3002\u6539\u8FD9\u91CC\u4F1A\u4E00\u8D77\u66F4\u65B0\u5B83\u4EEC\uFF0C\u5355\u72EC\u6539\u8FC7\u7684\u90A3\u9879\u4E0D\u4F1A\u88AB\u8986\u76D6\u3002": "The six paths below default to this folder; leave empty to use the vault root. Changing it updates them together, but a path you edited by hand stays as it is.",
+  "TLT \u76EE\u5F55\u653E\u5728\u8FD9\u91CC\uFF1A\u4E0B\u9762\u516D\u9879\u90FD\u5728\u5B83\u7684 TLT \u5B50\u76EE\u5F55\u4E0B\uFF1B\u7559\u7A7A\u8868\u793A\u653E\u5728\u5E93\u6839\u76EE\u5F55\uFF08\u5373 TLT/\uFF09\u3002\u8F93\u5165\u65F6\u53EF\u76F4\u63A5\u9009\u5DF2\u6709\u76EE\u5F55\uFF1B\u76EE\u5F55\u4E0D\u5B58\u5728\u5C31\u5148\u624B\u6253\u3002\u70B9\u300C\u66F4\u65B0\u300D\u65F6\u8FDE\u6570\u636E\u4E00\u8D77\u642C\u8FC7\u53BB\u3002": "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). Pick an existing folder while typing, or type a new one. Click Update to move your data over as well.",
+  "TLT \u76EE\u5F55\u653E\u5728\u8FD9\u91CC\uFF1A\u4E0B\u9762\u516D\u9879\u90FD\u5728\u5B83\u7684 TLT \u5B50\u76EE\u5F55\u4E0B\uFF1B\u7559\u7A7A\u8868\u793A\u653E\u5728\u5E93\u6839\u76EE\u5F55\uFF08\u5373 TLT/\uFF09\u3002\u8F93\u5165\u65F6\u6709\u5019\u9009\u53EF Tab/\u70B9\u51FB\u9009\u4E2D\uFF1B\u76EE\u5F55\u4E0D\u5B58\u5728\u5C31\u5148\u624B\u6253\u3002\u70B9\u300C\u66F4\u65B0\u300D\u65F6\u8FDE\u6570\u636E\u4E00\u8D77\u642C\u8FC7\u53BB\u3002": "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). Suggestions appear while typing (Tab or click to pick), or type a new path. Click Update to move your data over as well.",
   "\u4EFB\u52A1\u76EE\u5F55": "Tasks folder",
   "\u4E00\u4E2A\u9879\u76EE\u4E00\u4E2A\u6587\u4EF6\uFF0C## \u5C0F\u8282\u662F\u91CC\u7A0B\u7891\uFF0C\u4EFB\u52A1\u4E00\u884C\u4E00\u6761\u3002": "One file per project; a ## heading is a milestone; one task per line.",
   "\u4EBA\u5458\u76EE\u5F55": "People folder",
+  "\u4EBA\u5458\u76EE\u5F55\u5DF2\u7531 TLT/team \u6539\u4E3A TLT/crew": "People folder moved from TLT/team to TLT/crew",
   "\u4E00\u4EBA\u4E00\u4E2A\u6587\u4EF6\uFF0Cfrontmatter \u5199 role / capacity / days / skills\u3002": "One file per person; put role / capacity / days / skills in the frontmatter.",
   "\u6D88\u606F\u6E90\u76EE\u5F55": "Feeds folder",
   "\u4E00\u4E2A\u6E90\u4E00\u4E2A\u6587\u4EF6\uFF0C\u6B63\u6587\u5217\u8868\u4E00\u884C\u4E00\u6761\u6D88\u606F\u3002": "One file per feed; each list item in the body is one message.",
@@ -1363,12 +1395,17 @@ var EN = {
   "\u7ACB\u523B\u628A\u6240\u6709\u300C\u6211\u53D1\u5E03\u7684\u6E90\u300D\u63A8\u4E00\u904D\u3002": "Push every published feed right now.",
   "\u4ECE\u62C9\u53D6\u670D\u52A1\u540C\u6B65": "Sync from pull service",
   "\u7ACB\u523B\u62C9\u53D6\u4E00\u6B21\u8BA2\u9605\u7684\u6E90\u3002": "Pull subscribed feeds once, right now.",
-  "\u6309\u6839\u76EE\u5F55\u91CD\u6392\u516D\u4E2A\u8DEF\u5F84": "Re-align the six paths to the root folder",
-  "\u628A\u4E0B\u9762\u516D\u9879\u91CD\u65B0\u5BF9\u9F50\u5230\u5F53\u524D\u6839\u76EE\u5F55\u3002\u8DEF\u5F84\u88AB\u6539\u4E71\u3001\u6216\u6539\u4E86\u6839\u76EE\u5F55\u540E\u6CA1\u8DDF\u4E0A\u65F6\u7528\u8FD9\u4E2A\uFF1B\u4F1A\u8986\u76D6\u4F60\u5355\u72EC\u8BBE\u8FC7\u7684\u8DEF\u5F84\u3002": "Re-align the six paths below to the current root folder. Use this when paths got out of sync or you changed the root and they did not follow. It overwrites paths you set by hand.",
-  "\u91CD\u6392": "Re-align",
+  "\u66F4\u65B0": "Update",
+  "\u6309\u6839\u76EE\u5F55\u91CD\u5EFA\u516D\u4E2A\u8DEF\u5F84\u5E76\u521B\u5EFA\u76EE\u5F55": "Rebuild the six paths from the root folder and create the folders",
+  "\u6309\u4E0A\u9762\u7684\u6839\u76EE\u5F55\u91CD\u5EFA\u516D\u4E2A\u8DEF\u5F84\uFF0C\u5E76\u628A\u65E7\u76EE\u5F55\u91CC\u7684\u6570\u636E\u4E00\u8D77\u642C\u8FC7\u53BB\uFF08\u76EE\u6807\u5DF2\u6709\u540C\u540D\u6587\u4EF6\u65F6\u624D\u4F1A\u95EE\u4F60\uFF09\u3002": "Rebuild the six paths from the root folder above and move the existing data over (you are only asked when a file with the same name is already at the destination).",
+  "\u5DF2\u8BB0\u5F55\u65B0\u7684\u6839\u76EE\u5F55\uFF0C\u70B9\u300C\u66F4\u65B0\u300D\u751F\u6548": "New root folder recorded \u2014 click Update to apply",
+  "\u516D\u4E2A\u8DEF\u5F84\u5DF2\u66F4\u65B0\uFF0C\u76EE\u5F55\u5DF2\u5C31\u4F4D": "Six paths updated; folders are ready",
+  "\u5DF2\u6309\u6839\u76EE\u5F55\u66F4\u65B0\u516D\u4E2A\u8DEF\u5F84\uFF0C\u76EE\u5F55\u5DF2\u5C31\u4F4D": "Six paths rebuilt from the root folder; folders are ready",
+  "\u6839\u76EE\u5F55\u5DF2\u66F4\u65B0\uFF1B\u65E7\u76EE\u5F55\u91CC\u8FD8\u6709 {n} \u4E2A\u6587\u4EF6\uFF0C\u70B9\u300C\u66F4\u65B0\u300D\u53EF\u4EE5\u642C\u8FC7\u53BB": "Root folder updated; {n} file(s) are still in the old folder \u2014 click Update to move them over",
   "\u751F\u6210\u793A\u4F8B\u6570\u636E": "Generate sample data",
   "\u5199\u4E00\u4EFD\u865A\u6784\u7684\u6837\u4F8B\uFF08\u4EBA\u540D\u548C\u9879\u76EE\u90FD\u662F\u7F16\u7684\uFF09\uFF0C\u65B9\u4FBF\u5148\u770B\u754C\u9762\u3002\u5DF2\u5B58\u5728\u7684\u6587\u4EF6\u4E0D\u8986\u76D6\u3002": "Write a fictional sample (made-up names and projects) so you can see the UI. Existing files are never overwritten.",
   "\u6839\u76EE\u5F55\u5DF2\u66F4\u65B0": "Root folder updated",
+  "\u5DF2\u628A {n} \u4E2A\u6587\u4EF6\u642C\u5230 {dir}\uFF08\u65E7\u76EE\u5F55\u7A7A\u4E86\uFF0C\u6587\u4EF6\u5939\u53EF\u4EE5\u81EA\u5DF1\u5220\uFF09": "Moved {n} file(s) to {dir} (the old folders are now empty and can be deleted)",
   "\u6839\u76EE\u5F55\u5DF2\u66F4\u65B0\uFF0C{n} \u9879\u81EA\u5B9A\u4E49\u8DEF\u5F84\u4FDD\u6301\u4E0D\u53D8": "Root folder updated; {n} custom path(s) left untouched",
   "\u516D\u4E2A\u8DEF\u5F84\u5DF2\u6309\u6839\u76EE\u5F55\u91CD\u6392\uFF0C\u76EE\u5F55\u5DF2\u5C31\u4F4D": "All six paths re-aligned to the root folder; folders are ready",
   "\u76EE\u5F55\u5DF2\u66F4\u65B0": "Folder updated",
@@ -1386,7 +1423,7 @@ var EN = {
   "\u5207\u6362\u660E\u6697": "Toggle theme",
   "\u9879\u76EE \xB7 \u8FDB\u5EA6": "Projects \xB7 progress",
   "\u9879\u76EE \u2022 \u8FDB\u5EA6": "Projects \xB7 progress",
-  "TLT/tasks \u91CC\u8FD8\u6CA1\u6709\u4EFB\u52A1\u6587\u4EF6": "No task files in TLT/tasks yet",
+  "{dir} \u91CC\u8FD8\u6CA1\u6709\u4EFB\u52A1\u6587\u4EF6": "No task files in {dir} yet",
   "\u641C\u7D22\u4EFB\u52A1/\u8BB0\u5F55": "Search tasks / logs",
   "\u6761\u5E26": "Bars",
   "\u661F\u56FE": "Star map",
@@ -1424,7 +1461,7 @@ var EN = {
   "\u8282\u594F \xB7 21 \u5929": "Rhythm \xB7 21 days",
   "\uFF0B \u6DFB\u52A0\u6210\u5458": "\uFF0B Add member",
   "\uFF0B \u968F\u624B\u8BB0": "\uFF0B Note",
-  "TLT/team \u91CC\u8FD8\u6CA1\u6709\u4EBA\u5458\u6863\u6848": "No people in TLT/team yet",
+  "{dir} \u91CC\u8FD8\u6CA1\u6709\u4EBA\u5458\u6863\u6848": "No people in {dir} yet",
   "\u8BB0\u4E00\u6761 \xB7 {d}": "Log one \xB7 {d}",
   "\u5361\u7247": "Cards",
   "\u6CB3\u6D41": "River",
@@ -2748,6 +2785,13 @@ var WorkbenchView = class extends ItemView {
   get store() {
     return this.plugin.store;
   }
+  /**
+   * 视图有可能比插件的 store 先就绪（重启恢复标签页时会撞上），
+   * 所以设置统一走这里：拿不到就用默认值，渲染绝不因此抛错。
+   */
+  get cfg() {
+    return this.plugin?.store?.settings ?? DEFAULT_SETTINGS;
+  }
   getViewType() {
     return VIEW_TYPE_WORKBENCH;
   }
@@ -2761,15 +2805,29 @@ var WorkbenchView = class extends ItemView {
     this.contentEl.addEventListener("click", (ev) => {
       void this.onClick(ev);
     });
-    await this.store.ensureLoaded();
+    await this.ensureData();
     await this.render();
   }
   async onClose() {
     this.contentEl.empty();
   }
   async refresh() {
-    await this.store.load();
+    await this.ensureData(true);
     await this.render();
+  }
+  /**
+   * 视图可能比插件先就绪（重启时 Obsidian 会恢复上次打开的标签页），
+   * 那时 plugin.store 还不存在——这里一律宽容处理，绝不往外抛。
+   */
+  async ensureData(force = false) {
+    const s = this.plugin?.store;
+    if (!s) return;
+    try {
+      if (force) await s.load();
+      else await s.ensureLoaded();
+    } catch (e) {
+      console.error("TLT: \u8F7D\u5165\u6570\u636E\u5931\u8D25", e);
+    }
   }
   /* ================= 渲染 ================= */
   async render() {
@@ -2810,7 +2868,7 @@ var WorkbenchView = class extends ItemView {
     const dot = el("span", "tlt-mark");
     top.append(dot, el("b", "", "TLT"));
     const folder = el("span", "tlt-fold", "TLT/");
-    folder.title = `${this.store.settings.tasksFolder} \xB7 ${this.store.settings.teamFolder}`;
+    folder.title = `${this.cfg.tasksFolder} \xB7 ${this.cfg.teamFolder}`;
     top.appendChild(folder);
     s.appendChild(top);
     const scroll = el("div", "tlt-side-scroll");
@@ -2832,7 +2890,7 @@ var WorkbenchView = class extends ItemView {
       card.append(row2, bar, meta);
       scroll.appendChild(card);
     });
-    if (!projects.length) scroll.appendChild(el("div", "tlt-empty", t("TLT/tasks \u91CC\u8FD8\u6CA1\u6709\u4EFB\u52A1\u6587\u4EF6")));
+    if (!projects.length) scroll.appendChild(el("div", "tlt-empty", t("{dir} \u91CC\u8FD8\u6CA1\u6709\u4EFB\u52A1\u6587\u4EF6", { dir: this.cfg.tasksFolder })));
     const seg2 = el("div", "tlt-seg tlt-period");
     ["w", "m", "q"].forEach((p) => {
       const b = el("button", "tlt-seg-b" + (this.period === p ? " on" : ""), PERIOD_LABEL[p]);
@@ -3313,7 +3371,7 @@ var WorkbenchView = class extends ItemView {
     const avg = rows.length ? Math.round(rows.reduce((a, r) => a + r.sat.pct, 0) / rows.length) : 0;
     const head = el("div", "tlt-pane-h");
     head.append(el("span", "", `${rows.length} \u4EBA \xB7 \u5E73\u5747 ${avg}% \xB7 ${over} \u4EBA\u8D85\u8F7D \xB7 ${idle} \u4EBA\u504F\u95F2`));
-    head.appendChild(el("span", "tlt-src", this.store.settings.teamFolder));
+    head.appendChild(el("span", "tlt-src", this.cfg.teamFolder));
     head.appendChild(el("span", "tlt-spacer"));
     const add = el("button", "tlt-btn", t("\uFF0B \u6DFB\u52A0\u6210\u5458"));
     add.dataset.addstaff = "1";
@@ -3349,7 +3407,7 @@ var WorkbenchView = class extends ItemView {
       grid.appendChild(card);
     });
     p.appendChild(grid);
-    if (!rows.length) p.appendChild(el("div", "tlt-empty", t("TLT/team \u91CC\u8FD8\u6CA1\u6709\u4EBA\u5458\u6863\u6848")));
+    if (!rows.length) p.appendChild(el("div", "tlt-empty", t("{dir} \u91CC\u8FD8\u6CA1\u6709\u4EBA\u5458\u6863\u6848", { dir: this.cfg.teamFolder })));
     return p;
   }
   /* ---------- 想法 ---------- */
@@ -3781,6 +3839,13 @@ var MessagesView = class extends ItemView {
   get store() {
     return this.plugin.store;
   }
+  /**
+   * 视图有可能比插件的 store 先就绪（重启恢复标签页时会撞上），
+   * 所以设置统一走这里：拿不到就用默认值，渲染绝不因此抛错。
+   */
+  get cfg() {
+    return this.plugin?.store?.settings ?? DEFAULT_SETTINGS;
+  }
   getViewType() {
     return VIEW_TYPE_MESSAGES;
   }
@@ -3791,12 +3856,23 @@ var MessagesView = class extends ItemView {
     return "rss";
   }
   async onOpen() {
-    await this.store.ensureLoaded();
+    await this.ensureData();
     await this.render();
   }
   async refresh() {
-    await this.store.load();
+    await this.ensureData(true);
     await this.render();
+  }
+  /** 视图可能比插件先就绪；拿不到 store 就跳过，绝不抛 */
+  async ensureData(force = false) {
+    const s = this.plugin?.store;
+    if (!s) return;
+    try {
+      if (force) await s.load();
+      else await s.ensureLoaded();
+    } catch (e) {
+      console.error("TLT: \u8F7D\u5165\u6570\u636E\u5931\u8D25", e);
+    }
   }
   msgs() {
     return this.store.feeds.flatMap((f) => f.items);
@@ -4393,7 +4469,7 @@ var MessagesView = class extends ItemView {
           act.appendChild(pub);
         } else if (f.mine) {
           const st = this.plugin.hubState();
-          const pid = (this.store.settings.feedIds || {})[f.id] || f.id;
+          const pid = (this.cfg.feedIds || {})[f.id] || f.id;
           s.appendChild(el("div", "tlt-d-body", `\u8BA2\u9605\u5730\u5740\uFF1A${st.publish}/feed?id=${encodeURIComponent(pid)}`));
           const push = el("button", "tlt-btn pri", t("\u624B\u52A8\u63A8\u9001"));
           push.onclick = () => {

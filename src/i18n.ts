@@ -93,6 +93,8 @@ export const EN: Record<string, string> = {
   "按根目录重建六个路径并创建目录": "Rebuild the six paths from the root folder and create the folders",
   "按上面的根目录重建六个路径，并把旧目录里的数据一起搬过去（目标已有同名文件时才会问你）。":
     "Rebuild the six paths from the root folder above and move the existing data over (you are only asked when a file with the same name is already at the destination).",
+  "已记录新的根目录，点「更新」生效": "New root folder recorded — click Update to apply",
+  "六个路径已更新，目录已就位": "Six paths updated; folders are ready",
   "已按根目录更新六个路径，目录已就位": "Six paths rebuilt from the root folder; folders are ready",
   "根目录已更新；旧目录里还有 {n} 个文件，点「更新」可以搬过去": "Root folder updated; {n} file(s) are still in the old folder — click Update to move them over",
   "生成示例数据": "Generate sample data",
@@ -103,6 +105,7 @@ export const EN: Record<string, string> = {
   "根目录已更新，{n} 项自定义路径保持不变": "Root folder updated; {n} custom path(s) left untouched",
   "六个路径已按根目录重排，目录已就位": "All six paths re-aligned to the root folder; folders are ready",
   "目录已更新": "Folder updated",
+  "已记录，点「更新」生效": "Recorded — click Update to apply",
 
   /* ---------- 工作台 ---------- */
   "日历": "Calendar",

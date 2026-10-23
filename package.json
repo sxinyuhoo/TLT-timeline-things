@@ -1,6 +1,6 @@
 {
   "name": "tlt-timeline-things",
-  "version": "0.4.20",
+  "version": "0.4.21",
   "description": "TLT — 以时间线为中心的任务与消息工作台（Obsidian 插件）",
   "main": "main.js",
   "scripts": {

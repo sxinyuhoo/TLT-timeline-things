@@ -26,6 +26,8 @@ interface Settings extends TLTSettings {
   language: Language;
   /** 人员目录 team → crew 的一次性迁移标记 */
   crewMigrated?: boolean;
+  /** 上一次「更新」时实际生效的根目录（用户改了但没点更新时，用它算派生差异） */
+  appliedRoot?: string;
   hubPublish: string;
   hubSync: string;
   autoSyncMin: number;
@@ -401,34 +403,28 @@ desc: 我发布出去的动态
    * 根目录变了：只把"还等于旧默认值"的那几项挪过去，用户单独改过的不动。
    * 声明式设置与命令式设置都走这里，避免两条路径行为不一致。
    */
-  async applyRootChange(nextRoot: string, fromRoot?: string, opts?: { offer?: boolean }) {
+  /**
+   * 「更新」按钮唯一会做的事：按当前设置重建派生路径，并把旧位置的数据搬过来。
+   * 打字阶段只写设置值、别的什么都不动（用户要求：只有点「更新」才真正更新）。
+   */
+  async applyNow(): Promise<{ movedFiles: number; blocked: number; kept: number }> {
     const s = this.settings;
-    const next = nextRoot.trim().replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
-    const from = fromRoot ?? s.root;
-    if (next === from && fromRoot === undefined) return { moved: 0, kept: 0 };
+    const beforeRoot = s.appliedRoot ?? s.root;
     const snapshot = { ...s };
-    const before = pathsFromRoot(from);
-    const after = pathsFromRoot(next);
-    let moved = 0, kept = 0;
-    s.root = next;
+    const before = pathsFromRoot(beforeRoot);
+    const after = pathsFromRoot(s.root);
+    let kept = 0;
     PATH_KEYS.forEach((k) => {
-      if (s[k] === before[k]) { s[k] = after[k]; moved++; } else kept++;
+      if (s[k] === before[k]) s[k] = after[k];
+      else kept++;
     });
+    s.appliedRoot = s.root;
     await this.saveSettings();
-    const stray = this.planMove(snapshot).length;
-    // 打字途中（防抖落定）只记路径：一建目录就会先造出新的「个人源」等文件，
-    // 真正搬运时目标已存在 → 数据留在旧位置（用户看到的就是"两边各一份"）。
-    if (opts?.offer === false) return { moved, kept, stray, movedFiles: 0, blocked: 0 };
-    const res = await this.relocate(snapshot);     // 默认：整棵搬过去
-    if (!res.blocked) await this.store.ensureVault();   // 搬完再补缺（有冲突先弹窗，别抢建）
-    return { moved, kept, stray, ...res };
+    const res = await this.relocate(snapshot);         // 先搬
+    if (!res.blocked) await this.store.ensureVault();   // 再补建
+    return { ...res, kept };
   }
 
-  /**
-   * 改根目录后把旧数据搬过去。
-   * 默认直接搬（用户要的是「更新即搬家」，不要两边各留一份）；
-   * 只有目标位置已经有同名文件时才弹窗让他决定。
-   */
   private async relocate(old: Settings): Promise<{ movedFiles: number; blocked: number }> {
     const moves = this.planMove(old);
     if (!moves.length) return { movedFiles: 0, blocked: 0 };
@@ -492,15 +488,6 @@ desc: 我发布出去的动态
     if (dir) await this.store.ensureFolder(dir);
   }
 
-  /** 把六项强制对齐到根目录（用户把路径改乱之后的修复入口） */
-  async alignPathsToRoot() {
-    const s = this.settings;
-    const snapshot = { ...s };
-    Object.assign(s, pathsFromRoot(s.root));
-    await this.saveSettings();
-    await this.relocate(snapshot);        // 路径改乱的情况也把数据搬过去
-    await this.store.ensureVault();
-  }
 }
 
 export default TLTPlugin;
@@ -513,10 +500,6 @@ export default TLTPlugin;
  */
 export class TLTSettingTab extends PluginSettingTab {
   plugin: TLTPlugin;
-  private settleTimer: number | null = null;   // 逐字输入时的落定计时器
-  private rootEditFrom: string | null = null;  // 编辑开始前的根目录
-  private pendingCreate = false;               // 跳过了建目录，等离开设置页补上
-  private pathsDirty = false;                  // 这次编辑改过派生路径：离开设置页时补一次重画
   constructor(app: App, plugin: TLTPlugin) { super(app, plugin); this.plugin = plugin; }
 
   /** 1.13+ 的设置搜索读这里 */
@@ -547,8 +530,8 @@ export class TLTSettingTab extends PluginSettingTab {
       {
         type: "group", heading: t("目录"),
         items: [
-          folder("root", "根目录", "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时可直接选已有目录；目录不存在就先手打。点「更新」时连数据一起搬过去。", d.root),
-          { name: t("更新"), desc: t("按上面的根目录重建六个路径，并把旧目录里的数据一起搬过去（目标已有同名文件时才会问你）。"), action: () => { void this.alignAndNotify(); } },
+          folder("root", "根目录", "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入只做记录，点右边的「更新」才真正生效（重建六项路径 + 把数据搬过去）。", d.root),
+          { name: t("更新"), desc: t("按当前设置重建六个路径，并把旧位置的数据搬过来；目标已有同名文件时才会问你。"), action: () => { void this.alignAndNotify(); } },
           folder("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder),
           folder("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder),
           folder("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder),
@@ -585,95 +568,9 @@ export class TLTSettingTab extends PluginSettingTab {
     ];
   }
 
-  /** 版本行：确认「实际加载的是哪个版本」时最有用 */
-  versionLine(): string {
-    const ver = (this.app as unknown as { appVersion?: string }).appVersion ?? "?";
-    return `TLT v${this.plugin.manifest.version} · Obsidian ${ver}`;
-  }
-
-  /** 重排路径 + 提示（两套界面共用） */
-  async alignAndNotify() {
-    await this.plugin.alignPathsToRoot();
-    new Notice(t("已按根目录更新六个路径，目录已就位"));
-    this.rerender();
-  }
-
   /**
-   * 声明式设置是**每次按键**都调这里：所以逐字只把值记下来，
-   * 派生路径、建目录、搬运这些有副作用的动作延迟到「停手」之后再做，
-   * 否则输入 "90-插件运营区" 的过程中会先建出 9/、90/、90-插件… 一串目录。
-   */
-  async setControlValue(key: string, value: unknown): Promise<void> {
-    const isPath = (PATH_KEYS as readonly string[]).includes(key);
-    if (key === "root" && this.rootEditFrom === null) this.rootEditFrom = this.plugin.settings.root;
-    const bag = this.plugin.settings as unknown as Record<string, unknown>;
-    bag[key] = value;
-    await this.plugin.saveSettings();
-    if (key === "theme") this.plugin.applyTheme();
-    if (key === "language") { setLanguage(asText(value)); this.rerender(); }
-    if (key === "root" || isPath) this.scheduleSettle();
-  }
-
-  /** 停手 700ms 之后才落定：同步派生路径 / 建目录 / 提示 */
-  private scheduleSettle() {
-    if (this.settleTimer !== null) window.clearTimeout(this.settleTimer);
-    this.settleTimer = window.setTimeout(() => { void this.settleNow(false); }, 800);
-  }
-
-  /**
-   * 落定。
-   * force=false（停手后自动跑）：根目录还**不存在**时只同步路径、不建目录——
-   *   那多半是"90-插件运营区"输到一半的中间态。
-   * force=true（离开设置页 / 点「更新」）：一律建目录并给出搬运询问。
-   */
-  private async settleNow(force: boolean) {
-    if (this.settleTimer !== null) { window.clearTimeout(this.settleTimer); this.settleTimer = null; }
-    const from = this.rootEditFrom;
-    this.rootEditFrom = null;
-    if (from !== null) {
-      this.pathsDirty = true;
-      const root = this.plugin.settings.root;
-      const dir = root.replace(/^\/+|\/+$/g, "");
-      const exists = !dir || await this.app.vault.adapter.exists(dir).catch(() => false);
-      if (!force && !exists) {
-        // 中间态：只把派生路径记下来，不碰磁盘
-        const before = pathsFromRoot(from);
-        const after = pathsFromRoot(root);
-        const bag = this.plugin.settings as unknown as Record<string, string>;
-        PATH_KEYS.forEach((k) => { if (bag[k] === before[k]) bag[k] = after[k]; });
-        await this.plugin.saveSettings();
-        this.pendingCreate = true;               // 目录等「输入结束」再建
-        return;
-      }
-      const r = await this.plugin.applyRootChange(root, from, { offer: force });
-      if (r.blocked) {                             // 目标已有同名文件 → 弹窗问过了，不再提示
-        if (force) { this.pathsDirty = false; this.rerender(); }
-        return;
-      }
-      const dataDir = this.plugin.settings.tasksFolder.replace(/\/tasks$/, "");
-      new Notice(r.movedFiles
-        ? t("已把 {n} 个文件搬到 {dir}（旧目录空了，文件夹可以自己删）", { n: r.movedFiles, dir: dataDir })
-        : r.stray
-          ? t("根目录已更新；旧目录里还有 {n} 个文件，点「更新」可以搬过去", { n: r.stray })
-          : r.kept
-            ? t("根目录已更新，{n} 项自定义路径保持不变", { n: r.kept })
-            : t("根目录已更新"));
-      // 只有显式动作（点「更新」/ 离开设置页）才重画：
-      // 打字落定时重画会把正在输入的输入框（连同官方目录建议器）一起换掉，
-      // 用户看到的就是「清空重输之后不再补全」。
-      if (force) { this.pathsDirty = false; this.rerender(); }
-      return;
-    }
-    // from === null：之前已落定过，这里只补建目录 / 补重画
-    this.pendingCreate = false;
-    await this.plugin.store.ensureVault();
-    if (force && this.pathsDirty) { this.pathsDirty = false; this.rerender(); }
-  }
-
-  /**
-   * 重画这一页。
-   * 1.13+ 的声明式页由框架渲染（`update()`），**不能**用命令式的 renderSettings()
-   * 去 empty + 重建——那会把官方控件（含它的目录补全）整块换掉。
+   * 重画这一页。1.13+ 的声明式页由框架渲染（update()），
+   * 不能拿命令式的 renderSettings() 去 empty + 重建——那会把官方控件一起换掉。
    */
   rerender(): void {
     const up = (this as unknown as { update?: () => void }).update;
@@ -683,9 +580,33 @@ export class TLTSettingTab extends PluginSettingTab {
     this.renderSettings();
   }
 
-  /** 离开设置页时把还没落定的那次做掉（此时视为输入完成） */
-  onHide(): void {
-    if (this.settleTimer !== null || this.rootEditFrom !== null || this.pendingCreate || this.pathsDirty) void this.settleNow(true);
+  /** 版本行：确认「实际加载的是哪个版本」时最有用 */
+  versionLine(): string {
+    const ver = (this.app as unknown as { appVersion?: string }).appVersion ?? "?";
+    return `TLT v${this.plugin.manifest.version} · Obsidian ${ver}`;
+  }
+
+  /** 重排路径 + 提示（两套界面共用） */
+  async alignAndNotify() {
+    const r = await this.plugin.applyNow();
+    if (r.blocked) return;                       // 目标已有同名文件：弹窗里问过了
+    const dataDir = this.plugin.settings.tasksFolder.replace(/\/tasks$/, "");
+    new Notice(r.movedFiles
+      ? t("已把 {n} 个文件搬到 {dir}（旧目录空了，文件夹可以自己删）", { n: r.movedFiles, dir: dataDir })
+      : t("六个路径已更新，目录已就位"));
+    this.rerender();
+  }
+
+  /**
+   * 声明式设置是**每次按键**都调这里：逐字只把值记下来，
+   * 派生路径 / 建目录 / 搬数据一律留给「更新」按钮。
+   */
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const bag = this.plugin.settings as unknown as Record<string, unknown>;
+    bag[key] = value;
+    await this.plugin.saveSettings();
+    if (key === "theme") this.plugin.applyTheme();
+    if (key === "language") { setLanguage(asText(value)); this.rerender(); }
   }
 
   /** 老版本客户端（< 1.13）只认 display()，转发到 renderSettings 以便内部重建这一页 */
@@ -736,19 +657,17 @@ export class TLTSettingTab extends PluginSettingTab {
     });
     new Setting(containerEl)
       .setName(t("根目录"))
-      .setDesc(t("TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时有候选可 Tab/点击选中；目录不存在就先手打。点「更新」时连数据一起搬过去。"))
-      .addButton((b) => b.setButtonText(t("更新")).setTooltip(t("按根目录重建六个路径并创建目录")).onClick(() => { void this.settleNow(true).then(() => this.alignAndNotify()); }))
+      .setDesc(t("TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入只做记录（有候选可 Tab/点击选中），点「更新」才真正生效：重建六项路径，并把旧位置的数据搬过去。"))
+      .addButton((b) => b.setButtonText(t("更新")).setTooltip(t("按当前设置重建六个路径，并把数据搬过去")).onClick(() => { void this.alignAndNotify(); }))
       .addText((tc) => {
         tc.setPlaceholder(d.root).setValue(p.settings.root ?? d.root);
         const commit = () => {
           const next = tc.inputEl.value.trim();
           if (next === p.settings.root) return;
           void (async () => {
-            const r = await p.applyRootChange(next);
-            new Notice(r.kept
-              ? `根目录已更新，${r.kept} 项自定义路径保持不变`
-              : `根目录已改为 ${next || "（库根目录）"}，目录已就位`);
-            this.renderSettings();
+            p.settings.root = next;
+            await p.saveSettings();
+            new Notice(t("已记录新的根目录，点「更新」生效"));
           })();
         };
         attachFolderSuggest(p.app, tc.inputEl);
@@ -762,13 +681,14 @@ export class TLTSettingTab extends PluginSettingTab {
         .setDesc(desc)
         .addText((tc) => {
           tc.setPlaceholder(dflt).setValue(p.settings[name]);
-          // 路径不逐字保存（每敲一个字就重扫一遍库），失焦或回车才落盘
+          // 逐字不保存（每敲一个字就重扫一遍库）；失焦或回车只把值记下来，
+          // 真正的生效（建目录 / 搬数据）交给该行上面的「更新」按钮。
           const commit = () => {
             const v = tc.inputEl.value.trim();
             if (v === p.settings[name]) return;
             p.settings[name] = v;
-            void p.saveSettings().then(() => p.store.ensureVault());
-            new Notice(t("目录已更新"));
+            void p.saveSettings();
+            new Notice(t("已记录，点「更新」生效"));
           };
           attachFolderSuggest(p.app, tc.inputEl);          // 边打边给候选：Tab / 点击选中
           tc.inputEl.addEventListener("blur", commit);

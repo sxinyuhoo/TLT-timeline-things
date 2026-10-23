@@ -238,7 +238,7 @@ const leaf = { app };
 /** 真实插件实例（设置页测试要用它，才能覆盖 applyRootChange 等真实逻辑） */
 function makePlugin(overrides = {}) {
   const inst = new TLTPlugin(app, { id: "tlt-timeline-things", dir: "tlt-timeline-things" });
-  inst.settings = { ...plugin.settings, ...overrides };
+  inst.settings = { ...plugin.settings, appliedRoot: plugin.settings.root, ...overrides };
   inst.store = new Store(app, inst.settings);      // 独立 store：设置类用例不动共享那份
   inst.saveData = async () => {};
   inst.refreshAll = () => {};
@@ -432,41 +432,6 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   assert.ok(selects.some((x) => [...x.options].some((o) => o.textContent === "15 分钟")), "间隔下拉选项不对");
 });
 
-await t("设置页：改根目录会同步六个路径，自定义项不动", async () => {
-  document.body.empty();
-  const p2 = makePlugin();
-  const tab = new TLTSettingTab(app, p2);
-  tab.containerEl = document.createElement("div");
-  tab.renderSettings();
-  const rootRow2 = [...tab.containerEl.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "根目录");
-  const rootInput = rootRow2?.querySelector("input");
-  assert.ok(rootInput, "没有根目录输入框");
-  assert.equal(rootInput.value, "TLT", "根目录没显示当前值");
-
-  // 改根目录 → 六项跟着走
-  rootInput.value = "工作/TLT";
-  rootInput.dispatchEvent(new dom.window.Event("blur"));
-  await new Promise((r) => setTimeout(r, 30));
-  assert.equal(p2.settings.root, "工作/TLT");
-  assert.equal(p2.settings.tasksFolder, "工作/TLT/tasks", `任务目录没跟随：${p2.settings.tasksFolder}`);
-  assert.equal(p2.settings.ideasFile, "工作/TLT/ideas.md", "随手记文件没跟随");
-  assert.equal(p2.settings.tagsFile, "工作/TLT/tags.md", "标签库文件没跟随");
-
-  // 单独改过一项后再改根目录 → 那项保持不动
-  const tab2 = new TLTSettingTab(app, p2);
-  tab2.containerEl = document.createElement("div");
-  p2.settings.teamFolder = "我的/团队";
-  tab2.renderSettings();
-  const row3 = [...tab2.containerEl.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "根目录");
-  const root2 = row3?.querySelector("input");
-  root2.value = "Other";
-  root2.dispatchEvent(new dom.window.Event("blur"));
-  await new Promise((r) => setTimeout(r, 30));
-  assert.equal(p2.settings.root, "Other");
-  assert.equal(p2.settings.tasksFolder, "Other/TLT/tasks", "其余项应跟随新根目录");
-  assert.equal(p2.settings.teamFolder, "我的/团队", "自定义过的那项被覆盖了");
-});
-
 await t("设置页：声明式改根目录同样同步六项并建目录", async () => {
   document.body.empty();
   const inst = makePlugin();
@@ -474,21 +439,46 @@ await t("设置页：声明式改根目录同样同步六项并建目录", async
   const tab = new TLTSettingTab(app, inst);
   tab.containerEl = document.createElement("div");
   await tab.setControlValue("root", "90-插件运营区");
-  await new Promise((r) => window.setTimeout(r, 900));    // 声明式是逐字提交，落定在 700ms 之后
-  assert.equal(inst.settings.root, "90-插件运营区");
-  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", `声明式没同步：${inst.settings.tasksFolder}`);
+  assert.equal(inst.settings.root, "90-插件运营区", "逐字输入应先把值记下来");
+  assert.equal(inst.settings.tasksFolder, "TLT/tasks", "没点「更新」前不该动派生路径");
+  assert.equal(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), false, "没点「更新」前不该建目录");
+  await tab.alignAndNotify();                                // 点「更新」
+  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", `点更新后应同步：${inst.settings.tasksFolder}`);
   assert.equal(inst.settings.tagsFile, "90-插件运营区/TLT/tags.md");
-  tab.onHide();                                              // 离开设置页 = 输入完成
-  await new Promise((r) => window.setTimeout(r, 80));
-  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), `离开设置页后应把目录建出来，建了：${createdFolders.slice(-8).join(",")}`);
+  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), "点更新后应把目录建出来");
 });
 
-await t("设置页：路径改乱后「按根目录重排」能拉回来", async () => {
-  const inst = makePlugin({ root: "库/TLT", tasksFolder: "乱写的/任务" });
-  inst.alignPathsToRoot = TLTPlugin.prototype.alignPathsToRoot.bind(inst);
-  await inst.alignPathsToRoot();
-  assert.equal(inst.settings.tasksFolder, "库/TLT/tasks", "没拉回来");
-  assert.equal(inst.settings.logsFolder, "库/TLT/logs");
+await t("设置页：输入只记值，点「更新」才同步六项、建目录", async () => {
+  document.body.empty();
+  const inst = makePlugin();
+  createdFolderSet.add("90-插件运营区");
+  const tab = new TLTSettingTab(app, inst);
+  tab.containerEl = document.createElement("div");
+  let updates = 0;
+  tab.update = () => { updates++; };
+  const before = createdFolders.length;
+  await tab.setControlValue("root", "9");
+  await tab.setControlValue("root", "90");
+  await tab.setControlValue("root", "90-插件运营区");
+  await new Promise((r) => window.setTimeout(r, 900));
+  assert.equal(inst.settings.root, "90-插件运营区", "值要记下来");
+  assert.equal(inst.settings.tasksFolder, "TLT/tasks", "没点「更新」前派生路径不动");
+  assert.equal(createdFolders.length, before, "没点「更新」前不建目录");
+  assert.equal(updates, 0, "输入阶段不重画");
+  await tab.alignAndNotify();                                   // 点「更新」
+  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", "点更新后应同步六项");
+  assert.equal(inst.settings.tagsFile, "90-插件运营区/TLT/tags.md");
+  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), "点更新后应建目录");
+  const said = (globalThis.__notices || []).slice(-3).join(" | ");
+  assert.ok(/六个路径已更新|已把 \d+ 个文件搬到/.test(said), "点更新后应有提示，实际：" + said);
+});
+
+await t("点「更新」：派生路径跟随根目录，手工改过的那项不动", async () => {
+  const inst = makePlugin({ tasksFolder: "乱写的/任务" });     // 根目录仍是默认 TLT，appliedRoot=TLT
+  inst.settings.root = "Other";
+  await inst.applyNow();
+  assert.equal(inst.settings.tasksFolder, "乱写的/任务", "手工改过的项不该被覆盖");
+  assert.equal(inst.settings.logsFolder, "Other/TLT/logs", "仍是派生值的项应跟随");
 });
 
 await t("示例数据不含真实姓名与项目名", async () => {
@@ -586,49 +576,20 @@ await t("时序兜底：某个视图渲染炸了也不影响 onload", async () =
 await t("根目录语义：数据放 <根目录>/TLT 下，留空则用库根目录的 TLT/", async () => {
   const keep = { ...store.settings };
   const inst = makePlugin();
-  await inst.applyRootChange("90-插件运营区");
+  await inst.applyNow();
+  assert.equal(inst.settings.tasksFolder, "TLT/tasks", "根目录留空 → 数据仍在库根 TLT/");
+  inst.settings.root = "90-插件运营区";
+  await inst.applyNow();
   assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks");
   assert.equal(inst.settings.ideasFile, "90-插件运营区/TLT/ideas.md");
-  await inst.applyRootChange("");
+  inst.settings.root = "";
+  await inst.applyNow();
   assert.equal(inst.settings.tasksFolder, "TLT/tasks", `留空应回到库根 TLT/，实际 ${inst.settings.tasksFolder}`);
-  await inst.applyRootChange("90-插件运营区/TLT");           // 根目录本身就叫 TLT：不再套一层
+  inst.settings.root = "90-插件运营区/TLT";                  // 根目录本身就叫 TLT：不再套一层
+  await inst.applyNow();
   assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks");
   Object.assign(store.settings, keep);                       // 还原，别影响后面的用例
   await store.load();
-});
-
-await t("逐字输入根目录：过程中不建目录、不动派生路径，停手后才落定", async () => {
-  document.body.empty();
-  const inst = makePlugin();
-  const tab = new TLTSettingTab(app, inst);
-  tab.containerEl = document.createElement("div");
-  const before = createdFolders.length;
-  inst.settings.root = "TLT";                       // 编辑前
-  await tab.setControlValue("root", "9");
-  await tab.setControlValue("root", "90");
-  await tab.setControlValue("root", "90-插件运营区");
-  const stray = createdFolders.slice(before).filter((x) => !x.includes("90-插件运营区/TLT"));
-  assert.equal(stray.length, 0, `输入过程中建了目录：${stray.join(" / ")}`);
-  assert.equal(inst.settings.tasksFolder, "TLT/tasks", "还没停手就改了派生路径");
-  await new Promise((r) => window.setTimeout(r, 900));   // 停手
-  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", `停手后没落定：${inst.settings.tasksFolder}`);
-  assert.equal(inst.settings.root, "90-插件运营区");
-});
-
-await t("逐字输入：目标目录还不存在时只记路径，离开设置页才建", async () => {
-  document.body.empty();
-  const inst = makePlugin();
-  const tab = new TLTSettingTab(app, inst);
-  tab.containerEl = document.createElement("div");
-  inst.settings.root = "TLT";
-  const before = createdFolders.length;
-  await tab.setControlValue("root", "9");                    // 半截输入
-  await new Promise((r) => window.setTimeout(r, 950));       // 停手
-  const stray = createdFolders.slice(before);
-  assert.equal(stray.length, 0, `中间态不该建目录，却建了：${stray.join(" / ")}`);
-  tab.onHide();                                              // 离开设置页 = 输入完成
-  await new Promise((r) => window.setTimeout(r, 60));
-  assert.ok(createdFolders.slice(before).some((x) => x.includes("9/TLT")), "离开设置页后应把目录建出来");
 });
 
 await t("目录输入补全：Tab / 点击选中已有目录", async () => {
@@ -692,23 +653,6 @@ await t("重画：声明式页优先走框架 update()，不换成命令式", as
   assert.ok(tab2.containerEl.querySelector(".setting-item"), "老客户端应回退到命令式渲染");
 });
 
-await t("打字落定不重画设置页（否则输入框和建议器被换掉）", async () => {
-  document.body.empty();
-  const inst = makePlugin();
-  createdFolderSet.add("90-插件运营区");
-  const tab = new TLTSettingTab(app, inst);
-  tab.containerEl = document.createElement("div");
-  let updates = 0;
-  tab.update = () => { updates++; };
-  await tab.setControlValue("root", "90-插件运营区");
-  await new Promise((r) => window.setTimeout(r, 900));       // 落定
-  assert.equal(updates, 0, "打字停手后不该重画设置页");
-  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", "落定应生效");
-  tab.onHide();                                              // 离开设置页 = 显式动作
-  await new Promise((r) => window.setTimeout(r, 60));
-  assert.ok(updates >= 1, "离开设置页应重画一次");
-});
-
 await t("默认目录改名：TLT/team → TLT/crew（自定义过的不动）", async () => {
   const inst = makePlugin({ teamFolder: "TLT/team" });
   await inst.migrateFolderDefaults();
@@ -736,7 +680,8 @@ await t("改根目录默认把数据整棵搬过去（不再两边各留一份�
   const renamed = [];
   const realRename = app.fileManager.renameFile;
   app.fileManager.renameFile = async (f, to) => { renamed.push([f.path, to]); await realRename(f, to); };
-  const r = await inst.applyRootChange("工作");
+  inst.settings.root = "工作";
+  const r = await inst.applyNow();
   app.fileManager.renameFile = realRename;
   const diag = JSON.stringify({ r, tasks: inst.settings.tasksFolder, root: inst.settings.root, renamed });
   assert.equal(renamed.length, fixtureUnderTLT, "应把旧目录下所有文件都搬走 | " + diag);
