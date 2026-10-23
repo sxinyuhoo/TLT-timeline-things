@@ -121,10 +121,11 @@ const fm = {
 };
 
 const createdFolders = [];
+const createdFolderSet = new Set();
 const vault = {
   getMarkdownFiles: () => Object.keys(files).map((p) => new TFile(p)),
   adapter: {
-    exists: async (p) => p in files,
+    exists: async (p) => (p in files) || createdFolderSet.has(p),
     read: async (p) => files[p] ?? "",
     write: async (p, c) => { files[p] = c; },
     mkdir: async () => {},
@@ -134,7 +135,7 @@ const vault = {
   getAbstractFileByPath: (p) => (p in files ? new TFile(p) : null),
   process: async (f, fn) => { files[f.path] = fn(files[f.path]); },
   create: async (p, c) => { files[p] = c; },
-  createFolder: async (p) => { createdFolders.push(p); },
+  createFolder: async (p) => { createdFolders.push(p); createdFolderSet.add(p); },
   on: () => ({}),
 };
 const app = { vault, metadataCache: { getFileCache: (f) => ({ frontmatter: fm[f.path] }) }, workspace: { getLeavesOfType: () => [], getLeaf: () => ({}) } };
@@ -449,13 +450,15 @@ await t("设置页：改根目录会同步六个路径，自定义项不动", as
 await t("设置页：声明式改根目录同样同步六项并建目录", async () => {
   document.body.empty();
   const inst = makePlugin();
+  createdFolderSet.add("90-插件运营区");                       // 真机上这个目录是用户先建好的
   const tab = new TLTSettingTab(app, inst);
   tab.containerEl = document.createElement("div");
   await tab.setControlValue("root", "90-插件运营区");
+  await new Promise((r) => window.setTimeout(r, 900));    // 声明式是逐字提交，落定在 700ms 之后
   assert.equal(inst.settings.root, "90-插件运营区");
   assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", `声明式没同步：${inst.settings.tasksFolder}`);
   assert.equal(inst.settings.tagsFile, "90-插件运营区/TLT/tags.md");
-  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区")), `没建目录，建了：${createdFolders.join(",")}`);
+  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), `没建目录，建了：${createdFolders.slice(-8).join(",")}`);
 });
 
 await t("设置页：路径改乱后「按根目录重排」能拉回来", async () => {
@@ -570,6 +573,40 @@ await t("根目录语义：数据放 <根目录>/TLT 下，留空则用库根目
   assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks");
   Object.assign(store.settings, keep);                       // 还原，别影响后面的用例
   await store.load();
+});
+
+await t("逐字输入根目录：过程中不建目录、不动派生路径，停手后才落定", async () => {
+  document.body.empty();
+  const inst = makePlugin();
+  const tab = new TLTSettingTab(app, inst);
+  tab.containerEl = document.createElement("div");
+  const before = createdFolders.length;
+  inst.settings.root = "TLT";                       // 编辑前
+  await tab.setControlValue("root", "9");
+  await tab.setControlValue("root", "90");
+  await tab.setControlValue("root", "90-插件运营区");
+  const stray = createdFolders.slice(before).filter((x) => !x.includes("90-插件运营区/TLT"));
+  assert.equal(stray.length, 0, `输入过程中建了目录：${stray.join(" / ")}`);
+  assert.equal(inst.settings.tasksFolder, "TLT/tasks", "还没停手就改了派生路径");
+  await new Promise((r) => window.setTimeout(r, 900));   // 停手
+  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", `停手后没落定：${inst.settings.tasksFolder}`);
+  assert.equal(inst.settings.root, "90-插件运营区");
+});
+
+await t("逐字输入：目标目录还不存在时只记路径，离开设置页才建", async () => {
+  document.body.empty();
+  const inst = makePlugin();
+  const tab = new TLTSettingTab(app, inst);
+  tab.containerEl = document.createElement("div");
+  inst.settings.root = "TLT";
+  const before = createdFolders.length;
+  await tab.setControlValue("root", "9");                    // 半截输入
+  await new Promise((r) => window.setTimeout(r, 950));       // 停手
+  const stray = createdFolders.slice(before);
+  assert.equal(stray.length, 0, `中间态不该建目录，却建了：${stray.join(" / ")}`);
+  tab.onHide();                                              // 离开设置页 = 输入完成
+  await new Promise((r) => window.setTimeout(r, 60));
+  assert.ok(createdFolders.slice(before).some((x) => x.includes("9/TLT")), "离开设置页后应把目录建出来");
 });
 
 await t("冷启动：文件已存在时 createSafe 不算失败", async () => {

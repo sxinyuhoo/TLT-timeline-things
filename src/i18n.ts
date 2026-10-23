@@ -93,6 +93,7 @@ export const EN: Record<string, string> = {
   "按上面的根目录重建六个路径并创建目录；旧目录里还有文件时会问你要不要一起搬过去。":
     "Rebuild the six paths from the root folder above and create the folders; if the old folders still hold files, it asks whether to move them over.",
   "已按根目录更新六个路径，目录已就位": "Six paths rebuilt from the root folder; folders are ready",
+  "根目录已更新；旧目录里还有 {n} 个文件，点「更新」可以搬过去": "Root folder updated; {n} file(s) are still in the old folder — click Update to move them over",
   "生成示例数据": "Generate sample data",
   "写一份虚构的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。":
     "Write a fictional sample (made-up names and projects) so you can see the UI. Existing files are never overwritten.",
