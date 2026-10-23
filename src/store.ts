@@ -37,7 +37,7 @@ export interface TLTSettings {
 export const DEFAULT_SETTINGS: TLTSettings = {
   root: "",
   tasksFolder: "TLT/tasks",
-  teamFolder: "TLT/team",
+  teamFolder: "TLT/crew",
   feedsFolder: "TLT/feeds",
   logsFolder: "TLT/logs",
   ideasFile: "TLT/ideas.md",
@@ -59,7 +59,7 @@ export function pathsFromRoot(root: string) {
   const join = (sub: string) => `${dir}/${sub}`;
   return {
     tasksFolder: join("tasks"),
-    teamFolder: join("team"),
+    teamFolder: join("crew"),
     feedsFolder: join("feeds"),
     logsFolder: join("logs"),
     ideasFile: join("ideas.md"),

@@ -97,11 +97,11 @@ const files = {
 - [ ] 抽样结果 出报告 📅 ${T} [wl:: 10] [owner:: [[王五]]]
 - [ ] 补：常用脚本回归（漏跑） 📅 ${D} [wl:: 10] [owner:: [[王五]]] [pri:: 2]
 `,
-  "TLT/team/我.md": `---\ntlt: staff\nrole: 实验室负责人\ncapacity: 100\ndays: 5\nskills: [决策, 算法, 产品]\nstatus: active\n---\n`,
-  "TLT/team/张三.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [评测, 数据集]\nstatus: active\n---\n`,
-  "TLT/team/李四.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 90\ndays: 5\nskills: [交通仿真, 接口]\nstatus: active\n---\n`,
-  "TLT/team/王五.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [文档解析, 抽样]\nstatus: active\n---\n`,
-  "TLT/team/赵六.md": `---\ntlt: staff\nrole: 产品经理\ncapacity: 100\ndays: 5\nskills: [需求, 知识库]\nstatus: active\n---\n`,
+  "TLT/crew/我.md": `---\ntlt: staff\nrole: 实验室负责人\ncapacity: 100\ndays: 5\nskills: [决策, 算法, 产品]\nstatus: active\n---\n`,
+  "TLT/crew/张三.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [评测, 数据集]\nstatus: active\n---\n`,
+  "TLT/crew/李四.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 90\ndays: 5\nskills: [交通仿真, 接口]\nstatus: active\n---\n`,
+  "TLT/crew/王五.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [文档解析, 抽样]\nstatus: active\n---\n`,
+  "TLT/crew/赵六.md": `---\ntlt: staff\nrole: 产品经理\ncapacity: 100\ndays: 5\nskills: [需求, 知识库]\nstatus: active\n---\n`,
   "TLT/feeds/我的动态.md": `---\ntitle: 我的动态\nowner: me\nmine: true\ncadence: 随手发\n---\n\n- ${D} 示例进展：方案已定稿 [kind:: note] [place:: 会议室] [star:: true]\n  > 三处差异写进 V2：表格跨页合并、公式回填、扫描页方向。周五前按新口径重跑。\n- ${T} 周会：先把 示例任务：写一页纸 [kind:: note]\n`,
   "TLT/feeds/部门通知.md": `---\ntitle: 部门通知\nowner: 示例同事\ncadence: 每周 2–3 条\ndesc: 宣贯、团建、制度变更、值班安排\n---\n\n- ${D} 部门宣贯：四季度安全与合规要求 [kind:: ask] [place:: 三楼会议室] [star:: true]\n  > 领导要求本周内完成，覆盖全员，保留签到记录。\n- ${T} 团建：秋季一日游（暂定杭州湾） [kind:: event] [place:: 杭州湾]\n  > 人数统计截止本周五。\n- ${D} 十一假期值班安排 [kind:: event] [state:: ended]\n`,
   "TLT/feeds/个人.md": `---
@@ -140,11 +140,11 @@ owner: me
 };
 
 const fm = {
-  "TLT/team/我.md": { role: "实验室负责人", capacity: 100, days: 5, skills: ["决策"], status: "active" },
-  "TLT/team/张三.md": { role: "算法工程师", capacity: 100, days: 5, skills: ["评测"], status: "active" },
-  "TLT/team/李四.md": { role: "算法工程师", capacity: 90, days: 5, skills: ["仿真"], status: "active" },
-  "TLT/team/王五.md": { role: "算法工程师", capacity: 100, days: 5, skills: ["解析"], status: "active" },
-  "TLT/team/赵六.md": { role: "产品经理", capacity: 100, days: 5, skills: ["需求"], status: "active" },
+  "TLT/crew/我.md": { role: "实验室负责人", capacity: 100, days: 5, skills: ["决策"], status: "active" },
+  "TLT/crew/张三.md": { role: "算法工程师", capacity: 100, days: 5, skills: ["评测"], status: "active" },
+  "TLT/crew/李四.md": { role: "算法工程师", capacity: 90, days: 5, skills: ["仿真"], status: "active" },
+  "TLT/crew/王五.md": { role: "算法工程师", capacity: 100, days: 5, skills: ["解析"], status: "active" },
+  "TLT/crew/赵六.md": { role: "产品经理", capacity: 100, days: 5, skills: ["需求"], status: "active" },
   "TLT/feeds/我的动态.md": { title: "我的动态", owner: "me", mine: true, cadence: "随手发" },
   "TLT/feeds/个人.md": { title: "个人", personal: true, owner: "me" },
   "TLT/feeds/部门通知.md": { title: "部门通知", owner: "示例同事", cadence: "每周 2–3 条" },
@@ -162,12 +162,12 @@ const vault = {
   on: () => ({}),
 };
 const app = { vault, metadataCache: { getFileCache: (f) => ({ frontmatter: fm[f.path] }) }, workspace: { getLeavesOfType: () => [], getLeaf: () => ({}) } };
-const store = new Store(app, { tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds", logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的动态" });
+const store = new Store(app, { tasksFolder: "TLT/tasks", teamFolder: "TLT/crew", feedsFolder: "TLT/feeds", logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的动态" });
 await store.load();
 
 const plugin = {
   settings: {
-    defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
+    defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/crew", feedsFolder: "TLT/feeds",
     logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md",
     theme: "auto", hubPublish: "http://127.0.0.1:8787", hubSync: "http://127.0.0.1:8788",
     autoSyncMin: 15, autoPushMin: 0, mineFeed: "我的动态", feedIds: {}, feedNames: {},

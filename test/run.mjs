@@ -102,7 +102,7 @@ t("记录月文件：按 ## 日期分节", () => {
 });
 
 t("人员档案", () => {
-  const s = d.parseStaff("张三", "TLT/team/张三.md", { role: "算法工程师", capacity: 80, days: 4, skills: ["评测", "数据集"], status: "active" });
+  const s = d.parseStaff("张三", "TLT/crew/张三.md", { role: "算法工程师", capacity: 80, days: 4, skills: ["评测", "数据集"], status: "active" });
   assert.equal(s.capacity, 80);
   assert.equal(s.days, 4);
   assert.deepEqual(s.skills, ["评测", "数据集"]);

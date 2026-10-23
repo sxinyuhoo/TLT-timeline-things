@@ -145,7 +145,7 @@ export class WorkbenchView extends ItemView {
       card.append(row, bar, meta);
       scroll.appendChild(card);
     });
-    if (!projects.length) scroll.appendChild(el("div", "tlt-empty", T("TLT/tasks 里还没有任务文件")));
+    if (!projects.length) scroll.appendChild(el("div", "tlt-empty", T("{dir} 里还没有任务文件", { dir: this.cfg.tasksFolder })));
 
     const seg = el("div", "tlt-seg tlt-period");
     (["w", "m", "q"] as Period[]).forEach((p) => {
@@ -671,7 +671,7 @@ export class WorkbenchView extends ItemView {
       grid.appendChild(card);
     });
     p.appendChild(grid);
-    if (!rows.length) p.appendChild(el("div", "tlt-empty", T("TLT/team 里还没有人员档案")));
+    if (!rows.length) p.appendChild(el("div", "tlt-empty", T("{dir} 里还没有人员档案", { dir: this.cfg.teamFolder })));
     return p;
   }
 

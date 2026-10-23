@@ -86,7 +86,7 @@ Publishing and subscribing live in the same process and port; put `http://server
 | Path | Content |
 | --- | --- |
 | `TLT/tasks/<project>.md` | Tasks: one file per project, `##` = milestone, one line per task |
-| `TLT/team/<name>.md` | People: frontmatter with `role / capacity / days / skills` |
+| `TLT/crew/<name>.md` | People: frontmatter with `role / capacity / days / skills` |
 | `TLT/feeds/<source>.md` | Message sources: one line per message |
 | `TLT/logs/<YYYY-MM>.md` | Records: `## date` sections with time blocks and bodies |
 | `TLT/ideas.md` | Quick notes: one line each |

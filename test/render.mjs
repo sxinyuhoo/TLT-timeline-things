@@ -105,9 +105,9 @@ const files = {
 
 - [ ] 处理 100 份 🛫 ${D} 📅 ${D} [wl:: 40] [pw:: w] [owner:: [[王五]]]
 `,
-  "TLT/team/我.md": `---\ntlt: staff\nrole: 负责人\ncapacity: 100\ndays: 5\nskills: [决策]\nstatus: active\n---\n`,
-  "TLT/team/张三.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 80\ndays: 4\nskills: [评测]\nstatus: active\n---\n`,
-  "TLT/team/王五.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\n---\n`,
+  "TLT/crew/我.md": `---\ntlt: staff\nrole: 负责人\ncapacity: 100\ndays: 5\nskills: [决策]\nstatus: active\n---\n`,
+  "TLT/crew/张三.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 80\ndays: 4\nskills: [评测]\nstatus: active\n---\n`,
+  "TLT/crew/王五.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\n---\n`,
   "TLT/feeds/部门通知.md": `---\ntitle: 部门通知\nowner: 示例同事\n---\n\n- ${D} 部门宣贯 [kind:: ask] [place:: 三楼] [star:: true]\n  > 覆盖全员\n- ${D} 团建 [kind:: event] [state:: ended]\n`,
   "TLT/feeds/个人.md": `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n- ${D} 记一下周报自动化\n`,
   "TLT/feeds/我的动态.md": `---\ntitle: 我的动态\nowner: me\nmine: true\n---\n\n- ${D} 示例口径 V2 定稿 [kind:: note]\n`,
@@ -116,9 +116,9 @@ const files = {
 };
 
 const fm = {
-  "TLT/team/我.md": { role: "负责人", capacity: 100, days: 5, skills: ["决策"], status: "active" },
-  "TLT/team/张三.md": { role: "算法工程师", capacity: 80, days: 4, skills: ["评测"], status: "active" },
-  "TLT/team/王五.md": { role: "算法工程师", capacity: 100, days: 5 },
+  "TLT/crew/我.md": { role: "负责人", capacity: 100, days: 5, skills: ["决策"], status: "active" },
+  "TLT/crew/张三.md": { role: "算法工程师", capacity: 80, days: 4, skills: ["评测"], status: "active" },
+  "TLT/crew/王五.md": { role: "算法工程师", capacity: 100, days: 5 },
   "TLT/feeds/部门通知.md": { title: "部门通知", owner: "示例同事" },
   "TLT/feeds/我的动态.md": { title: "我的动态", owner: "me", mine: true },
   "TLT/feeds/个人.md": { title: "个人", personal: true, owner: "me" },
@@ -146,7 +146,7 @@ const vault = {
 const app = { vault, metadataCache: { getFileCache: (f) => ({ frontmatter: fm[f.path] }) }, workspace: { getLeavesOfType: () => [], getLeaf: () => ({}) } };
 
 const store = new Store(app, {
-  tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
+  tasksFolder: "TLT/tasks", teamFolder: "TLT/crew", feedsFolder: "TLT/feeds",
   logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的动态",
 });
 await store.load();
@@ -199,7 +199,7 @@ await t("想法正文（为什么做）能写回并重读", async () => {
 console.log("\n渲染（jsdom）");
 const plugin = {
   settings: {
-    root: "TLT", defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
+    root: "TLT", defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/crew", feedsFolder: "TLT/feeds",
     logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md",
     theme: "auto", hubPublish: "http://127.0.0.1:8787", hubSync: "http://127.0.0.1:8788",
     autoSyncMin: 15, autoPushMin: 0, mineFeed: "我的动态", feedIds: {}, feedNames: {},
@@ -409,7 +409,7 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   assert.ok(tasks, "任务目录输入框没有默认值占位");
   assert.equal(tasks.value, "TLT/tasks", "任务目录没显示当前值");
   const phs = inputs.map((i) => i.placeholder).filter(Boolean);
-  ["TLT/tasks", "TLT/team", "TLT/feeds", "TLT/logs", "TLT/ideas.md", "TLT/tags.md"].forEach((d) => {
+  ["TLT/tasks", "TLT/crew", "TLT/feeds", "TLT/logs", "TLT/ideas.md", "TLT/tags.md"].forEach((d) => {
     assert.ok(phs.includes(d), `缺少默认值占位 ${d}`);
   });
   // 消息服务：间隔下拉的选项
@@ -505,17 +505,17 @@ await t("语言切到英文：设置页与工作台文案跟进", async () => {
 
 await t("改目录：只列出要搬的文件，不自己搬", async () => {
   const inst = makePlugin({
-    root: "90-插件运营区", tasksFolder: "90-插件运营区/TLT/tasks", teamFolder: "90-插件运营区/TLT/team",
+    root: "90-插件运营区", tasksFolder: "90-插件运营区/TLT/tasks", teamFolder: "90-插件运营区/TLT/crew",
     feedsFolder: "90-插件运营区/TLT/feeds", logsFolder: "90-插件运营区/TLT/logs",
   });
   const realList = app.vault.getMarkdownFiles;
-  app.vault.getMarkdownFiles = () => [new TFile("TLT/tasks/示例项目.md"), new TFile("TLT/team/张三.md"), new TFile("别处/无关.md")];
-  const old = { ...inst.settings, root: "TLT", tasksFolder: "TLT/tasks", teamFolder: "TLT/team",
+  app.vault.getMarkdownFiles = () => [new TFile("TLT/tasks/示例项目.md"), new TFile("TLT/crew/张三.md"), new TFile("别处/无关.md")];
+  const old = { ...inst.settings, root: "TLT", tasksFolder: "TLT/tasks", teamFolder: "TLT/crew",
     feedsFolder: "TLT/feeds", logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md" };
   const moves = inst.planMove(old);
   assert.equal(moves.length, 2, `应只算 TLT 下的两个文件，实际 ${JSON.stringify(moves)}`);
   assert.equal(moves[0].to, "90-插件运营区/TLT/tasks/示例项目.md");
-  assert.equal(moves[1].to, "90-插件运营区/TLT/team/张三.md");
+  assert.equal(moves[1].to, "90-插件运营区/TLT/crew/张三.md");
   app.vault.getMarkdownFiles = realList;      // 还原，别影响后面的用例
 });
 
@@ -673,6 +673,36 @@ await t("重画：声明式页优先走框架 update()，不换成命令式", as
   tab2.containerEl = document.createElement("div");
   tab2.rerender();
   assert.ok(tab2.containerEl.querySelector(".setting-item"), "老客户端应回退到命令式渲染");
+});
+
+await t("打字落定不重画设置页（否则输入框和建议器被换掉）", async () => {
+  document.body.empty();
+  const inst = makePlugin();
+  createdFolderSet.add("90-插件运营区");
+  const tab = new TLTSettingTab(app, inst);
+  tab.containerEl = document.createElement("div");
+  let updates = 0;
+  tab.update = () => { updates++; };
+  await tab.setControlValue("root", "90-插件运营区");
+  await new Promise((r) => window.setTimeout(r, 900));       // 落定
+  assert.equal(updates, 0, "打字停手后不该重画设置页");
+  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", "落定应生效");
+  tab.onHide();                                              // 离开设置页 = 显式动作
+  await new Promise((r) => window.setTimeout(r, 60));
+  assert.ok(updates >= 1, "离开设置页应重画一次");
+});
+
+await t("默认目录改名：TLT/team → TLT/crew（自定义过的不动）", async () => {
+  const inst = makePlugin({ teamFolder: "TLT/team" });
+  await inst.migrateFolderDefaults();
+  assert.equal(inst.settings.teamFolder, "TLT/crew", "老默认值应迁移");
+  assert.equal(inst.settings.crewMigrated, true, "应写入迁移标记");
+  const inst2 = makePlugin({ teamFolder: "我的/小组" });      // 用户自己改过
+  await inst2.migrateFolderDefaults();
+  assert.equal(inst2.settings.teamFolder, "我的/小组", "自定义目录不该被动");
+  const inst3 = makePlugin({ teamFolder: "TLT/team", crewMigrated: true });   // 迁过一次就不再动
+  await inst3.migrateFolderDefaults();
+  assert.equal(inst3.settings.teamFolder, "TLT/team", "迁过一次后不该再改");
 });
 
 await t("冷启动：文件已存在时 createSafe 不算失败", async () => {

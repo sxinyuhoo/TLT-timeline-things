@@ -24,6 +24,8 @@ type PathKey =
 interface Settings extends TLTSettings {
   theme: ThemeMode;
   language: Language;
+  /** 人员目录 team → crew 的一次性迁移标记 */
+  crewMigrated?: boolean;
   hubPublish: string;
   hubSync: string;
   autoSyncMin: number;
@@ -59,6 +61,22 @@ export class TLTPlugin extends Plugin {
       new Notice(t("TLT 加载出错：{msg}", { msg: errMsg(e) }));
       void this.dumpLoadError(detail);
     }
+  }
+
+  /**
+   * 默认目录改名的一次性迁移：人员目录 team → crew。
+   * 只认「还等于旧默认值」的情况，用户自己改过的不动；旧目录里的文件会问要不要搬。
+   */
+  async migrateFolderDefaults() {
+    const s = this.settings;
+    if (s.crewMigrated || s.teamFolder !== "TLT/team") return;
+    const before = { ...s };
+    s.teamFolder = "TLT/crew";
+    s.crewMigrated = true;
+    await this.saveSettings();
+    await this.store.ensureVault();
+    this.offerMove(before);
+    new Notice(t("人员目录已由 TLT/team 改为 TLT/crew"));
   }
 
   /** 自检：把版本、数据量、目录、上次加载错误写进插件目录，出问题时一看就知道 */
@@ -100,6 +118,7 @@ export class TLTPlugin extends Plugin {
 
   private async boot() {
     await this.loadSettings();
+    await this.migrateFolderDefaults();
     this.store.settings = this.settings;
     setLanguage(this.settings.language);
     this.store = new Store(this.app, this.settings);
@@ -476,6 +495,7 @@ export class TLTSettingTab extends PluginSettingTab {
   private settleTimer: number | null = null;   // 逐字输入时的落定计时器
   private rootEditFrom: string | null = null;  // 编辑开始前的根目录
   private pendingCreate = false;               // 跳过了建目录，等离开设置页补上
+  private pathsDirty = false;                  // 这次编辑改过派生路径：离开设置页时补一次重画
   constructor(app: App, plugin: TLTPlugin) { super(app, plugin); this.plugin = plugin; }
 
   /** 1.13+ 的设置搜索读这里 */
@@ -590,6 +610,7 @@ export class TLTSettingTab extends PluginSettingTab {
     const from = this.rootEditFrom;
     this.rootEditFrom = null;
     if (from !== null) {
+      this.pathsDirty = true;
       const root = this.plugin.settings.root;
       const dir = root.replace(/^\/+|\/+$/g, "");
       const exists = !dir || await this.app.vault.adapter.exists(dir).catch(() => false);
@@ -609,11 +630,16 @@ export class TLTSettingTab extends PluginSettingTab {
         : r.kept
           ? `根目录已更新，${r.kept} 项自定义路径保持不变`
           : "根目录已更新");
-      this.rerender();
+      // 只有显式动作（点「更新」/ 离开设置页）才重画：
+      // 打字落定时重画会把正在输入的输入框（连同官方目录建议器）一起换掉，
+      // 用户看到的就是「清空重输之后不再补全」。
+      if (force) { this.pathsDirty = false; this.rerender(); }
       return;
     }
+    // from === null：之前已落定过，这里只补建目录 / 补重画
     this.pendingCreate = false;
     await this.plugin.store.ensureVault();
+    if (force && this.pathsDirty) { this.pathsDirty = false; this.rerender(); }
   }
 
   /**
@@ -631,7 +657,7 @@ export class TLTSettingTab extends PluginSettingTab {
 
   /** 离开设置页时把还没落定的那次做掉（此时视为输入完成） */
   onHide(): void {
-    if (this.settleTimer !== null || this.rootEditFrom !== null || this.pendingCreate) void this.settleNow(true);
+    if (this.settleTimer !== null || this.rootEditFrom !== null || this.pendingCreate || this.pathsDirty) void this.settleNow(true);
   }
 
   /** 老版本客户端（< 1.13）只认 display()，转发到 renderSettings 以便内部重建这一页 */

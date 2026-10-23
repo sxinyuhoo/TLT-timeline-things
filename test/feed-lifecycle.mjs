@@ -53,7 +53,7 @@ const app = {
   metadataCache: { getFileCache: (f) => ({ frontmatter: parseFm(vault.files[f.path] || "") }) },
 };
 const store = new Store(app, {
-  tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
+  tasksFolder: "TLT/tasks", teamFolder: "TLT/crew", feedsFolder: "TLT/feeds",
   logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md",
   defaultPeriod: "m", mineFeed: "我的工作动态",
 });

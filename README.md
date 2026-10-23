@@ -88,7 +88,7 @@ python3 services-py/tlt_service.py --port 8787 --data ./data --seed
 | 路径 | 内容 |
 | --- | --- |
 | `TLT/tasks/<项目>.md` | 任务：一个项目一个文件，`##` 是里程碑，一行一条任务 |
-| `TLT/team/<姓名>.md` | 人员：frontmatter 存 `role / capacity / days / skills` |
+| `TLT/crew/<姓名>.md` | 人员：frontmatter 存 `role / capacity / days / skills` |
 | `TLT/feeds/<源名>.md` | 消息源：一行一条消息 |
 | `TLT/logs/<YYYY-MM>.md` | 记录：`## 日期` 分节，时间块 + 正文 |
 | `TLT/ideas.md` | 随手记：一行一条 |
