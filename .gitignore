@@ -1,0 +1,28 @@
+# 构建产物（由 npm run build 生成，发布时作为 release 附件）
+main.js
+*.js.map
+
+# 依赖
+node_modules/
+
+# 测试生成物
+test/bundle.mjs
+test/data.mjs
+test/store-bundle.mjs
+test/play.bundle.js
+test/play.html
+test/preview-*.html
+
+# 运行期数据：开发期插件目录软链到本仓库时，服务与插件会往这里写
+services/data/
+services-py/data/
+*.db
+
+# 系统与编辑器
+.DS_Store
+.idea/
+.vscode/
+
+# 本地草稿（不进仓库）
+IDEA.md
+docs/design-*.md
