@@ -120,7 +120,7 @@ body.tlt-light {
 }
 .tlt-proj {
   padding: 8px 10px 9px; border-radius: 9px; margin-bottom: 3px;
-  cursor: pointer; border: 1px solid transparent; transition: .14s;
+  cursor: pointer; border: 1px solid transparent; transition: background-color .14s ease, border-color .14s ease, color .14s ease, box-shadow .14s ease;
 }
 .tlt-proj:hover { background: var(--tlt-surface2); }
 .tlt-proj.on { background: var(--tlt-surface3); border-color: rgba(91, 108, 255, .35); }
@@ -183,7 +183,7 @@ body.tlt-light {
 .tlt-btn {
   border: 1px solid var(--tlt-line); background: transparent; color: var(--tlt-ink2);
   font-size: 10.5px; padding: 4px 9px; border-radius: 7px; cursor: pointer;
-  font-family: inherit; white-space: nowrap; transition: .14s;
+  font-family: inherit; white-space: nowrap; transition: background-color .14s ease, border-color .14s ease, color .14s ease, box-shadow .14s ease;
 }
 .tlt-btn:hover { border-color: var(--tlt-line2); color: var(--tlt-ink); background: var(--tlt-surface2); }
 .tlt-btn.pri { background: var(--tlt-acc); border-color: var(--tlt-acc); color: #fff; }
@@ -227,7 +227,7 @@ body.tlt-light {
 .tlt-ds {
   flex: 1; border: 1px solid var(--tlt-line); border-radius: 6px; padding: 2px 0 1px;
   text-align: center; cursor: pointer; display: flex; flex-direction: column;
-  align-items: center; gap: 1px; transition: .13s;
+  align-items: center; gap: 1px; transition: background-color .13s ease, border-color .13s ease, color .13s ease, box-shadow .13s ease;
 }
 .tlt-ds:hover { border-color: var(--tlt-line2); }
 .tlt-ds.today { border-color: rgba(91, 108, 255, .45); }
@@ -309,7 +309,7 @@ body.tlt-light {
 /* ---- 任务行 ---- */
 .tlt-task {
   display: flex; align-items: flex-start; gap: 9px; padding: 7px 9px;
-  border-radius: 8px; border: 1px solid transparent; cursor: pointer; transition: .12s;
+  border-radius: 8px; border: 1px solid transparent; cursor: pointer; transition: background-color .12s ease, border-color .12s ease, color .12s ease, box-shadow .12s ease;
 }
 .tlt-task:hover { background: var(--tlt-surface2); border-color: var(--tlt-line); }
 .tlt-cb {
@@ -350,7 +350,7 @@ body.tlt-light {
 .tlt-staffgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
 .tlt-scard {
   border: 1px solid var(--tlt-line); border-radius: 11px; padding: 12px 13px;
-  background: var(--tlt-surface); cursor: pointer; transition: .14s;
+  background: var(--tlt-surface); cursor: pointer; transition: background-color .14s ease, border-color .14s ease, color .14s ease, box-shadow .14s ease;
 }
 .tlt-scard:hover { border-color: var(--tlt-line2); background: var(--tlt-surface2); }
 .tlt-scard.hot { border-color: rgba(217, 106, 106, .35); }
@@ -388,7 +388,7 @@ body.tlt-light {
 .tlt-ideagrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
 .tlt-icard {
   border: 1px solid var(--tlt-line); border-radius: 11px; padding: 12px 13px;
-  background: var(--tlt-surface); cursor: pointer; transition: .14s;
+  background: var(--tlt-surface); cursor: pointer; transition: background-color .14s ease, border-color .14s ease, color .14s ease, box-shadow .14s ease;
 }
 .tlt-icard:hover { border-color: var(--tlt-line2); background: var(--tlt-surface2); }
 .tlt-ih { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
@@ -486,7 +486,7 @@ body.tlt-light {
 .tlt-mtl.wide { padding: 12px 18px 24px; }
 .tlt-card {
   position: relative; padding: 12px 14px; margin-bottom: 9px; background: var(--tlt-surface);
-  border: 1px solid var(--tlt-line); border-radius: 11px; cursor: pointer; transition: .16s;
+  border: 1px solid var(--tlt-line); border-radius: 11px; cursor: pointer; transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease;
 }
 .tlt-card:hover { background: var(--tlt-surface2); border-color: var(--tlt-line2); }
 .tlt-card.sel { border-color: rgba(91, 108, 255, .55); background: rgba(91, 108, 255, .07); }
