@@ -9,6 +9,8 @@ export class TFile {
 }
 export class TFolder { path = ""; constructor(p = "") { this.path = p; } }
 
+export function getLanguage(): string { return "zh"; }
+
 export function normalizePath(p: string): string {
   return p.replace(/\\/g, "/").replace(/\/{2,}/g, "/").replace(/^\/|\/$/g, "");
 }

@@ -25,7 +25,7 @@ Everything is plain Markdown inside your vault. Uninstall the plugin and your da
 ## Install
 
 - **BRAT** (beta): install [BRAT](https://github.com/TfTHacker/obsidian42-brat) → *Add beta plugin* → `sxinyuhoo/TLT-timeline-things`
-- **Manual**: copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/tlt-timeline/`, then enable it in Settings → Community plugins
+- **Manual**: copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/tlt-timeline-things/`, then enable it in Settings → Community plugins
 
 Folders are created on demand. There is a command **“生成示例数据” (seed demo data)** that writes a small sample under `TLT/` without overwriting existing files.
 

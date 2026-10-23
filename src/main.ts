@@ -5,8 +5,9 @@ import {
 import { Store, TLTSettings, DEFAULT_SETTINGS, pathsFromRoot, PATH_KEYS } from "./store";
 import { WorkbenchView, VIEW_TYPE_WORKBENCH } from "./views/workbench";
 import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
-import { QuickTaskModal } from "./views/modals";
+import { MoveDataModal, QuickTaskModal } from "./views/modals";
 import { todayISO, asText, type Period } from "./data";
+import { t, setLanguage, LANGUAGE_LABELS, type Language } from "./i18n";
 
 type ThemeMode = "auto" | "light" | "dark";
 
@@ -21,6 +22,7 @@ type PathKey =
 
 interface Settings extends TLTSettings {
   theme: ThemeMode;
+  language: Language;
   hubPublish: string;
   hubSync: string;
   autoSyncMin: number;
@@ -30,6 +32,7 @@ interface Settings extends TLTSettings {
 const DEFAULTS: Settings = {
   ...DEFAULT_SETTINGS,
   theme: "auto",
+  language: "auto",
   hubPublish: "http://127.0.0.1:8787",
   hubSync: "http://127.0.0.1:8788",
   autoSyncMin: 15,
@@ -43,6 +46,7 @@ export class TLTPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
+    setLanguage(this.settings.language);
     this.store = new Store(this.app, this.settings);
 
     this.registerView(VIEW_TYPE_WORKBENCH, (leaf: WorkspaceLeaf) => new WorkbenchView(leaf, this));
@@ -77,6 +81,8 @@ export class TLTPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("delete", reload));
     this.registerEvent(this.app.vault.on("rename", reload));
 
+    // 重启后 Obsidian 会恢复上次打开的视图，那时 store 还是空的；数据读完必须补一次重画
+    this.refreshAll();
     this.setupTimers();
   }
 
@@ -298,6 +304,7 @@ desc: 我发布出去的动态
     const s = this.settings;
     const next = nextRoot.trim().replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
     if (next === s.root) return { moved: 0, kept: 0 };
+    const snapshot = { ...s };
     const before = pathsFromRoot(s.root);
     const after = pathsFromRoot(next);
     let moved = 0, kept = 0;
@@ -307,15 +314,67 @@ desc: 我发布出去的动态
     });
     await this.saveSettings();
     await this.store.ensureVault();      // 立刻把新目录建出来，不用等重启
+    this.offerMove(snapshot);            // 旧目录里还有文件就问一句
     return { moved, kept };
+  }
+
+  /**
+   * 路径改了、旧目录里还有数据：问要不要一起搬过去。
+   * 不auto搬 —— 动用户的文件必须有明确同意。
+   */
+  offerMove(old: Settings) {
+    const moves = this.planMove(old);
+    if (!moves.length) return;
+    new MoveDataModal(this.app, moves, async () => {
+      for (const m of moves) {
+        const f = this.app.vault.getAbstractFileByPath(m.from);
+        if (!f) continue;
+        await this.ensureParent(m.to);
+        await this.app.fileManager.renameFile(f, m.to);
+      }
+      new Notice(`已搬运 ${moves.length} 个文件`);
+      await this.store.load();
+      this.refreshAll();
+    }).open();
+  }
+
+  /** 旧路径 → 新路径的文件级搬运计划（只算真实存在、且新旧不同的） */
+  planMove(old: TLTSettings): { from: string; to: string }[] {
+    const s = this.settings;
+    const out: { from: string; to: string }[] = [];
+    const folders: ("tasksFolder" | "teamFolder" | "feedsFolder" | "logsFolder")[] =
+      ["tasksFolder", "teamFolder", "feedsFolder", "logsFolder"];
+    for (const k of folders) {
+      const from = old[k] || "";
+      const to = s[k] || "";
+      if (!from || from === to) continue;
+      for (const f of this.app.vault.getMarkdownFiles()) {
+        if (f.path.startsWith(from.replace(/\/+$/, "") + "/")) {
+          out.push({ from: f.path, to: `${to}/${f.path.slice(from.length + 1)}` });
+        }
+      }
+    }
+    for (const k of ["ideasFile", "tagsFile"] as const) {
+      const from = old[k] || "";
+      const to = s[k] || "";
+      if (from && from !== to && this.app.vault.getAbstractFileByPath(from)) out.push({ from, to });
+    }
+    return out;
+  }
+
+  private async ensureParent(filePath: string) {
+    const dir = filePath.split("/").slice(0, -1).join("/");
+    if (dir) await this.store.ensureFolder(dir);
   }
 
   /** 把六项强制对齐到根目录（用户把路径改乱之后的修复入口） */
   async alignPathsToRoot() {
     const s = this.settings;
+    const snapshot = { ...s };
     Object.assign(s, pathsFromRoot(s.root));
     await this.saveSettings();
     await this.store.ensureVault();
+    this.offerMove(snapshot);
   }
 }
 
@@ -334,20 +393,22 @@ export class TLTSettingTab extends PluginSettingTab {
   /** 1.13+ 的设置搜索读这里 */
   getSettingDefinitions(): SettingDefinitionItem[] {
     const text = (key: PathKey, name: string, desc: string, dflt: string): SettingDefinition => ({
-      name, desc, control: { type: "text", key, placeholder: dflt, defaultValue: dflt },
+      name: t(name), desc: t(desc), control: { type: "text", key, placeholder: dflt, defaultValue: dflt },
     });
     const pick = (
-      key: "defaultPeriod" | "autoSyncMin" | "autoPushMin" | "theme",
+      key: "defaultPeriod" | "autoSyncMin" | "autoPushMin" | "theme" | "language",
       name: string, desc: string, options: Record<string, string>,
-    ): SettingDefinition => ({ name, desc, control: { type: "dropdown", key, options } });
-    const every = { "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" };
+    ): SettingDefinition => ({ name: t(name), desc: t(desc), control: { type: "dropdown", key, options } });
+    const every = { "0": t("关闭"), "5": t("5 分钟"), "15": t("15 分钟"), "30": t("30 分钟"), "60": t("1 小时") };
     const d = DEFAULTS;
 
     return [
+      pick("language", "界面语言", "设置面板与插件界面用什么语言。",
+        { auto: t("自动（跟随 Obsidian）"), zh: LANGUAGE_LABELS.zh, en: LANGUAGE_LABELS.en }),
       pick("theme", "主题", "跟随 Obsidian，或强制深色/浅色。主界面右上角也能切。",
-        { auto: "跟随 Obsidian", dark: "深色", light: "浅色" }),
+        { auto: t("跟随 Obsidian"), dark: t("深色"), light: t("浅色") }),
       {
-        type: "group", heading: "目录",
+        type: "group", heading: t("目录"),
         items: [
           text("root", "根目录", "下面六项默认都放在这个目录下；留空表示直接用库的根目录。改这里会一起更新它们，单独改过的那项不会被覆盖。", d.root),
           text("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder),
@@ -359,14 +420,14 @@ export class TLTSettingTab extends PluginSettingTab {
         ],
       },
       {
-        type: "group", heading: "口径",
+        type: "group", heading: t("口径"),
         items: [
           pick("defaultPeriod", "默认占比周期", "占比与饱和度的默认口径，界面上随时可切。",
-            { w: "本周", m: "本月", q: "本季度" }),
+            { w: t("本周"), m: t("本月"), q: t("本季度") }),
         ],
       },
       {
-        type: "group", heading: "消息服务",
+        type: "group", heading: t("消息服务"),
         items: [
           text("hubPublish", "发布服务地址", "把「我发布的源」推到这里。发布端与订阅端可以是同一个地址。", d.hubPublish),
           text("hubSync", "拉取服务地址", "从这里同步订阅的源。留空则完全离线，只用库内 Markdown。", d.hubSync),
@@ -375,14 +436,22 @@ export class TLTSettingTab extends PluginSettingTab {
         ],
       },
       {
-        type: "group", heading: "维护",
+        type: "group", heading: t("维护"),
         items: [
-          { name: "推送到发布服务", desc: "立刻把所有「我发布的源」推一遍。", action: () => { void this.plugin.publishAll(); } },
-          { name: "从拉取服务同步", desc: "立刻拉取一次订阅的源。", action: () => { void this.plugin.syncAll(); } },
-          { name: "生成示例数据", desc: "在目录里写一份最小可用的样例，已存在的不覆盖。", action: () => { void this.plugin.seedDemo(); } },
+          { name: t("按根目录重排六个路径"), desc: t("把下面六项重新对齐到当前根目录。路径被改乱、或改了根目录后没跟上时用这个；会覆盖你单独设过的路径。"), action: () => { void this.alignAndNotify(); } },
+          { name: t("推送到发布服务"), desc: t("立刻把所有「我发布的源」推一遍。"), action: () => { void this.plugin.publishAll(); } },
+          { name: t("从拉取服务同步"), desc: t("立刻拉取一次订阅的源。"), action: () => { void this.plugin.syncAll(); } },
+          { name: t("生成示例数据"), desc: t("写一份虚构的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。"), action: () => { void this.plugin.seedDemo(); } },
         ],
       },
     ];
+  }
+
+  /** 重排路径 + 提示（两套界面共用） */
+  async alignAndNotify() {
+    await this.plugin.alignPathsToRoot();
+    new Notice(t("六个路径已按根目录重排，目录已就位"));
+    this.renderSettings();
   }
 
   /** 声明式界面改完值之后的副作用（主题要立刻应用） */
@@ -399,6 +468,7 @@ export class TLTSettingTab extends PluginSettingTab {
     bag[key] = value;
     await this.plugin.saveSettings();
     if (key === "theme") this.plugin.applyTheme();
+    if (key === "language") { setLanguage(asText(value)); this.renderSettings(); }
     // 改了目录就顺手把新目录建出来
     if ((PATH_KEYS as readonly string[]).includes(key)) await this.plugin.store.ensureVault();
   }
@@ -413,10 +483,27 @@ export class TLTSettingTab extends PluginSettingTab {
 
     // 通用项：不加标题，放最上面
     new Setting(containerEl)
-      .setName("主题")
+      .setName(t("界面语言"))
+      .setDesc(t("设置面板与插件界面用什么语言。"))
+      .addDropdown((dd) => {
+        dd.addOption("auto", t("自动（跟随 Obsidian）"))
+          .addOption("zh", LANGUAGE_LABELS.zh)
+          .addOption("en", LANGUAGE_LABELS.en)
+          .setValue(p.settings.language ?? "auto")
+          .onChange((v) => {
+            p.settings.language = v as Language;
+            setLanguage(v);
+            void p.saveSettings();
+            p.refreshAll();
+            this.renderSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName(t("主题"))
       .setDesc("跟随 Obsidian，或强制深色/浅色。主界面右上角的按钮也能切。")
       .addDropdown((d) =>
-        d.addOptions({ auto: "跟随 Obsidian", dark: "深色", light: "浅色" })
+        d.addOptions({ auto: t("跟随 Obsidian"), dark: t("深色"), light: t("浅色") })
           .setValue(p.settings.theme)
           .onChange((v) => {
             p.settings.theme = v as ThemeMode;
@@ -426,19 +513,19 @@ export class TLTSettingTab extends PluginSettingTab {
       );
 
     /* ---------- 目录 ---------- */
-    new Setting(containerEl).setName("目录").setHeading();
+    new Setting(containerEl).setName(t("目录")).setHeading();
     const d = DEFAULTS;
     containerEl.createEl("p", {
       cls: "setting-item-description",
       text: "插件只读这几个目录，不扫全库，也不和别的任务插件共用文件。目录不存在会自动创建；路径改完会重新扫描一次，原来的文件不会搬也不会删。",
     });
     new Setting(containerEl)
-      .setName("根目录")
-      .setDesc("下面六项默认都放在这个目录下；留空表示直接用库的根目录。改这里会一起更新它们，单独改过的那项不会被覆盖。")
-      .addText((t) => {
-        t.setPlaceholder(d.root).setValue(p.settings.root ?? d.root);
+      .setName(t("根目录"))
+      .setDesc(t("下面六项默认都放在这个目录下；留空表示直接用库的根目录。改这里会一起更新它们，单独改过的那项不会被覆盖。"))
+      .addText((tc) => {
+        tc.setPlaceholder(d.root).setValue(p.settings.root ?? d.root);
         const commit = () => {
-          const next = t.inputEl.value.trim();
+          const next = tc.inputEl.value.trim();
           if (next === p.settings.root) return;
           void (async () => {
             const r = await p.applyRootChange(next);
@@ -448,39 +535,39 @@ export class TLTSettingTab extends PluginSettingTab {
             this.renderSettings();
           })();
         };
-        t.inputEl.addEventListener("blur", commit);
-        t.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") t.inputEl.blur(); });
+        tc.inputEl.addEventListener("blur", commit);
+        tc.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") tc.inputEl.blur(); });
       });
 
     const folder = (name: PathKey, label: string, desc: string, dflt: string) =>
       new Setting(containerEl)
         .setName(label)
         .setDesc(desc)
-        .addText((t) => {
-          t.setPlaceholder(dflt).setValue(p.settings[name]);
+        .addText((tc) => {
+          tc.setPlaceholder(dflt).setValue(p.settings[name]);
           // 路径不逐字保存（每敲一个字就重扫一遍库），失焦或回车才落盘
           const commit = () => {
-            const v = t.inputEl.value.trim();
+            const v = tc.inputEl.value.trim();
             if (v === p.settings[name]) return;
             p.settings[name] = v;
             void p.saveSettings().then(() => p.store.ensureVault());
-            new Notice("目录已更新");
+            new Notice(t("目录已更新"));
           };
-          t.inputEl.addEventListener("blur", commit);
-          t.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") t.inputEl.blur(); });
+          tc.inputEl.addEventListener("blur", commit);
+          tc.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") tc.inputEl.blur(); });
         });
-    folder("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder);
-    folder("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder);
-    folder("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder);
-    folder("logsFolder", "记录目录", "按月一个文件，正文用 ## 日期 分节。", d.logsFolder);
-    folder("ideasFile", "随手记文件", "单文件，一行一条。", d.ideasFile);
-    folder("tagsFile", "标签库文件", "单文件，一行一个标签。", d.tagsFile);
+    folder("tasksFolder", t("任务目录"), t("一个项目一个文件，## 小节是里程碑，任务一行一条。"), d.tasksFolder);
+    folder("teamFolder", t("人员目录"), t("一人一个文件，frontmatter 写 role / capacity / days / skills。"), d.teamFolder);
+    folder("feedsFolder", t("消息源目录"), t("一个源一个文件，正文列表一行一条消息。"), d.feedsFolder);
+    folder("logsFolder", t("记录目录"), t("按月一个文件，正文用 ## 日期 分节。"), d.logsFolder);
+    folder("ideasFile", t("随手记文件"), t("单文件，一行一条。"), d.ideasFile);
+    folder("tagsFile", t("标签库文件"), t("单文件，一行一个标签。"), d.tagsFile);
 
     /* ---------- 口径 ---------- */
-    new Setting(containerEl).setName("口径").setHeading();
+    new Setting(containerEl).setName(t("口径")).setHeading();
     new Setting(containerEl)
-      .setName("默认占比周期")
-      .setDesc("占比与饱和度的默认口径，界面上随时可切。")
+      .setName(t("默认占比周期"))
+      .setDesc(t("占比与饱和度的默认口径，界面上随时可切。"))
       .addDropdown((dd) =>
         dd.addOptions({ w: "本周", m: "本月", q: "本季度" })
           .setValue(p.settings.defaultPeriod)
@@ -491,24 +578,24 @@ export class TLTSettingTab extends PluginSettingTab {
       );
 
     /* ---------- 消息服务 ---------- */
-    new Setting(containerEl).setName("消息服务").setHeading();
+    new Setting(containerEl).setName(t("消息服务")).setHeading();
     containerEl.createEl("p", {
       cls: "setting-item-description",
       text: "服务是可选的：不填就完全离线，只用库内的 Markdown。发布端与订阅端可以是同一个地址（仓库里的 services-py 就是同进程同端口）。",
     });
     const intervals = { "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" };
-    folder("hubPublish", "发布服务地址", "把「我发布的源」推到这里。", d.hubPublish);
-    folder("hubSync", "拉取服务地址", "从这里同步订阅的源。", d.hubSync);
+    folder("hubPublish", t("发布服务地址"), t("把「我发布的源」推到这里。"), d.hubPublish);
+    folder("hubSync", t("拉取服务地址"), t("从这里同步订阅的源。"), d.hubSync);
     new Setting(containerEl)
-      .setName("自动同步间隔")
-      .setDesc("按这个间隔自动拉取订阅的源。")
+      .setName(t("自动同步间隔"))
+      .setDesc(t("按这个间隔自动拉取订阅的源。"))
       .addDropdown((dd) =>
         dd.addOptions(intervals).setValue(String(p.settings.autoSyncMin))
           .onChange((v) => { p.settings.autoSyncMin = Number(v); void p.saveSettings(); })
       );
     new Setting(containerEl)
-      .setName("自动推送间隔")
-      .setDesc("按这个间隔把我发布的源推上去。")
+      .setName(t("自动推送间隔"))
+      .setDesc(t("按这个间隔把我发布的源推上去。"))
       .addDropdown((dd) =>
         dd.addOptions(intervals).setValue(String(p.settings.autoPushMin))
           .onChange((v) => { p.settings.autoPushMin = Number(v); void p.saveSettings(); })
@@ -528,19 +615,13 @@ export class TLTSettingTab extends PluginSettingTab {
     });
 
     /* ---------- 维护 ---------- */
-    new Setting(containerEl).setName("维护").setHeading();
+    new Setting(containerEl).setName(t("维护")).setHeading();
     new Setting(containerEl)
-      .setName("按根目录重排六个路径")
-      .setDesc("把下面六项重新对齐到当前根目录。路径被改乱、或改了根目录后没跟上时用这个；会覆盖你单独设过的路径。")
-      .addButton((b) => b.setButtonText("重排").onClick(() => {
-        void (async () => {
-          await p.alignPathsToRoot();
-          new Notice("六个路径已按根目录重排，目录已就位");
-          this.renderSettings();
-        })();
-      }));
+      .setName(t("按根目录重排六个路径"))
+      .setDesc(t("把下面六项重新对齐到当前根目录。路径被改乱、或改了根目录后没跟上时用这个；会覆盖你单独设过的路径。"))
+      .addButton((b) => b.setButtonText(t("重排")).onClick(() => { void this.alignAndNotify(); }));
     new Setting(containerEl)
-      .setName("生成示例数据")
+      .setName(t("生成示例数据"))
       .setDesc("写一份**虚构**的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。")
       .addButton((b) => b.setButtonText("生成").onClick(() => { void p.seedDemo(); }));
     const store = p.store;

@@ -60,6 +60,7 @@ await esbuild.build({
       export { Store } from "./src/store";
       export { TFile } from "obsidian";
       export { TLTSettingTab, TLTPlugin } from "./src/main";
+      export { setLanguage, t as tr } from "./src/i18n";
     `,
     resolveDir: process.cwd(),
     sourcefile: "test-entry.ts",
@@ -72,7 +73,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TLTSettingTab, TLTPlugin, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TLTSettingTab, TLTPlugin, setLanguage, tr, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 
 /* ---------- 3) 假 vault ---------- */
@@ -382,11 +383,12 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   const el2 = tab.containerEl;
   assert.equal(el2.querySelectorAll("h1, h2, h3").length, 0, "不该手写标题元素");
   const names = [...el2.querySelectorAll(".setting-item-name")].map((e) => e.textContent);
-  assert.equal(names[0], "主题", `第一项应是主题（通用项不放标题下），实际 ${names[0]}`);
+  assert.deepEqual(names.slice(0, 2), ["界面语言", "主题"], `通用项应排在最前，实际 ${names.slice(0, 2)}`);
   const heads = [...el2.querySelectorAll(".setting-item-heading .setting-item-name")].map((e) => e.textContent);
   assert.deepEqual(heads, ["目录", "口径", "消息服务", "维护"], `分节：${heads}`);
   const buttons = [...el2.querySelectorAll("button")].map((b) => b.textContent);
   assert.ok(buttons.includes("推送我的源") && buttons.includes("同步订阅") && buttons.includes("测试连接"), `按钮：${buttons}`);
+  assert.ok(names.includes("按根目录重排六个路径"), `维护里应有重排入口，实际：${names.join(" / ")}`);
   assert.ok(el2.textContent.includes("当前读取"), "缺少当前读取");
   // 目录项：显示当前值，占位符是默认值
   const inputs = [...el2.querySelectorAll("input")];
@@ -468,6 +470,34 @@ await t("示例数据不含真实姓名与项目名", async () => {
     assert.ok(!all.includes(bad), `示例数据里还有真实信息：${bad}`);
   });
   assert.ok(all.includes("示例项目") || all.includes("示例成员"), "示例数据应该有明显是占位的内容");
+});
+
+await t("语言切到英文：设置页与工作台文案跟进", async () => {
+  document.body.empty();
+  const inst = makePlugin();
+  setLanguage("en");
+  const tab = new TLTSettingTab(app, inst);
+  tab.containerEl = document.createElement("div");
+  tab.renderSettings();
+  const names = [...tab.containerEl.querySelectorAll(".setting-item-name")].map((e) => e.textContent);
+  assert.equal(names[0], "Interface language", `英文界面第一项：${names[0]}`);
+  assert.equal(tr("任务"), "Tasks");
+  setLanguage("zh");
+  assert.equal(tr("任务"), "任务", "切回中文没生效");
+});
+
+await t("改目录：只列出要搬的文件，不自己搬", async () => {
+  const inst = makePlugin({
+    root: "90-插件运营区", tasksFolder: "90-插件运营区/tasks", teamFolder: "90-插件运营区/team",
+    feedsFolder: "90-插件运营区/feeds", logsFolder: "90-插件运营区/logs",
+  });
+  app.vault.getMarkdownFiles = () => [new TFile("TLT/tasks/示例项目.md"), new TFile("TLT/team/张三.md"), new TFile("别处/无关.md")];
+  const old = { ...inst.settings, root: "TLT", tasksFolder: "TLT/tasks", teamFolder: "TLT/team",
+    feedsFolder: "TLT/feeds", logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md" };
+  const moves = inst.planMove(old);
+  assert.equal(moves.length, 2, `应只算 TLT 下的两个文件，实际 ${JSON.stringify(moves)}`);
+  assert.equal(moves[0].to, "90-插件运营区/tasks/示例项目.md");
+  assert.equal(moves[1].to, "90-插件运营区/team/张三.md");
 });
 
 await t("星图滚轮缩放", async () => {

@@ -1,3 +1,4 @@
+import { t as T } from "../i18n";
 import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
@@ -46,6 +47,7 @@ export class WorkbenchView extends ItemView {
 
   async onOpen() {
     this.contentEl.addEventListener("click", (ev) => { void this.onClick(ev); });
+    await this.store.ensureLoaded();
     await this.render();
   }
   async onClose() { this.contentEl.empty(); }
@@ -107,7 +109,7 @@ export class WorkbenchView extends ItemView {
     s.appendChild(top);
 
     const scroll = el("div", "tlt-side-scroll");
-    scroll.appendChild(el("div", "tlt-shead", "项目 · 进度"));
+    scroll.appendChild(el("div", "tlt-shead", T("项目 · 进度")));
     const projects = this.store.projects();
     const all = this.store.tasks;
     projects.forEach((p) => {
@@ -123,7 +125,7 @@ export class WorkbenchView extends ItemView {
       card.append(row, bar, meta);
       scroll.appendChild(card);
     });
-    if (!projects.length) scroll.appendChild(el("div", "tlt-empty", "TLT/tasks 里还没有任务文件"));
+    if (!projects.length) scroll.appendChild(el("div", "tlt-empty", T("TLT/tasks 里还没有任务文件")));
 
     const seg = el("div", "tlt-seg tlt-period");
     (["w", "m", "q"] as Period[]).forEach((p) => {
@@ -174,14 +176,14 @@ export class WorkbenchView extends ItemView {
     const theme = el("button", "tlt-btn", this.plugin.isLight() ? "☾" : "☀");
     theme.dataset.theme = "1";
     theme.title = "切换明暗";
-    const add = el("button", "tlt-btn pri lg", "＋ 新建");
+    const add = el("button", "tlt-btn pri lg", T("＋ 新建"));
     add.dataset.newtask = "1";
     top.append(theme, add);
     m.appendChild(top);
 
     const tabs = el("div", "tlt-tabs");
-    [["today", "日历"], ["month", "任务"], ["ms", "里程碑"], ["staff", "人员"], ["ideas", "随手记"], ["draw", "随手画"]].forEach(([k, t]) => {
-      const b = el("button", "tlt-tab" + (this.tab === k ? " on" : ""), t);
+    [["today", "日历"], ["month", "任务"], ["ms", "里程碑"], ["staff", "人员"], ["ideas", "随手记"], ["draw", "随手画"]].forEach(([k, label]) => {
+      const b = el("button", "tlt-tab" + (this.tab === k ? " on" : ""), T(label));
       b.dataset.tab = k;
       tabs.appendChild(b);
     });
@@ -199,7 +201,8 @@ export class WorkbenchView extends ItemView {
   }
 
   private tabName() {
-    return { today: "日历", month: "任务", ms: "里程碑", staff: "人员", ideas: "随手记", draw: "随手画" }[this.tab] || "";
+    const names: Record<string, string> = { today: "日历", month: "任务", ms: "里程碑", staff: "人员", ideas: "随手记", draw: "随手画" };
+    return names[this.tab] ? T(names[this.tab]) : "";
   }
 
   /* ---------- 日历 ---------- */
@@ -220,7 +223,7 @@ export class WorkbenchView extends ItemView {
     const lab = el("div", "tlt-dlabel");
     lab.append(`${dl.getMonth() + 1} 月 ${dl.getDate()} 日`);
     lab.createEl("em", { text: `周${WEEK[dl.getDay()]}${sel === todayISO() ? " · 今天" : ""}` });
-    const todayBtn = el("button", "tlt-btn", "回到今天"); todayBtn.dataset.today = "1";
+    const todayBtn = el("button", "tlt-btn", T("回到今天")); todayBtn.dataset.today = "1";
     bar.append(prev, lab, next, todayBtn, el("span", "tlt-spacer"),
       el("span", "tlt-dhint", `${this.logsOn(sel).length} 条记录 · ${this.unscheduled(sel).length} 未排`));
 
@@ -299,7 +302,7 @@ export class WorkbenchView extends ItemView {
     const uns = this.unscheduled(sel);
     const b1 = el("div", "tlt-box");
     const h1 = el("div", "tlt-box-h");
-    h1.append(el("span", "", "这天要做的"), el("span", "tlt-hint2", "点一下排进时间表"));
+    h1.append(el("span", "", T("这天要做的")), el("span", "tlt-hint2", T("点一下排进时间表")));
     b1.appendChild(h1);
     if (uns.length) {
       const chips = el("div", "tlt-chips");
@@ -311,13 +314,13 @@ export class WorkbenchView extends ItemView {
         chips.appendChild(c);
       });
       b1.appendChild(chips);
-    } else b1.appendChild(el("div", "tlt-empty", "都排上了"));
+    } else b1.appendChild(el("div", "tlt-empty", T("都排上了")));
     side.appendChild(b1);
 
     const plan = logs.filter((l) => !l.extra).length;
     const extra = logs.filter((l) => l.extra).length;
     const b2 = el("div", "tlt-box");
-    b2.appendChild(el("div", "tlt-box-h", "这天 · 计划与实际"));
+    b2.appendChild(el("div", "tlt-box-h", T("这天 · 计划与实际")));
     [["计划", plan], ["记录", logs.length], ["其中临时", extra]].forEach(([n, v]) => {
       const r = el("div", "tlt-sum");
       r.append(el("span", "tlt-sum-n", String(n)));
@@ -364,7 +367,7 @@ export class WorkbenchView extends ItemView {
     days.forEach((k) => { const n = load(k); if (n > bn) { bn = n; busy = k; } });
 
     const head = el("div", "tlt-rhythm-h");
-    head.append(el("span", "tlt-rhythm-t", "节奏 · 21 天"));
+    head.append(el("span", "tlt-rhythm-t", T("节奏 · 21 天")));
     head.appendChild(el("span", "tlt-rhythm-s", `${dueN} 个到期 · ${msN} 个里程碑 · 最挤 ${D(busy).getMonth() + 1}/${D(busy).getDate()}（${bn} 件）`));
     head.appendChild(el("span", "tlt-spacer"));
     const seg = el("div", "tlt-seg tlt-rhythm-seg");
@@ -617,7 +620,7 @@ export class WorkbenchView extends ItemView {
     head.append(el("span", "", `${rows.length} 人 · 平均 ${avg}% · ${over} 人超载 · ${idle} 人偏闲`));
     head.appendChild(el("span", "tlt-src", this.store.settings.teamFolder));
     head.appendChild(el("span", "tlt-spacer"));
-    const add = el("button", "tlt-btn", "＋ 添加成员");
+    const add = el("button", "tlt-btn", T("＋ 添加成员"));
     add.dataset.addstaff = "1";
     head.appendChild(add);
     p.appendChild(head);
@@ -648,7 +651,7 @@ export class WorkbenchView extends ItemView {
       grid.appendChild(card);
     });
     p.appendChild(grid);
-    if (!rows.length) p.appendChild(el("div", "tlt-empty", "TLT/team 里还没有人员档案"));
+    if (!rows.length) p.appendChild(el("div", "tlt-empty", T("TLT/team 里还没有人员档案")));
     return p;
   }
 
@@ -660,7 +663,7 @@ export class WorkbenchView extends ItemView {
     const i = el("input");
     i.placeholder = "随手记一句，前面可以加 #标签，例：#论文 #灵感 把常用脚本整理成工具";
     i.dataset.ideanew = "1";
-    const plus = el("button", "tlt-btn lg", "＋ 随手记");
+    const plus = el("button", "tlt-btn lg", T("＋ 随手记"));
     plus.dataset.ideanewmodal = "1";
     cap.append(el("span", "tlt-plus", "✦"), i, plus);
     p.appendChild(cap);

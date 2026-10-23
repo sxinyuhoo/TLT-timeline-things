@@ -1,3 +1,4 @@
+import { t as T } from "../i18n";
 import { ItemView, WorkspaceLeaf, Notice, App } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
@@ -36,7 +37,7 @@ export class MessagesView extends ItemView {
   getDisplayText() { return "消息中心"; }
   getIcon() { return "rss"; }
 
-  async onOpen() { await this.render(); }
+  async onOpen() { await this.store.ensureLoaded(); await this.render(); }
   async refresh() { await this.store.load(); await this.render(); }
 
   private msgs(): Msg[] {
@@ -111,7 +112,7 @@ export class MessagesView extends ItemView {
     mine.forEach((f) => r.appendChild(this.railRow(f)));
     r.appendChild(el("div", "tlt-fgrp", "我订阅的"));
     subs.forEach((f) => r.appendChild(this.railRow(f)));
-    if (!personal.length && !mine.length && !subs.length) r.appendChild(el("div", "tlt-empty", "feeds/ 里还没有源"));
+    if (!personal.length && !mine.length && !subs.length) r.appendChild(el("div", "tlt-empty", T("feeds/ 里还没有源")));
 
     const all = el("div", "tlt-fr add");
     all.append(el("span", "tlt-fr-n", this.selected.size ? `已选 ${this.selected.size} 个 · 清除` : "⌘ 点可多选 · 全部源"));
@@ -166,7 +167,7 @@ export class MessagesView extends ItemView {
     dg.appendChild(range);
     t1.appendChild(dg);
     t1.appendChild(el("span", "tlt-spacer"));
-    const today = el("button", "tlt-tlink", "回到今天");
+    const today = el("button", "tlt-tlink", T("回到今天"));
     today.onclick = () => this.jumpToday();
     t1.appendChild(today);
     m.appendChild(t1);
@@ -180,10 +181,10 @@ export class MessagesView extends ItemView {
       ["bands", "按源分带"], ["axis", "可缩放时间轴"], ["heat", "月度热力"], ["net", "人物脉络"]] as const;
     const cur = MODES.find(([v]) => v === this.mode) ?? MODES[0];
     const viewBtn = el("button", "tlt-btn tlt-viewbtn");
-    viewBtn.append(el("span", "tlt-viewbtn-i", "▤"), el("span", "", cur[1]), el("span", "tlt-viewbtn-c", "⌄"));
+    viewBtn.append(el("span", "tlt-viewbtn-i", "▤"), el("span", "", T(cur[1])), el("span", "tlt-viewbtn-c", "⌄"));
     viewBtn.onclick = () => {
-      popMenu(viewBtn, MODES.map(([v, t]) => ({
-        label: (v === this.mode ? "✓ " : "   ") + t,
+      popMenu(viewBtn, MODES.map(([v, label]) => ({
+        label: (v === this.mode ? "✓ " : "   ") + T(label),
         onClick: () => { this.mode = v; void this.render(); },
       })), "right");
     };
@@ -202,7 +203,7 @@ export class MessagesView extends ItemView {
   /** 时间线（卡片 / 河流 / 紧凑共用） */
   private timeline(items: Msg[]): HTMLElement {
     const list = el("div", "tlt-mtl wide mode-" + this.mode);
-    if (!items.length) list.appendChild(el("div", "tlt-empty", "没有符合条件的消息"));
+    if (!items.length) list.appendChild(el("div", "tlt-empty", T("没有符合条件的消息")));
     let last = "";
     items.forEach((x) => {
       const key = this.zoom === "m" ? x.date.slice(0, 7) : x.date;
@@ -374,7 +375,7 @@ export class MessagesView extends ItemView {
       row.append(name, lane);
       box.appendChild(row);
     });
-    if (!feeds.length) box.appendChild(el("div", "tlt-empty", "这个范围里没有消息"));
+    if (!feeds.length) box.appendChild(el("div", "tlt-empty", T("这个范围里没有消息")));
     return box;
   }
 
@@ -425,7 +426,7 @@ export class MessagesView extends ItemView {
         row.onclick = () => this.openMsg(x);
         list.appendChild(row);
       });
-      if (!all.some((x) => x.date === this.heatDay)) list.appendChild(el("div", "tlt-empty", "这天没有消息"));
+      if (!all.some((x) => x.date === this.heatDay)) list.appendChild(el("div", "tlt-empty", T("这天没有消息")));
       box.appendChild(list);
     }
     return box;
@@ -620,10 +621,10 @@ export class MessagesView extends ItemView {
         const act = el("div", "tlt-d-act");
         if (f.personal) {
           s.appendChild(el("div", "tlt-d-body", "新消息默认进这里，只有自己看。点开某条草稿可以「发布为消息源」。"));
-          const n = el("button", "tlt-btn pri", "新建消息到这个源");
+          const n = el("button", "tlt-btn pri", T("新建消息到这个源"));
           n.onclick = () => new ComposeModal(this.app, this.store, () => this.refresh(), f.id).open();
           act.appendChild(n);
-          const pub = el("button", "tlt-btn", "发布消息源…");
+          const pub = el("button", "tlt-btn", T("发布消息源…"));
           pub.title = "把这里的草稿变成一个别人能订阅的源";
           pub.onclick = () => new PublishFeedModal(this.app, this.store, f, () => this.refresh()).open();
           act.appendChild(pub);
@@ -631,14 +632,14 @@ export class MessagesView extends ItemView {
           const st = this.plugin.hubState();
           const pid = (this.store.settings.feedIds || {})[f.id] || f.id;
           s.appendChild(el("div", "tlt-d-body", `订阅地址：${st.publish}/feed?id=${encodeURIComponent(pid)}`));
-          const push = el("button", "tlt-btn pri", "手动推送");
+          const push = el("button", "tlt-btn pri", T("手动推送"));
           push.onclick = () => { void (async () => {
             try {
               const r = await this.store.publishFeed(f, st.publish, pid);
               new Notice(`已推送 ${r.count} 条`);
             } catch (e) { new Notice("推送失败：" + errMsg(e)); }
           })(); };
-          const unpub = el("button", "tlt-btn danger", "取消发布");
+          const unpub = el("button", "tlt-btn danger", T("取消发布"));
           unpub.onclick = () => { void (async () => {
             try { await this.store.unpublishFeed(pid, st.publish); } catch { /* 服务没起也不影响本地 */ }
             const back = f.personal ? 0 : await this.store.foldBackToPersonal(f, "个人");
@@ -651,7 +652,7 @@ export class MessagesView extends ItemView {
         } else {
           const st = this.plugin.hubState();
           if (f.remote) s.appendChild(el("div", "tlt-d-body", f.remote));
-          const un = el("button", "tlt-btn danger", "取消订阅");
+          const un = el("button", "tlt-btn danger", T("取消订阅"));
           un.onclick = () => { void (async () => {
             try { await this.store.unsubscribeRemote(st.sync, f.remote || ""); } catch { /* 服务没起就只清本地 */ }
             this.selected.delete(f.id);
@@ -711,15 +712,15 @@ export class MessagesView extends ItemView {
       d.append(el("span", "tlt-hub-l", label), el("code", "", value));
       return d;
     };
-    box.appendChild(row("发布", st.publish));
+    box.appendChild(row(T("发布"), st.publish));
     box.appendChild(row("拉取", st.sync));
     box.appendChild(el("div", "tlt-hub-note",
       `自动同步：${st.syncMin ? `每 ${st.syncMin} 分钟` : "关闭"} · 自动推送：${st.pushMin ? `每 ${st.pushMin} 分钟` : "关闭"}（在设置里改）`));
 
     const btns = el("div", "tlt-hub-btns");
-    const push = el("button", "tlt-btn", "推送我的源");
+    const push = el("button", "tlt-btn", T("推送我的源"));
     push.onclick = () => new PublishModal(this.app, this.store, this.plugin, () => this.render()).open();
-    const sync = el("button", "tlt-btn", "同步订阅");
+    const sync = el("button", "tlt-btn", T("同步订阅"));
     sync.onclick = () => { void (async () => {
       try {
         const r = await this.store.pullFromHub(st.sync);
@@ -735,7 +736,7 @@ export class MessagesView extends ItemView {
     const input = el("input", "tlt-input");
     input.placeholder = "订阅地址（可粘贴 @URL:…）";
     box.appendChild(input);
-    const sub = el("button", "tlt-btn", "订阅这个源");
+    const sub = el("button", "tlt-btn", T("订阅这个源"));
     sub.onclick = () => { void (async () => {
       const url = cleanFeedUrl(input.value);
       if (!url) { new Notice("先填订阅地址"); return; }
@@ -795,9 +796,9 @@ class PublishFeedModal extends TltModal {
       "名称会记住，下次发布还是它；建好之后也能在右栏 ✎ 改。订阅地址由插件自动生成，不用自己起 ID。"));
 
     const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", "发布");
+    const ok = el("button", "tlt-btn pri", T("发布"));
     ok.onclick = () => { void (async () => {
       const name = nameIn.value.trim();
       if (!name) { new Notice("先写源名称"); return; }
@@ -854,9 +855,9 @@ class ComposeModal extends TltModal {
     contentEl.appendChild(srcRow);
 
     const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", "创建");
+    const ok = el("button", "tlt-btn pri", T("创建"));
     ok.onclick = () => { void (async () => {
       const v = f.value();
       if (!v.title) { new Notice("先写标题"); return; }
@@ -902,7 +903,7 @@ class PublishModal extends TltModal {
     if (!rows.length) contentEl.appendChild(el("div", "tlt-hint", "没有可发布的源"));
 
     const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
     const ok = el("button", "tlt-btn pri", "保存并推送");
     ok.onclick = () => { void (async () => {

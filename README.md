@@ -25,9 +25,11 @@
 ## 安装
 
 - **BRAT**（测试版）：装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) → *Add beta plugin* → `sxinyuhoo/TLT-timeline-things`
-- **手动**：把 `main.js`、`manifest.json`、`styles.css` 放进 `<vault>/.obsidian/plugins/tlt-timeline/`，再到 设置 → 第三方插件 启用
+- **手动**：把 `main.js`、`manifest.json`、`styles.css` 放进 `<vault>/.obsidian/plugins/tlt-timeline-things/`，再到 设置 → 第三方插件 启用
 
-首次启用会按需建目录；命令面板里有 **「生成示例数据（TLT/ 下）」**，可以先看效果再上手（已存在的文件不覆盖）。
+首次启用会按需建目录；命令面板里有 **「生成示例数据」**，可以先看效果再上手——示例里的人名、项目、消息全是编的占位内容，已存在的文件不覆盖。
+
+需要 Obsidian **1.8.7+**（桌面端与移动端都可）。界面语言可在设置里选：跟随 Obsidian／中文／English，漏译的条目会回落成中文。
 
 ## 它和别的任务插件不一样的地方
 

@@ -1,5 +1,6 @@
 import { App, Modal, Notice, TFile } from "obsidian";
 import { Store } from "../store";
+import { t as T } from "../i18n";
 import { Task, Staff, Idea, Msg, Feed, Period, Pri, addDays, todayISO, minToHHMM, saturation, ideaFilterTags } from "../data";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -44,6 +45,46 @@ export class TltModal extends Modal {
     super(app);
     this.modalEl?.addClass("tlt-host");
   }
+}
+
+/**
+ * 改了目录、旧目录里还有文件时问一句。
+ * 动用户的文件必须先问：可以搬，也可以只改路径（文件留在原地）。
+ */
+export class MoveDataModal extends TltModal {
+  private moves: { from: string; to: string }[];
+  private onMove: () => void | Promise<void>;
+
+  constructor(app: App, moves: { from: string; to: string }[], onMove: () => void | Promise<void>) {
+    super(app);
+    this.moves = moves;
+    this.onMove = onMove;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.appendChild(el("div", "tlt-m-title", `旧目录里还有 ${this.moves.length} 个文件`));
+    contentEl.appendChild(el("div", "tlt-hint",
+      "路径已经指向新目录，但文件还在原来的位置。要一起搬过去吗？搬运用 Obsidian 自己的改名，双链不会断。"));
+    const list = el("div", "tlt-moves");
+    this.moves.slice(0, 6).forEach((m) => {
+      list.appendChild(el("div", "tlt-hint", `${m.from} → ${m.to}`));
+    });
+    if (this.moves.length > 6) list.appendChild(el("div", "tlt-hint", `…还有 ${this.moves.length - 6} 个`));
+    contentEl.appendChild(list);
+
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", T("取消"));
+    cancel.onclick = () => this.close();
+    const keep = el("button", "tlt-btn", "只改路径");
+    keep.onclick = () => this.close();
+    const move = el("button", "tlt-btn pri", "搬过去");
+    move.onclick = () => { void (async () => { this.close(); await this.onMove(); })(); };
+    foot.append(cancel, keep, move);
+    contentEl.appendChild(foot);
+  }
+
+  onClose() { this.contentEl.empty(); }
 }
 
 export class TaskModal extends TltModal {

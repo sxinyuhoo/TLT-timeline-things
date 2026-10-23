@@ -77,6 +77,7 @@ export class Store {
   feeds: Feed[] = [];
   ideas: Idea[] = [];
   loaded = false;
+  private loading: Promise<void> | null = null;
 
   constructor(app: App, settings: TLTSettings) {
     this.app = app;
@@ -121,6 +122,14 @@ export class Store {
     await this.ensureFolder(this.settings.logsFolder);
     await this.ensureFolder(this.settings.ideasFile.split("/").slice(0, -1).join("/") || ".");
     await this.ensurePersonalFeed();
+  }
+
+  /** 只加载一次；并发调用共用同一个 Promise（视图在插件 onload 完成前就恢复时会用到） */
+  async ensureLoaded(): Promise<void> {
+    if (this.loaded) return;
+    const pending: Promise<void> = this.loading ?? this.load().finally(() => { this.loading = null; });
+    this.loading = pending;
+    await pending;
   }
 
   async load() {
