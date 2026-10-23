@@ -1,5 +1,10 @@
 # 更新日志
 
+## 0.4.6
+
+- 插件名改为 `TLT - Timeline Things`（去掉 Workbench）
+- 插件 id 同步改为 `tlt-timeline-things`；已装用户需要把插件目录改名，或直接重新安装
+
 ## 0.4.5
 
 - 插件名定为 `Timeline Things Workbench`（缩写 TLT），替换上一版的 `TLT Timeline Workbench`
