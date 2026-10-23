@@ -640,6 +640,41 @@ await t("目录输入补全：Tab / 点击选中已有目录", async () => {
   assert.equal(document.querySelectorAll(".tlt-suggest-i").length, 0, "不存在时不该给候选");
 });
 
+await t("补全浮层挂在输入框自己的文档里（设置页可能是独立窗口）", async () => {
+  const other = new JSDOM(`<!doctype html><html><body></body></html>`, { pretendToBeVisual: true });
+  const od = other.window.document;
+  // 另一个文档里的元素也要有 Obsidian 的 DOM 扩展
+  const OP = other.window.Element.prototype;
+  OP.empty = function () { while (this.firstChild) this.removeChild(this.firstChild); return this; };
+  OP.addClass = function (...c) { c.forEach((x) => this.classList.add(x)); };
+  OP.removeClass = function (...c) { c.forEach((x) => this.classList.remove(x)); };
+  const inp = od.createElement("input");
+  od.body.appendChild(inp);
+  createdFolderSet.add("TLT");
+  attachFolderSuggest(app, inp);
+  inp.value = "TL"; inp.dispatchEvent(new other.window.Event("input", { bubbles: true }));
+  const pop = [...od.querySelectorAll(".tlt-suggest")][0];
+  assert.ok(pop, "浮层没进输入框所在的文档");
+  assert.equal(pop.parentElement, od.body, "浮层没挂在输入框所在文档的 body 上");
+  assert.ok([...od.querySelectorAll(".tlt-suggest-i")].some((e) => e.textContent === "TLT"), "候选没渲染在正确文档");
+});
+
+await t("重画：声明式页优先走框架 update()，不换成命令式", async () => {
+  document.body.empty();
+  let updated = 0;
+  const inst = makePlugin();
+  const tab = new TLTSettingTab(app, inst);
+  tab.containerEl = document.createElement("div");
+  tab.update = () => { updated++; };          // 框架基类在实例原型上提供 update()
+  tab.rerender();
+  assert.equal(updated, 1, "没有走框架的 update()");
+  const inst2 = makePlugin();          // 老客户端：没有 update → 退回命令式
+  const tab2 = new TLTSettingTab(app, inst2);
+  tab2.containerEl = document.createElement("div");
+  tab2.rerender();
+  assert.ok(tab2.containerEl.querySelector(".setting-item"), "老客户端应回退到命令式渲染");
+});
+
 await t("冷启动：文件已存在时 createSafe 不算失败", async () => {
   const inst = makePlugin();
   const realCreate = app.vault.create;

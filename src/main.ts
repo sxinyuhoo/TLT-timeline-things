@@ -538,16 +538,23 @@ export class TLTSettingTab extends PluginSettingTab {
           { name: t("推送到发布服务"), desc: t("立刻把所有「我发布的源」推一遍。"), action: () => { void this.plugin.publishAll(); } },
           { name: t("从拉取服务同步"), desc: t("立刻拉取一次订阅的源。"), action: () => { void this.plugin.syncAll(); } },
           { name: t("生成示例数据"), desc: t("写一份虚构的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。"), action: () => { void this.plugin.seedDemo(); } },
+          { name: t("版本"), desc: this.versionLine() },
         ],
       },
     ];
+  }
+
+  /** 版本行：确认「实际加载的是哪个版本」时最有用 */
+  versionLine(): string {
+    const ver = (this.app as unknown as { appVersion?: string }).appVersion ?? "?";
+    return `TLT v${this.plugin.manifest.version} · Obsidian ${ver}`;
   }
 
   /** 重排路径 + 提示（两套界面共用） */
   async alignAndNotify() {
     await this.plugin.alignPathsToRoot();
     new Notice(t("已按根目录更新六个路径，目录已就位"));
-    this.renderSettings();
+    this.rerender();
   }
 
   /**
@@ -562,7 +569,7 @@ export class TLTSettingTab extends PluginSettingTab {
     bag[key] = value;
     await this.plugin.saveSettings();
     if (key === "theme") this.plugin.applyTheme();
-    if (key === "language") { setLanguage(asText(value)); this.renderSettings(); }
+    if (key === "language") { setLanguage(asText(value)); this.rerender(); }
     if (key === "root" || isPath) this.scheduleSettle();
   }
 
@@ -602,11 +609,24 @@ export class TLTSettingTab extends PluginSettingTab {
         : r.kept
           ? `根目录已更新，${r.kept} 项自定义路径保持不变`
           : "根目录已更新");
-      this.renderSettings();
+      this.rerender();
       return;
     }
     this.pendingCreate = false;
     await this.plugin.store.ensureVault();
+  }
+
+  /**
+   * 重画这一页。
+   * 1.13+ 的声明式页由框架渲染（`update()`），**不能**用命令式的 renderSettings()
+   * 去 empty + 重建——那会把官方控件（含它的目录补全）整块换掉。
+   */
+  rerender(): void {
+    const up = (this as unknown as { update?: () => void }).update;
+    if (typeof up === "function") {
+      try { up.call(this); return; } catch { /* 框架不给面子就退回命令式 */ }
+    }
+    this.renderSettings();
   }
 
   /** 离开设置页时把还没落定的那次做掉（此时视为输入完成） */
@@ -768,6 +788,12 @@ export class TLTSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("当前读取")
       .setDesc(`${store.tasks.length} 条任务 · ${store.logs.length} 条记录 · ${store.staff.length} 位成员 · ${store.feeds.length} 个源（${store.feeds.reduce((n, f) => n + f.items.length, 0)} 条消息）· ${store.ideas.length} 条随手记`);
+    this.footerVersion();
+  }
+
+  /** 命令式页脚：版本 */
+  private footerVersion(): void {
+    new Setting(this.containerEl).setName(t("版本")).setDesc(`TLT v${this.plugin.manifest.version} · Obsidian ${(this.app as unknown as { appVersion?: string }).appVersion ?? "?"}`);
   }
 
   /** 一次性把两个地址都测一遍，结果合并成一条提示 */

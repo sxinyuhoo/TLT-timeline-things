@@ -7,8 +7,14 @@ import { App, TFolder } from "obsidian";
  * 候选只列**已存在**的目录——不存在的路径直接手打，点「更新」时再创建。
  */
 export function attachFolderSuggest(app: App, input: HTMLInputElement): void {
-  const pop = createDiv({ cls: "tlt-suggest tlt-hidden" });
-  document.body.appendChild(pop);
+  // 设置页可能开在独立窗口（popout）里：浮层必须挂到输入框自己那个 document，
+  // 否则会被建到主窗口，用户在设置窗口里什么也看不到。
+  const doc = input.ownerDocument;
+  /** 在输入框所属窗口里建元素：先在主文档建，再 adoptNode 挪过去（设置页常开在独立窗口） */
+  const adopt = <T extends Element>(el: T): T => (doc === document ? el : doc.adoptNode(el));
+  const mkDiv = (cls: string, text?: string): HTMLElement => adopt(createDiv(text === undefined ? { cls } : { cls, text }));
+  const pop = mkDiv("tlt-suggest tlt-hidden");
+  doc.body.appendChild(pop);
   let items: string[] = [];
   let active = -1;
   let skipNextOpen = false;
@@ -23,7 +29,7 @@ export function attachFolderSuggest(app: App, input: HTMLInputElement): void {
   const paint = () => {
     pop.empty();
     items.forEach((p, i) => {
-      const row = createDiv({ cls: "tlt-suggest-i" + (i === active ? " on" : ""), text: p });
+      const row = mkDiv("tlt-suggest-i" + (i === active ? " on" : ""), p);
       // mousedown 先于 blur：用 mousedown 才不会因为输入框失焦而点空
       row.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -45,7 +51,7 @@ export function attachFolderSuggest(app: App, input: HTMLInputElement): void {
     input.value = path;
     skipNextOpen = true;
     // 用输入框自己文档的 Event 构造器：Node 环境里全局 Event 是另一套，jsdom 会拒收
-    const view = input.ownerDocument.defaultView;
+    const view = doc.defaultView;
     const Ctor = (view && view.Event) || Event;
     input.dispatchEvent(new Ctor("input", { bubbles: true }));     // 让上层的提交逻辑看到新值
     skipNextOpen = false;
