@@ -12,8 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@v4
 
@@ -41,14 +39,6 @@ jobs:
             echo "tag ($tag) 与 manifest.json 的 version ($manifest) 不一致" >&2
             exit 1
           fi
-
-      - name: Generate artifact attestation
-        uses: actions/attest@v4
-        with:
-          subject-path: |
-            main.js
-            manifest.json
-            styles.css
 
       - name: Collect release notes
         run: |
