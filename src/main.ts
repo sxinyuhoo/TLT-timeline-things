@@ -74,8 +74,8 @@ export class TLTPlugin extends Plugin {
     s.teamFolder = "TLT/crew";
     s.crewMigrated = true;
     await this.saveSettings();
+    await this.relocate(before);          // 先把旧 team 目录里的档案搬进 crew/
     await this.store.ensureVault();
-    this.offerMove(before);
     new Notice(t("人员目录已由 TLT/team 改为 TLT/crew"));
   }
 
@@ -415,33 +415,54 @@ desc: 我发布出去的动态
       if (s[k] === before[k]) { s[k] = after[k]; moved++; } else kept++;
     });
     await this.saveSettings();
-    await this.store.ensureVault();      // 立刻把新目录建出来，不用等重启
     const stray = this.planMove(snapshot).length;
-    if (opts?.offer === false) return { moved, kept, stray };   // 打字途中不弹窗，只提示
-    this.offerMove(snapshot);            // 旧目录里还有文件就问一句
-    return { moved, kept, stray };
+    // 打字途中（防抖落定）只记路径：一建目录就会先造出新的「个人源」等文件，
+    // 真正搬运时目标已存在 → 数据留在旧位置（用户看到的就是"两边各一份"）。
+    if (opts?.offer === false) return { moved, kept, stray, movedFiles: 0, blocked: 0 };
+    const res = await this.relocate(snapshot);     // 默认：整棵搬过去
+    if (!res.blocked) await this.store.ensureVault();   // 搬完再补缺（有冲突先弹窗，别抢建）
+    return { moved, kept, stray, ...res };
+  }
+
+  /**
+   * 改根目录后把旧数据搬过去。
+   * 默认直接搬（用户要的是「更新即搬家」，不要两边各留一份）；
+   * 只有目标位置已经有同名文件时才弹窗让他决定。
+   */
+  private async relocate(old: Settings): Promise<{ movedFiles: number; blocked: number }> {
+    const moves = this.planMove(old);
+    if (!moves.length) return { movedFiles: 0, blocked: 0 };
+    const blocked = moves.filter((m) => this.app.vault.getAbstractFileByPath(m.to));
+    if (blocked.length) {
+      new MoveDataModal(this.app, moves, async () => {
+        await this.doMove(moves);
+        await this.store.ensureVault();
+      }).open();
+      return { movedFiles: 0, blocked: blocked.length };
+    }
+    const n = await this.doMove(moves);
+    return { movedFiles: n, blocked: 0 };
+  }
+
+  /** 真正搬运：走 fileManager.renameFile（双链不断），已存在的目标一律跳过 */
+  private async doMove(moves: { from: string; to: string }[]): Promise<number> {
+    let n = 0;
+    for (const m of moves) {
+      const f = this.app.vault.getAbstractFileByPath(m.from);
+      if (!f || this.app.vault.getAbstractFileByPath(m.to)) continue;
+      await this.ensureParent(m.to);
+      await this.app.fileManager.renameFile(f, m.to);
+      n++;
+    }
+    await this.store.load();
+    this.refreshAll();
+    return n;
   }
 
   /**
    * 路径改了、旧目录里还有数据：问要不要一起搬过去。
    * 不auto搬 —— 动用户的文件必须有明确同意。
    */
-  offerMove(old: Settings) {
-    const moves = this.planMove(old);
-    if (!moves.length) return;
-    new MoveDataModal(this.app, moves, async () => {
-      for (const m of moves) {
-        const f = this.app.vault.getAbstractFileByPath(m.from);
-        if (!f) continue;
-        await this.ensureParent(m.to);
-        await this.app.fileManager.renameFile(f, m.to);
-      }
-      new Notice(`已搬运 ${moves.length} 个文件`);
-      await this.store.load();
-      this.refreshAll();
-    }).open();
-  }
-
   /** 旧路径 → 新路径的文件级搬运计划（只算真实存在、且新旧不同的） */
   planMove(old: TLTSettings): { from: string; to: string }[] {
     const s = this.settings;
@@ -477,8 +498,8 @@ desc: 我发布出去的动态
     const snapshot = { ...s };
     Object.assign(s, pathsFromRoot(s.root));
     await this.saveSettings();
+    await this.relocate(snapshot);        // 路径改乱的情况也把数据搬过去
     await this.store.ensureVault();
-    this.offerMove(snapshot);
   }
 }
 
@@ -526,8 +547,8 @@ export class TLTSettingTab extends PluginSettingTab {
       {
         type: "group", heading: t("目录"),
         items: [
-          folder("root", "根目录", "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时可直接选已有目录；目录不存在就先手打，点「更新」时创建。", d.root),
-          { name: t("更新"), desc: t("按上面的根目录重建六个路径并创建目录；旧目录里还有文件时会问你要不要一起搬过去。"), action: () => { void this.alignAndNotify(); } },
+          folder("root", "根目录", "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时可直接选已有目录；目录不存在就先手打。点「更新」时连数据一起搬过去。", d.root),
+          { name: t("更新"), desc: t("按上面的根目录重建六个路径，并把旧目录里的数据一起搬过去（目标已有同名文件时才会问你）。"), action: () => { void this.alignAndNotify(); } },
           folder("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder),
           folder("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder),
           folder("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder),
@@ -625,11 +646,18 @@ export class TLTSettingTab extends PluginSettingTab {
         return;
       }
       const r = await this.plugin.applyRootChange(root, from, { offer: force });
-      new Notice(r.stray
-        ? `根目录已更新；旧目录里还有 ${r.stray} 个文件，点「更新」可以搬过去`
-        : r.kept
-          ? `根目录已更新，${r.kept} 项自定义路径保持不变`
-          : "根目录已更新");
+      if (r.blocked) {                             // 目标已有同名文件 → 弹窗问过了，不再提示
+        if (force) { this.pathsDirty = false; this.rerender(); }
+        return;
+      }
+      const dataDir = this.plugin.settings.tasksFolder.replace(/\/tasks$/, "");
+      new Notice(r.movedFiles
+        ? t("已把 {n} 个文件搬到 {dir}（旧目录空了，文件夹可以自己删）", { n: r.movedFiles, dir: dataDir })
+        : r.stray
+          ? t("根目录已更新；旧目录里还有 {n} 个文件，点「更新」可以搬过去", { n: r.stray })
+          : r.kept
+            ? t("根目录已更新，{n} 项自定义路径保持不变", { n: r.kept })
+            : t("根目录已更新"));
       // 只有显式动作（点「更新」/ 离开设置页）才重画：
       // 打字落定时重画会把正在输入的输入框（连同官方目录建议器）一起换掉，
       // 用户看到的就是「清空重输之后不再补全」。
@@ -708,7 +736,7 @@ export class TLTSettingTab extends PluginSettingTab {
     });
     new Setting(containerEl)
       .setName(t("根目录"))
-      .setDesc(t("TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时有候选可 Tab/点击选中；目录不存在就先手打，点「更新」创建。"))
+      .setDesc(t("TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时有候选可 Tab/点击选中；目录不存在就先手打。点「更新」时连数据一起搬过去。"))
       .addButton((b) => b.setButtonText(t("更新")).setTooltip(t("按根目录重建六个路径并创建目录")).onClick(() => { void this.settleNow(true).then(() => this.alignAndNotify()); }))
       .addText((tc) => {
         tc.setPlaceholder(d.root).setValue(p.settings.root ?? d.root);

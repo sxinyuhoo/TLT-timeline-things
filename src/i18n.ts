@@ -45,10 +45,10 @@ export const EN: Record<string, string> = {
   /* ---------- 设置：目录 ---------- */
   "目录": "Folders",
   "根目录": "Root folder",
-  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时可直接选已有目录；目录不存在就先手打，点「更新」时创建。":
-    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). Pick an existing folder while typing; if it does not exist yet, type it and click Update to create it.",
-  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时有候选可 Tab/点击选中；目录不存在就先手打，点「更新」创建。":
-    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). Suggestions appear while typing (Tab or click to pick); if the folder does not exist yet, type it and click Update to create it.",
+  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时可直接选已有目录；目录不存在就先手打。点「更新」时连数据一起搬过去。":
+    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). Pick an existing folder while typing, or type a new one. Click Update to move your data over as well.",
+  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时有候选可 Tab/点击选中；目录不存在就先手打。点「更新」时连数据一起搬过去。":
+    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). Suggestions appear while typing (Tab or click to pick), or type a new path. Click Update to move your data over as well.",
   "任务目录": "Tasks folder",
   "一个项目一个文件，## 小节是里程碑，任务一行一条。": "One file per project; a ## heading is a milestone; one task per line.",
   "人员目录": "People folder",
@@ -91,14 +91,15 @@ export const EN: Record<string, string> = {
   "立刻拉取一次订阅的源。": "Pull subscribed feeds once, right now.",
   "更新": "Update",
   "按根目录重建六个路径并创建目录": "Rebuild the six paths from the root folder and create the folders",
-  "按上面的根目录重建六个路径并创建目录；旧目录里还有文件时会问你要不要一起搬过去。":
-    "Rebuild the six paths from the root folder above and create the folders; if the old folders still hold files, it asks whether to move them over.",
+  "按上面的根目录重建六个路径，并把旧目录里的数据一起搬过去（目标已有同名文件时才会问你）。":
+    "Rebuild the six paths from the root folder above and move the existing data over (you are only asked when a file with the same name is already at the destination).",
   "已按根目录更新六个路径，目录已就位": "Six paths rebuilt from the root folder; folders are ready",
   "根目录已更新；旧目录里还有 {n} 个文件，点「更新」可以搬过去": "Root folder updated; {n} file(s) are still in the old folder — click Update to move them over",
   "生成示例数据": "Generate sample data",
   "写一份虚构的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。":
     "Write a fictional sample (made-up names and projects) so you can see the UI. Existing files are never overwritten.",
   "根目录已更新": "Root folder updated",
+  "已把 {n} 个文件搬到 {dir}（旧目录空了，文件夹可以自己删）": "Moved {n} file(s) to {dir} (the old folders are now empty and can be deleted)",
   "根目录已更新，{n} 项自定义路径保持不变": "Root folder updated; {n} custom path(s) left untouched",
   "六个路径已按根目录重排，目录已就位": "All six paths re-aligned to the root folder; folders are ready",
   "目录已更新": "Folder updated",

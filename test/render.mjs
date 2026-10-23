@@ -143,7 +143,13 @@ const vault = {
   createFolder: async (p) => { createdFolders.push(p); createdFolderSet.add(p); },
   on: () => ({}),
 };
-const app = { vault, metadataCache: { getFileCache: (f) => ({ frontmatter: fm[f.path] }) }, workspace: { getLeavesOfType: () => [], getLeaf: () => ({}) } };
+const app = {
+  vault,
+  metadataCache: { getFileCache: (f) => ({ frontmatter: fm[f.path] }) },
+  workspace: { getLeavesOfType: () => [], getLeaf: () => ({}) },
+  // 搬运走 Obsidian 的 renameFile：实测语义照搬（内容跟着路径走）
+  fileManager: { renameFile: async (f, to) => { if (f && f.path in files) { files[to] = files[f.path]; delete files[f.path]; } } },
+};
 
 const store = new Store(app, {
   tasksFolder: "TLT/tasks", teamFolder: "TLT/crew", feedsFolder: "TLT/feeds",
@@ -154,8 +160,17 @@ await store.load();
 /* ---------- 4) 断言数据层 ---------- */
 let pass = 0;
 const t = async (name, fn) => {
+  // 用例共享同一份夹具与同一个 store：跑完一律还原，避免"上一个用例把文件搬走了"这类污染
+  const snapFiles = JSON.parse(JSON.stringify(files));
+  const snapSettings = { ...store.settings };
   try { await fn(); pass++; console.log("  ✓", name); }
   catch (e) { console.log("  ✗", name, "\n    ", e.stack?.split("\n").slice(0,4).join("\n    ")||e.message); process.exitCode = 1; }
+  finally {
+    Object.keys(files).forEach((k) => { delete files[k]; });
+    Object.assign(files, snapFiles);
+    Object.assign(store.settings, snapSettings);
+    await store.load();
+  }
 };
 
 console.log("store（真实文件结构）");
@@ -463,7 +478,9 @@ await t("设置页：声明式改根目录同样同步六项并建目录", async
   assert.equal(inst.settings.root, "90-插件运营区");
   assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", `声明式没同步：${inst.settings.tasksFolder}`);
   assert.equal(inst.settings.tagsFile, "90-插件运营区/TLT/tags.md");
-  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), `没建目录，建了：${createdFolders.slice(-8).join(",")}`);
+  tab.onHide();                                              // 离开设置页 = 输入完成
+  await new Promise((r) => window.setTimeout(r, 80));
+  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), `离开设置页后应把目录建出来，建了：${createdFolders.slice(-8).join(",")}`);
 });
 
 await t("设置页：路径改乱后「按根目录重排」能拉回来", async () => {
@@ -703,6 +720,32 @@ await t("默认目录改名：TLT/team → TLT/crew（自定义过的不动）",
   const inst3 = makePlugin({ teamFolder: "TLT/team", crewMigrated: true });   // 迁过一次就不再动
   await inst3.migrateFolderDefaults();
   assert.equal(inst3.settings.teamFolder, "TLT/team", "迁过一次后不该再改");
+});
+
+await t("改根目录默认把数据整棵搬过去（不再两边各留一份）", async () => {
+  document.body.empty();
+  const keep = { ...store.settings };
+  const added = [];
+  const put = (p, c) => { files[p] = c; added.push(p); };
+  put("TLT/tasks/示例项目.md", "- [ ] x");
+  put("TLT/crew/张三.md", "---\ntlt: staff\n---\n");
+  put("TLT/ideas.md", "# 随手记");
+  const inst = makePlugin();                       // 独立 store，设置不污染共享那份
+  createdFolderSet.add("工作");
+  const fixtureUnderTLT = Object.keys(files).filter((k) => k.startsWith("TLT/")).length;
+  const renamed = [];
+  const realRename = app.fileManager.renameFile;
+  app.fileManager.renameFile = async (f, to) => { renamed.push([f.path, to]); await realRename(f, to); };
+  const r = await inst.applyRootChange("工作");
+  app.fileManager.renameFile = realRename;
+  const diag = JSON.stringify({ r, tasks: inst.settings.tasksFolder, root: inst.settings.root, renamed });
+  assert.equal(renamed.length, fixtureUnderTLT, "应把旧目录下所有文件都搬走 | " + diag);
+  assert.equal(Object.keys(files).filter((k) => k.startsWith("TLT/")).length, 0, "旧位置不该再有文件");
+  assert.ok(renamed.some(([from, to]) => from === "TLT/tasks/示例项目.md" && to === "工作/TLT/tasks/示例项目.md"), "任务文件没搬到新位置");
+  assert.ok(renamed.some(([, to]) => to === "工作/TLT/crew/张三.md"), "人员档案没搬");
+  assert.ok(renamed.some(([, to]) => to === "工作/TLT/ideas.md"), "随手记没搬");
+  Object.assign(store.settings, keep);             // 还原共享状态与夹具
+  added.forEach((p) => { delete files[p]; });
 });
 
 await t("冷启动：文件已存在时 createSafe 不算失败", async () => {
