@@ -25,7 +25,14 @@ await esbuild.build({
     name: "stub", setup(build) {
       build.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "stub" }));
       build.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
-        contents: `export class TFile{};export class TFolder{};export const normalizePath=p=>p.replace(/^\\/+|\\/+$/g,"");`,
+        contents: `export class TFile{};export class TFolder{};
+export const normalizePath=p=>p.replace(/^\\/+|\\/+$/g,"");
+export async function requestUrl(req){
+  const res = await fetch(req.url, { method: req.method || "GET",
+    headers: req.contentType ? { "content-type": req.contentType } : undefined, body: req.body });
+  const text = await res.text();
+  return { status: res.status, text, json: text ? JSON.parse(text) : null };
+}`,
         loader: "js",
       }));
     },
