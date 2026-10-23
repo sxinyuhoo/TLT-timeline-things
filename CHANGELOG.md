@@ -1,5 +1,12 @@
 # 更新日志
 
+## 0.4.7
+
+- 通过 Obsidian 官方扫描：内联样式改用 CSS 类、innerHTML 改为 DOM 构建、设置页标题改用 `Setting.setHeading()`、网络请求改用 `requestUrl`、删除文件改用 `FileManager.trashFile`
+- 弹窗外层改用显式类名（`.tlt-host`）接管，不再依赖 `:has()` 选择器
+- README 增加英文简介
+- 发布流程重新生成构建产物证明（artifact attestations）
+
 ## 0.4.6
 
 - 插件名改为 `TLT - Timeline Things`（去掉 Workbench）
@@ -11,8 +18,8 @@
 
 ## 0.4.4
 
-- 插件显示名改为 `TLT Timeline Workbench`：Obsidian 社区目录只接受 ASCII 名称，原名「TLT 时间线工作台」会被拒绝
-- 描述改成中英双语，便于在目录里被检索到
+- 插件显示名改为 `TLT Timeline Workbench`
+- 描述改成中英双语
 
 ## 0.4.3
 

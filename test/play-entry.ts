@@ -6,6 +6,8 @@ import { WorkbenchView } from "../src/views/workbench";
 import { MessagesView } from "../src/views/messages";
 import { Store } from "../src/store";
 
+(globalThis as any).createSvg = (tag: string) => document.createElementNS("http://www.w3.org/2000/svg", tag);
+
 /* Obsidian 给 DOM 加的便捷方法（真机有，浏览器里要补） */
 const EP: any = Element.prototype;
 EP.empty = function () { while (this.firstChild) this.removeChild(this.firstChild); return this; };

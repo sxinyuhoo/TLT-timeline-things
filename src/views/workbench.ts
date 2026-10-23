@@ -1,16 +1,16 @@
-import { App, ItemView, TFile, WorkspaceLeaf, Notice } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
 import {
-  Task, Idea, Staff, Msg, Period, iso, todayISO, addDays, monthBounds,
-  hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, parseQuick, setTaskField, ideaTags, ideaFilterTags,
+  Task, Msg, Period, todayISO, addDays,
+  hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, ideaTags, ideaFilterTags,
 } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, el } from "./modals";
+import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
 const PERIOD_LABEL: Record<Period, string> = { w: "本周", m: "本月", q: "本季度" };
-const STAGE_COLOR: Record<string, string> = { 沉淀: "#7C8BA1", 待验证: "#D9A05F", 已验证: "#4FB59A", 已立项: "#5B6CFF", 搁置: "#5E606D" };
 const KIND_LABEL: Record<string, string> = { ask: "要求", event: "活动", risk: "风险", note: "通知" };
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
@@ -40,7 +40,7 @@ export class WorkbenchView extends ItemView {
   }
 
   getViewType() { return VIEW_TYPE_WORKBENCH; }
-  getDisplayText() { return "TLT 工作台"; }
+  getDisplayText() { return "时间线工作台"; }
   getIcon() { return "activity"; }
 
   async onOpen() {
@@ -217,7 +217,8 @@ export class WorkbenchView extends ItemView {
     const next = el("button", "tlt-dnav", "›"); next.dataset.dnav = "1";
     const dl = D(sel);
     const lab = el("div", "tlt-dlabel");
-    lab.innerHTML = `${dl.getMonth() + 1} 月 ${dl.getDate()} 日<em>周${WEEK[dl.getDay()]}${sel === todayISO() ? " · 今天" : ""}</em>`;
+    lab.append(`${dl.getMonth() + 1} 月 ${dl.getDate()} 日`);
+    lab.createEl("em", { text: `周${WEEK[dl.getDay()]}${sel === todayISO() ? " · 今天" : ""}` });
     const todayBtn = el("button", "tlt-btn", "回到今天"); todayBtn.dataset.today = "1";
     bar.append(prev, lab, next, todayBtn, el("span", "tlt-spacer"),
       el("span", "tlt-dhint", `${this.logsOn(sel).length} 条记录 · ${this.unscheduled(sel).length} 未排`));
@@ -398,10 +399,10 @@ export class WorkbenchView extends ItemView {
   /** 极坐标时间线：半径=时间，扇区=项目，连线=同一个人 */
   private starMap(): HTMLElement {
     const box = el("div", "tlt-star-box");
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const svg = createSvg("svg");
     svg.setAttribute("class", "tlt-star");
     svg.setAttribute("viewBox", "0 0 560 210");
-    const redraw = () => { svg.innerHTML = this.starBody(560, 210); };
+    const redraw = () => { setSvgMarkup(svg, this.starBody(560, 210)); };
     redraw();
     box.appendChild(svg);
     box.appendChild(el("div", "tlt-star-legend",
@@ -745,7 +746,7 @@ export class WorkbenchView extends ItemView {
       const card = el("div", "tlt-ms" + (this.expanded.has(m.name) ? " open" : ""));
       card.dataset.ms = m.name;
       const h = el("div", "tlt-ms-h");
-      const dot = el("span", "tlt-dot"); dot.style.background = "#8B7CF6";
+      const dot = el("span", "tlt-dot"); dot.addClass("k-ms");
       h.append(dot, el("span", "tlt-ms-n", m.name), el("span", "tlt-ms-p", m.project));
       const bar = el("span", "tlt-pbar small");
       const fill = el("i"); fill.style.width = pct + "%";
@@ -839,8 +840,11 @@ export class WorkbenchView extends ItemView {
         const c = parseIdeaText(ideaNew.value.trim());
         if (!c.tags.length) { ideaPrev.empty(); ideaPrev.addClass("hide"); return; }
         ideaPrev.removeClass("hide");
-        ideaPrev.innerHTML = `<span class="tlt-pv-l">识别到</span>` +
-          c.tags.map((tg) => `<span class="tlt-pv on">#${escapeXml(tg)}</span>`).join("");
+        ideaPrev.empty();
+        ideaPrev.createSpan({ cls: "tlt-pv-l", text: "识别到" });
+        c.tags.forEach((tg) => {
+          ideaPrev.createSpan({ cls: "tlt-pv on", text: `#${tg}` });
+        });
       };
       ideaNew.addEventListener("input", paint);
       paint();

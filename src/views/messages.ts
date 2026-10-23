@@ -1,11 +1,11 @@
-import { ItemView, WorkspaceLeaf, Notice, Modal, App } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, App } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
 import { Msg, Feed, todayISO, addDays, D, cleanFeedUrl } from "../data";
-import { el, MsgModal, buildMsgFields, popMenu } from "./modals";
+import { el, MsgModal, buildMsgFields, popMenu, TltModal } from "./modals";
+import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_MESSAGES = "tlt-messages";
-const KIND_LABEL: Record<string, string> = { ask: "要求", event: "活动", risk: "风险", note: "通知" };
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -33,7 +33,7 @@ export class MessagesView extends ItemView {
   }
 
   getViewType() { return VIEW_TYPE_MESSAGES; }
-  getDisplayText() { return "TLT 消息中心"; }
+  getDisplayText() { return "消息中心"; }
   getIcon() { return "rss"; }
 
   async onOpen() { await this.render(); }
@@ -227,7 +227,7 @@ export class MessagesView extends ItemView {
   /** 可缩放时间轴：横轴是日期，滚轮缩放、拖动平移、双击复位 */
   private axis(items: Msg[]): HTMLElement {
     const box = el("div", "tlt-axis");
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const svg = createSvg("svg");
     svg.setAttribute("class", "tlt-axis-svg");
     svg.setAttribute("viewBox", "0 0 760 260");
     const W = 760;
@@ -236,14 +236,13 @@ export class MessagesView extends ItemView {
       const lanes = this.axisLanes(items);
       const H = Math.max(120, 54 + lanes.length * 30);
       svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-      svg.innerHTML = this.axisBody(W, H, items);
+      setSvgMarkup(svg as SVGSVGElement, this.axisBody(W, H, items));
       label.textContent = `窗口 ${Math.round(this.tlSpan)} 天 · 滚轮缩放 · 拖动平移 · 双击回到默认（前 3 天后 30 天）`;
     };
     redraw();
     box.appendChild(svg);
     box.appendChild(label);
 
-    const plot = { left: 92, right: W - 18 };
     const dayOf = (clientX: number) => {
       const r = svg.getBoundingClientRect();
       const frac = (clientX - r.left) / r.width;
@@ -437,7 +436,7 @@ export class MessagesView extends ItemView {
     const feeds = this.store.feeds.filter((f) => f.items.length);
     const owners = Array.from(new Set(feeds.map((f) => f.owner || "我")));
     const W = 640, H = Math.max(240, owners.length * 64);
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const svg = createSvg("svg");
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.setAttribute("class", "tlt-net-svg");
 
@@ -463,7 +462,7 @@ export class MessagesView extends ItemView {
         <text class="tlt-net-t2" x="410" y="${(y + 4).toFixed(1)}">${escapeXml(f.name.slice(0, 12))}</text>
         <text class="tlt-net-n2" x="586" y="${(y + 4).toFixed(1)}">${f.items.length}</text></g>`;
     });
-    svg.innerHTML = g;
+    setSvgMarkup(svg, g);
     svg.addEventListener("click", (ev) => {
       const t = (ev.target as Element).closest("[data-feed]") as Element | null;
       if (!t) return;
@@ -570,7 +569,7 @@ export class MessagesView extends ItemView {
     if (document.querySelector('.tlt-mtl [data-day="today"]')) { go(); return; }
     this.range = "7";
     if (!this.msgs().some((x) => x.date === todayISO())) this.range = "all";
-    this.render().then(() => setTimeout(go, 60));
+    this.render().then(() => window.setTimeout(go, 60));
   }
 
   /* ---------------- 右栏：消息源管理 ---------------- */
@@ -732,7 +731,7 @@ export class MessagesView extends ItemView {
     box.appendChild(btns);
 
     const input = el("input", "tlt-input") as HTMLInputElement;
-    input.placeholder = "订阅地址（可粘贴 @url:…）";
+    input.placeholder = "订阅地址（可粘贴 @URL:…）";
     box.appendChild(input);
     const sub = el("button", "tlt-btn", "订阅这个源");
     sub.onclick = async () => {
@@ -755,7 +754,7 @@ export class MessagesView extends ItemView {
 
 /* ================= 发布一个源 ================= */
 
-class PublishFeedModal extends Modal {
+class PublishFeedModal extends TltModal {
   store: Store;
   from: Feed;
   onDone: () => void;
@@ -813,14 +812,14 @@ class PublishFeedModal extends Modal {
     };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
-    setTimeout(() => nameIn.focus(), 50);
+    window.setTimeout(() => nameIn.focus(), 50);
   }
   onClose() { this.contentEl.empty(); }
 }
 
 /* ================= 新建消息 ================= */
 
-class ComposeModal extends Modal {
+class ComposeModal extends TltModal {
   store: Store;
   onDone: () => void;
   presetFeed?: string;
@@ -843,7 +842,7 @@ class ComposeModal extends Modal {
       ...this.store.feeds.filter((x) => x.mine && !x.personal),
     ];
     options.forEach((x) => {
-      const o = document.createElement("option");
+      const o = createEl("option");
       o.value = x.id;
       o.textContent = `${x.name}（${x.personal ? "个人" : "已发布"}）`;
       src.appendChild(o);
@@ -865,7 +864,7 @@ class ComposeModal extends Modal {
     };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
-    setTimeout(() => f.titleEl.focus(), 50);
+    window.setTimeout(() => f.titleEl.focus(), 50);
     f.titleEl.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) ok.click(); });
   }
   onClose() { this.contentEl.empty(); }
@@ -873,7 +872,7 @@ class ComposeModal extends Modal {
 
 /* ================= 推送前确认 ID ================= */
 
-class PublishModal extends Modal {
+class PublishModal extends TltModal {
   store: Store;
   plugin: TLTPlugin;
   onDone: () => void;

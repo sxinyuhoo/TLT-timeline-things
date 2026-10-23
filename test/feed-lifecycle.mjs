@@ -48,6 +48,7 @@ function parseFm(text = "") {
 }
 const app = {
   vault,
+  fileManager: { trashFile: async (f) => { vault.trashed.push(f.path); delete vault.files[f.path]; } },
   metadataCache: { getFileCache: (f) => ({ frontmatter: parseFm(vault.files[f.path] || "") }) },
 };
 const store = new Store(app, {

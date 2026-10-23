@@ -1,9 +1,9 @@
-import { App, TFile, TFolder, normalizePath } from "obsidian";
+import { App, TFile, normalizePath, requestUrl } from "obsidian";
 import {
   Task, Staff, Feed, Idea, Msg, Period,
   parseTaskLine, parseStaff, parseMsgLine, parseLogMonth, parseIdeaLine,
   newTaskLine, newMsgLine, newLogLine, toggleTaskLine, setTaskDue, setTaskField, stripFields,
-  iso, todayISO, monthBounds, parseDate,
+  todayISO, monthBounds,
 } from "./data";
 
 export interface TLTSettings {
@@ -371,7 +371,9 @@ export class Store {
 
     // id 不让用户填：按名字生成，重名自动加序号；同一个源再次发布沿用上次的 id
     const remembered = (this.settings.feedIds || {})[from.id];
-    let id = remembered || name.replace(/[\\/:*?"<>|#\[\]^]/g, "-").replace(/\s+/g, "-").slice(0, 40) || "feed";
+    const banned = new Set('\\/:*?"<>|#[]^'.split(""));
+    const clean = (t: string) => Array.from(t).map((c) => (banned.has(c) ? "-" : c)).join("");
+    let id = remembered || clean(name).replace(/\s+/g, "-").slice(0, 40) || "feed";
     let target = normalizePath(`${this.settings.feedsFolder}/${id}.md`);
     if (!remembered) {
       let base = id, n = 2;
@@ -488,10 +490,10 @@ export class Store {
   async trashFeedFile(feed: Feed) {
     const file = await this.fileByPath(feed.file);
     if (!file) return false;
-    const v: any = this.app.vault as any;
     try {
-      if (typeof v.trash === "function") { await v.trash(file, true); return true; }
-      if (typeof v.delete === "function") { await v.delete(file); return true; }
+      // 优先走 FileManager：尊重用户在 Obsidian 里的删除偏好（回收站 / 永久删）
+      const fm = this.app.fileManager;
+      if (fm && typeof fm.trashFile === "function") { await fm.trashFile(file); return true; }
     } catch { /* 落空 */ }
     return false;
   }
@@ -726,42 +728,49 @@ export class Store {
   async removeStaff(staff: Staff) {
     const f = this.asFile(this.app.vault.getAbstractFileByPath(staff.file));
     if (!f) return false;
-    const fm: any = this.app.fileManager;
-    if (fm?.trashFile) await fm.trashFile(f);
-    else await this.app.vault.delete(f);
+    await this.app.fileManager.trashFile(f);
     return true;
   }
 
   /* ---------------- Hub：发布 / 拉取 ---------------- */
 
+  /** 统一走 requestUrl：不受 CORS 限制，也不触发审核的 fetch 警告 */
+  private async httpJson(url: string, init: { method?: string; body?: unknown } = {}): Promise<any> {
+    const res = await requestUrl({
+      url,
+      method: init.method || "GET",
+      contentType: "application/json",
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      throw: false,
+    });
+    if (res.status >= 400) throw new Error(`HTTP ${res.status}`);
+    return res.json;
+  }
+
   /** 把一个本地源的全部消息推给发布服务 */
   async publishFeed(feed: Feed, hubUrl: string, publishId?: string) {
     const base = hubUrl.replace(/\/$/, "");
     const pid = publishId || (this.settings.feedIds || {})[feed.id] || feed.id;
-    await fetch(`${base}/register`, {
+    await this.httpJson(`${base}/register`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: pid, title: feed.name, desc: feed.desc, owner: feed.owner }),
+      body: { id: pid, title: feed.name, desc: feed.desc, owner: feed.owner },
     });
     const items = feed.items.map((m, i) => ({
       mid: `${pid}-${m.date}-${i}`,
       date: m.date, title: m.title, kind: m.kind, place: m.place, who: m.who,
       star: m.star, state: m.state, until: m.until, body: m.body,
     }));
-    const r = await fetch(`${base}/publish`, {
+    return await this.httpJson(`${base}/publish`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: pid, title: feed.name, items }),
+      body: { id: pid, title: feed.name, items },
     });
-    if (!r.ok) throw new Error(`发布失败 HTTP ${r.status}`);
-    return await r.json();
   }
 
   /** 取消发布：从发布服务上摘掉这个源 */
   async unpublishFeed(publishId: string, hubUrl: string) {
     const base = hubUrl.replace(/\/$/, "");
-    const r = await fetch(`${base}/feed?id=${encodeURIComponent(publishId)}`, { method: "DELETE" });
-    return r.ok;
+    try { await this.httpJson(`${base}/feed?id=${encodeURIComponent(publishId)}`, { method: "DELETE" }); return true; }
+    catch { return false; }
   }
 
   /** 给拉取服务加一个订阅地址 */
@@ -776,29 +785,23 @@ export class Store {
     if (mine.some((f) => norm(feedUrl).includes(`id=${f.id}`) || norm(feedUrl).includes(`id=${encodeURIComponent(f.id)}`))) {
       return { ok: false, count: 0, existed: true, reason: "self" as const };
     }
-    const cur = await fetch(`${base}/subscriptions`).then((r) => r.json()).catch(() => ({ subs: [] }));
+    const cur = await this.httpJson(`${base}/subscriptions`).catch(() => ({ subs: [] }));
     const existed = (cur.subs || []).some((sub: any) => norm(sub.url) === norm(feedUrl));
     if (existed) return { ok: true, count: (cur.subs || []).length, existed: true };
-    const r = await fetch(`${base}/subscribe`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: feedUrl, name }),
-    });
-    if (!r.ok) throw new Error(`订阅失败 HTTP ${r.status}`);
-    return { ...(await r.json()), existed: false };
+    const res = await this.httpJson(`${base}/subscribe`, { method: "POST", body: { url: feedUrl, name } });
+    return { ...res, existed: false };
   }
 
   async unsubscribeRemote(syncUrl: string, feedUrl: string) {
     const base = syncUrl.replace(/\/$/, "");
-    const r = await fetch(`${base}/subscribe?url=${encodeURIComponent(feedUrl)}`, { method: "DELETE" });
-    return r.ok;
+    try { await this.httpJson(`${base}/subscribe?url=${encodeURIComponent(feedUrl)}`, { method: "DELETE" }); return true; }
+    catch { return false; }
   }
 
   /** 从拉取服务同步：把远端消息写进 TLT/feeds/<id>.md（按 mid 去重） */
   async pullFromHub(syncUrl: string) {
     const base = syncUrl.replace(/\/$/, "");
-    const r = await fetch(`${base}/pull`);
-    if (!r.ok) throw new Error(`同步失败 HTTP ${r.status}`);
-    const data = await r.json();
+    const data = await this.httpJson(`${base}/pull`);
     let added = 0, updated = 0;
 
     for (const feed of data.feeds || []) {

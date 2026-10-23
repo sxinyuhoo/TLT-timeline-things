@@ -8,7 +8,18 @@ const g = globalThis;
 g.window = dom.window; g.document = dom.window.document;
 g.HTMLElement = dom.window.HTMLElement; g.Element = dom.window.Element; g.Node = dom.window.Node;
 g.MouseEvent = dom.window.MouseEvent; g.KeyboardEvent = dom.window.KeyboardEvent;
-g.getComputedStyle = dom.window.getComputedStyle; g.__notices = [];
+g.getComputedStyle = dom.window.getComputedStyle;
+g.DOMParser = dom.window.DOMParser;
+g.createSvg = (tag) => dom.window.document.createElementNS("http://www.w3.org/2000/svg", tag);
+
+/** Obsidian 的全局 createEl（测试环境补一个） */
+g.createEl = (tag, o = {}) => {
+  const e = dom.window.document.createElement(tag);
+  if (typeof o === "string") e.className = o;
+  else { if (o.cls) e.className = o.cls; if (o.text) e.textContent = o.text; }
+  return e;
+};
+ g.__notices = [];
 
 const EP = dom.window.Element.prototype;
 EP.empty = function () { while (this.firstChild) this.removeChild(this.firstChild); return this; };

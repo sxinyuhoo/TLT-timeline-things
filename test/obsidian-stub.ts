@@ -50,11 +50,15 @@ export class Modal {
   app: any;
   contentEl: HTMLElement;
   containerEl: HTMLElement;
+  modalEl: HTMLElement;
   constructor(app: any) {
     this.app = app;
+    this.modalEl = document.createElement("div");
+    this.modalEl.className = "modal";
     this.containerEl = document.createElement("div");
     this.contentEl = document.createElement("div");
-    this.containerEl.appendChild(this.contentEl);
+    this.modalEl.appendChild(this.contentEl);
+    this.containerEl.appendChild(this.modalEl);
     document.body.appendChild(this.containerEl);
   }
   open() { (this as any).onOpen?.(); }
@@ -69,4 +73,19 @@ export class Setting {
   setName() { return this; } setDesc() { return this; }
   addText() { return this; } addDropdown() { return this; }
   addButton() { return this; } addToggle() { return this; }
+}
+
+/** 测试里用 Node 的 fetch 代打 requestUrl */
+export async function requestUrl(req: any): Promise<any> {
+  const res = await fetch(req.url, {
+    method: req.method || "GET",
+    headers: req.contentType ? { "content-type": req.contentType } : undefined,
+    body: req.body,
+  });
+  const text = await res.text();
+  return {
+    status: res.status,
+    text,
+    json: text ? JSON.parse(text) : null,
+  };
 }

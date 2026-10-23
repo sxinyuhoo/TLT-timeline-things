@@ -36,12 +36,12 @@ export default class TLTPlugin extends Plugin {
     this.registerView(VIEW_TYPE_WORKBENCH, (leaf: WorkspaceLeaf) => new WorkbenchView(leaf, this));
     this.registerView(VIEW_TYPE_MESSAGES, (leaf: WorkspaceLeaf) => new MessagesView(leaf, this));
 
-    this.addRibbonIcon("activity", "TLT 工作台", () => this.activateWorkbench());
+    this.addRibbonIcon("activity", "时间线工作台", () => this.activateWorkbench());
 
     this.addCommand({ id: "open-workbench", name: "打开工作台", callback: () => this.activateWorkbench() });
     this.addCommand({ id: "open-messages", name: "打开消息中心（独立页）", callback: () => this.activateMessages() });
     this.addCommand({ id: "new-task", name: "新建任务", callback: () => new QuickTaskModal(this.app, this.store, () => this.refreshAll()).open() });
-    this.addCommand({ id: "seed-demo", name: "生成示例数据（TLT/ 下）", callback: () => this.seedDemo() });
+    this.addCommand({ id: "seed-demo", name: "生成示例数据", callback: () => this.seedDemo() });
     this.addCommand({ id: "toggle-theme", name: "切换明暗", callback: () => this.toggleTheme() });
     this.addCommand({ id: "hub-publish", name: "推送到发布服务", callback: () => this.publishAll() });
     this.addCommand({ id: "hub-sync", name: "从拉取服务同步", callback: () => this.syncAll() });
@@ -265,7 +265,7 @@ desc: 宣贯、团建、制度变更、值班安排
 
     await this.store.load();
     this.refreshAll();
-    new Notice("示例数据已生成到 TLT/ 下");
+    new Notice("示例数据已生成");
   }
 }
 
@@ -276,7 +276,7 @@ class TLTSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "TLT · 目录与口径" });
+    new Setting(containerEl).setName("目录与口径").setHeading();
     containerEl.createEl("p", {
       text: "插件不复用现有目录：任务、人员、消息源、记录都放在下面四个目录里（不存在会自动创建）。",
       cls: "setting-item-description",
@@ -287,7 +287,7 @@ class TLTSettingTab extends PluginSettingTab {
         .setName(label)
         .setDesc(desc)
         .addText((t) =>
-          t.setValue(String(this.plugin.settings[name] || "")).onChange(async (v) => {
+          t.setValue(typeof this.plugin.settings[name] === "string" ? (this.plugin.settings[name] as string) : "").onChange(async (v) => {
             (this.plugin.settings as any)[name] = v.trim();
             await this.plugin.saveSettings();
           })
@@ -348,7 +348,7 @@ class TLTSettingTab extends PluginSettingTab {
       );
 
     const s = this.plugin.store;
-    containerEl.createEl("h3", { text: "当前读取" });
+    new Setting(containerEl).setName("当前读取").setHeading();
     containerEl.createEl("p", {
       text: `${s.tasks.length} 条任务 · ${s.logs.length} 条记录 · ${s.staff.length} 位成员 · ${s.feeds.length} 个源（${s.feeds.reduce((n, f) => n + f.items.length, 0)} 条消息）· ${s.ideas.length} 条想法`,
       cls: "setting-item-description",

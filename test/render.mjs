@@ -13,6 +13,17 @@ g.Node = dom.window.Node;
 g.MouseEvent = dom.window.MouseEvent;
 g.KeyboardEvent = dom.window.KeyboardEvent;
 g.getComputedStyle = dom.window.getComputedStyle;
+g.DOMParser = dom.window.DOMParser;
+g.createSvg = (tag) => dom.window.document.createElementNS("http://www.w3.org/2000/svg", tag);
+
+/** Obsidian 的全局 createEl（测试环境补一个） */
+g.createEl = (tag, o = {}) => {
+  const e = dom.window.document.createElement(tag);
+  if (typeof o === "string") e.className = o;
+  else { if (o.cls) e.className = o.cls; if (o.text) e.textContent = o.text; }
+  return e;
+};
+
 g.__notices = [];
 
 /* 补齐 Obsidian 扩展的 DOM 方法 */
@@ -117,7 +128,7 @@ await store.load();
 let pass = 0;
 const t = async (name, fn) => {
   try { await fn(); pass++; console.log("  ✓", name); }
-  catch (e) { console.log("  ✗", name, "\n    ", e.message); process.exitCode = 1; }
+  catch (e) { console.log("  ✗", name, "\n    ", e.stack?.split("\n").slice(0,4).join("\n    ")||e.message); process.exitCode = 1; }
 };
 
 console.log("store（真实文件结构）");
@@ -275,10 +286,10 @@ await t("任务详情：负责人只显示当前，能展开调整", async () =>
   const shown = [...m.querySelectorAll(".tlt-owner-chip")].map((x) => x.textContent.replace("×", ""));
   assert.deepEqual(shown, task.owners, `应只显示当前负责人，实际 ${shown}`);
   const pool = m.querySelector(".tlt-ownerpick");
-  assert.equal(pool.style.display, "none", "候选一开始应该收着");
+  assert.ok(pool.classList.contains("tlt-hidden"), "候选一开始应该收着");
   [...m.querySelectorAll("button")].find((b) => b.textContent.includes("调整")).click();
   await new Promise((r) => setTimeout(r, 10));
-  assert.notEqual(m.querySelector(".tlt-ownerpick").style.display, "none", "没展开候选");
+  assert.ok(!m.querySelector(".tlt-ownerpick").classList.contains("tlt-hidden"), "没展开候选");
 });
 
 await t("里程碑里能点开任务、能勾完成", async () => {

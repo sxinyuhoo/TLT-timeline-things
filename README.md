@@ -1,13 +1,10 @@
 # TLT - Timeline Things · 时间线工作台
 
-> 插件在 Obsidian 目录里的名字是 **TLT - Timeline Things**（目录只接受 ASCII，中文名不能直接上架），TLT = Timeline Things。
-> 仓库名 `TLT-timeline-things`、插件 id `tlt-timeline-things` 与之一致。
-
-以**时间线**为中心的任务与消息工作台：日历、任务、里程碑、人员饱和度、随手记，外加一个可以单独使用的消息中心。
-
 **中文** | [English](README.en.md)
 
-所有内容都是你库里的普通 Markdown —— 删掉插件，数据还在。
+**A timeline-first workbench for Obsidian**: calendar, tasks, milestones, team load and quick notes, plus a standalone message center with publishing and subscribing. Everything is stored as plain Markdown in your vault — uninstall the plugin and your data is still there. Full English guide: [README.en.md](README.en.md).
+
+以**时间线**为中心的任务与消息工作台：日历、任务、里程碑、人员饱和度、随手记，外加一个可以单独使用的消息中心。所有内容都是你库里的普通 Markdown —— 删掉插件，数据还在。
 
 ![日历视图：左边项目进度、中间日程与节奏星图、右边消息](docs/screenshots/01-calendar-day.png)
 
