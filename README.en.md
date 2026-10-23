@@ -1,4 +1,6 @@
-# TLT Timeline Workbench
+# Timeline Things Workbench
+
+> Listed in the Obsidian directory as **Timeline Things Workbench** — hence the acronym **TLT**, the repo name `TLT-timeline-things` and the plugin id `tlt-timeline`.
 
 A **timeline-first** workbench for tasks and messages: calendar, tasks, milestones, team load, quick notes — plus a message center that works on its own.
 

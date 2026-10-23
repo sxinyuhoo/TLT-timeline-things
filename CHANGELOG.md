@@ -1,5 +1,9 @@
 # 更新日志
 
+## 0.4.5
+
+- 插件名定为 `Timeline Things Workbench`（缩写 TLT），替换上一版的 `TLT Timeline Workbench`
+
 ## 0.4.4
 
 - 插件显示名改为 `TLT Timeline Workbench`：Obsidian 社区目录只接受 ASCII 名称，原名「TLT 时间线工作台」会被拒绝
