@@ -25,6 +25,8 @@ g.Node = dom.window.Node;
 dom.window.Node.prototype.instanceOf = function (ctor) { return this instanceof ctor; };
 
 g.createSvg = (tag) => dom.window.document.createElementNS("http://www.w3.org/2000/svg", tag);
+g.createDiv = (o = {}) => g.createEl("div", o);
+g.createSpan = (o = {}) => g.createEl("span", o);
 
 /** Obsidian 的全局 createEl（测试环境补一个） */
 g.createEl = (tag, o = {}) => {
@@ -60,6 +62,8 @@ await esbuild.build({
       export { Store } from "./src/store";
       export { TFile } from "obsidian";
       export { TLTSettingTab, TLTPlugin } from "./src/main";
+      export { attachFolderSuggest } from "./src/views/folder-suggest";
+      export { TFolder } from "obsidian";
       export { setLanguage, t as tr } from "./src/i18n";
     `,
     resolveDir: process.cwd(),
@@ -73,7 +77,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TLTSettingTab, TLTPlugin, setLanguage, tr, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 
 /* ---------- 3) 假 vault ---------- */
@@ -124,6 +128,7 @@ const createdFolders = [];
 const createdFolderSet = new Set();
 const vault = {
   getMarkdownFiles: () => Object.keys(files).map((p) => new TFile(p)),
+  getAllLoadedFiles: () => [...createdFolderSet].map((p) => new TFolder(p)),
   adapter: {
     exists: async (p) => (p in files) || createdFolderSet.has(p),
     read: async (p) => files[p] ?? "",
@@ -607,6 +612,32 @@ await t("逐字输入：目标目录还不存在时只记路径，离开设置�
   tab.onHide();                                              // 离开设置页 = 输入完成
   await new Promise((r) => window.setTimeout(r, 60));
   assert.ok(createdFolders.slice(before).some((x) => x.includes("9/TLT")), "离开设置页后应把目录建出来");
+});
+
+await t("目录输入补全：Tab / 点击选中已有目录", async () => {
+  document.body.empty();
+  createdFolderSet.add("TLT"); createdFolderSet.add("TLT/tasks"); createdFolderSet.add("工作");
+  const input = document.createElement("input");
+  document.body.appendChild(input);
+  attachFolderSuggest(app, input);
+  input.value = "TL";
+  input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  const rows = [...document.querySelectorAll(".tlt-suggest-i")].map((e) => e.textContent);
+  assert.ok(rows.includes("TLT"), `候选里应有 TLT，实际 [${rows.join(" / ")}]`);
+  assert.ok(!rows.includes("工作"), "不该混进不匹配的目录");
+  // Tab 选中第一个
+  const ev = new dom.window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+  input.dispatchEvent(ev);
+  assert.equal(input.value, "TLT", `Tab 没选中，实际 ${input.value}`);
+  // 点选：输入 "工作" 后 mousedown 命中
+  input.value = "工"; input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  const work = [...document.querySelectorAll(".tlt-suggest-i")].find((e) => e.textContent === "工作");
+  assert.ok(work, "候选里应有 工作");
+  work.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  assert.equal(input.value, "工作", `点击没选中，实际 ${input.value}`);
+  // 打一个不存在的目录：没有候选，也不报错
+  input.value = "不存在的目录"; input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  assert.equal(document.querySelectorAll(".tlt-suggest-i").length, 0, "不存在时不该给候选");
 });
 
 await t("冷启动：文件已存在时 createSafe 不算失败", async () => {

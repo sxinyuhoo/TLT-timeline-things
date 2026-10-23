@@ -45,10 +45,10 @@ export const EN: Record<string, string> = {
   /* ---------- 设置：目录 ---------- */
   "目录": "Folders",
   "根目录": "Root folder",
-  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。改这里后点旁边的「更新」就位。":
-    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). After changing it, click Update next to it.",
-  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。改完点右边「更新」就位。":
-    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). After changing it, click Update on the right.",
+  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时可直接选已有目录；目录不存在就先手打，点「更新」时创建。":
+    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). Pick an existing folder while typing; if it does not exist yet, type it and click Update to create it.",
+  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时有候选可 Tab/点击选中；目录不存在就先手打，点「更新」创建。":
+    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). Suggestions appear while typing (Tab or click to pick); if the folder does not exist yet, type it and click Update to create it.",
   "任务目录": "Tasks folder",
   "一个项目一个文件，## 小节是里程碑，任务一行一条。": "One file per project; a ## heading is a milestone; one task per line.",
   "人员目录": "People folder",

@@ -8,6 +8,7 @@ import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
 import { MoveDataModal, QuickTaskModal } from "./views/modals";
 import { todayISO, asText, type Period } from "./data";
 import { t, setLanguage, LANGUAGE_LABELS, type Language } from "./i18n";
+import { attachFolderSuggest } from "./views/folder-suggest";
 
 type ThemeMode = "auto" | "light" | "dark";
 
@@ -482,6 +483,14 @@ export class TLTSettingTab extends PluginSettingTab {
     const text = (key: PathKey, name: string, desc: string, dflt: string): SettingDefinition => ({
       name: t(name), desc: t(desc), control: { type: "text", key, placeholder: dflt, defaultValue: dflt },
     });
+    /** 目录类字段用官方目录控件：自带补全，Tab / 点击即可选中已有目录 */
+    const folder = (key: PathKey, name: string, desc: string, dflt: string): SettingDefinition => ({
+      name: t(name), desc: t(desc),
+      control: {
+        type: "folder", key, placeholder: dflt, defaultValue: dflt, includeRoot: key === "root",
+        filter: (f) => !f.path.startsWith(".") && !f.path.includes("/."),
+      },
+    });
     const pick = (
       key: "defaultPeriod" | "autoSyncMin" | "autoPushMin" | "theme" | "language",
       name: string, desc: string, options: Record<string, string>,
@@ -497,12 +506,12 @@ export class TLTSettingTab extends PluginSettingTab {
       {
         type: "group", heading: t("目录"),
         items: [
-          text("root", "根目录", "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。改这里后点旁边的「更新」就位。", d.root),
+          folder("root", "根目录", "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时可直接选已有目录；目录不存在就先手打，点「更新」时创建。", d.root),
           { name: t("更新"), desc: t("按上面的根目录重建六个路径并创建目录；旧目录里还有文件时会问你要不要一起搬过去。"), action: () => { void this.alignAndNotify(); } },
-          text("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder),
-          text("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder),
-          text("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder),
-          text("logsFolder", "记录目录", "按月一个文件，正文用 ## 日期 分节。", d.logsFolder),
+          folder("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder),
+          folder("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder),
+          folder("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder),
+          folder("logsFolder", "记录目录", "按月一个文件，正文用 ## 日期 分节。", d.logsFolder),
           text("ideasFile", "随手记文件", "单文件，一行一条。", d.ideasFile),
           text("tagsFile", "标签库文件", "单文件，一行一个标签。", d.tagsFile),
         ],
@@ -653,7 +662,7 @@ export class TLTSettingTab extends PluginSettingTab {
     });
     new Setting(containerEl)
       .setName(t("根目录"))
-      .setDesc(t("TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。改完点右边「更新」就位。"))
+      .setDesc(t("TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入时有候选可 Tab/点击选中；目录不存在就先手打，点「更新」创建。"))
       .addButton((b) => b.setButtonText(t("更新")).setTooltip(t("按根目录重建六个路径并创建目录")).onClick(() => { void this.settleNow(true).then(() => this.alignAndNotify()); }))
       .addText((tc) => {
         tc.setPlaceholder(d.root).setValue(p.settings.root ?? d.root);
@@ -668,6 +677,7 @@ export class TLTSettingTab extends PluginSettingTab {
             this.renderSettings();
           })();
         };
+        attachFolderSuggest(p.app, tc.inputEl);
         tc.inputEl.addEventListener("blur", commit);
         tc.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") tc.inputEl.blur(); });
       });
@@ -686,6 +696,7 @@ export class TLTSettingTab extends PluginSettingTab {
             void p.saveSettings().then(() => p.store.ensureVault());
             new Notice(t("目录已更新"));
           };
+          attachFolderSuggest(p.app, tc.inputEl);          // 边打边给候选：Tab / 点击选中
           tc.inputEl.addEventListener("blur", commit);
           tc.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") tc.inputEl.blur(); });
         });
