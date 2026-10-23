@@ -92,7 +92,9 @@ Publishing and subscribing live in the same process and port; put `http://server
 | `TLT/ideas.md` | Quick notes: one line each |
 | `TLT/tags.md` | Tag library: one per line |
 
-Field-level syntax: [docs/data-format.md](docs/data-format.md). All five folders are configurable.
+Field-level syntax: [docs/data-format.md](docs/data-format.md).
+
+All six paths live under `TLT/` by default and **the root folder is configurable** — changing it updates all six without overwriting ones you customised.
 
 ## Commands
 

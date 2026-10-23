@@ -184,7 +184,7 @@ await t("想法正文（为什么做）能写回并重读", async () => {
 console.log("\n渲染（jsdom）");
 const plugin = {
   settings: {
-    defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
+    root: "TLT", defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
     logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md",
     theme: "auto", hubPublish: "http://127.0.0.1:8787", hubSync: "http://127.0.0.1:8788",
     autoSyncMin: 15, autoPushMin: 0, mineFeed: "我的工作动态", feedIds: {}, feedNames: {},
@@ -387,6 +387,39 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   // 消息服务：间隔下拉的选项
   const selects = [...el2.querySelectorAll("select")];
   assert.ok(selects.some((x) => [...x.options].some((o) => o.textContent === "15 分钟")), "间隔下拉选项不对");
+});
+
+await t("设置页：改根目录会同步六个路径，自定义项不动", async () => {
+  document.body.empty();
+  const p2 = { ...plugin, settings: { ...plugin.settings }, saveSettings: async () => {} };
+  const tab = new TLTSettingTab(app, p2);
+  tab.containerEl = document.createElement("div");
+  tab.renderSettings();
+  const rootInput = [...tab.containerEl.querySelectorAll("input")].find((i) => i.placeholder === "TLT");
+  assert.ok(rootInput, "没有 TLT 根目录输入框");
+  assert.equal(rootInput.value, "TLT", "根目录没显示当前值");
+
+  // 改根目录 → 六项跟着走
+  rootInput.value = "工作/TLT";
+  rootInput.dispatchEvent(new dom.window.Event("blur"));
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(p2.settings.root, "工作/TLT");
+  assert.equal(p2.settings.tasksFolder, "工作/TLT/tasks", `任务目录没跟随：${p2.settings.tasksFolder}`);
+  assert.equal(p2.settings.ideasFile, "工作/TLT/ideas.md", "随手记文件没跟随");
+  assert.equal(p2.settings.tagsFile, "工作/TLT/tags.md", "标签库文件没跟随");
+
+  // 单独改过一项后再改根目录 → 那项保持不动
+  const tab2 = new TLTSettingTab(app, p2);
+  tab2.containerEl = document.createElement("div");
+  p2.settings.teamFolder = "我的/团队";
+  tab2.renderSettings();
+  const root2 = [...tab2.containerEl.querySelectorAll("input")].find((i) => i.placeholder === "TLT");
+  root2.value = "Other";
+  root2.dispatchEvent(new dom.window.Event("blur"));
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(p2.settings.root, "Other");
+  assert.equal(p2.settings.tasksFolder, "Other/tasks", "其余项应跟随新根目录");
+  assert.equal(p2.settings.teamFolder, "我的/团队", "自定义过的那项被覆盖了");
 });
 
 await t("星图滚轮缩放", async () => {

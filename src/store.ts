@@ -20,6 +20,8 @@ interface SubscribeResult { ok?: boolean; count?: number; existed?: boolean; rea
 interface PublishResult { ok?: boolean; count?: number; id?: string }
 
 export interface TLTSettings {
+  /** TLT 的根目录；下面六个路径默认都在它下面，留空表示直接用库根目录 */
+  root: string;
   tasksFolder: string;
   teamFolder: string;
   feedsFolder: string;
@@ -33,6 +35,7 @@ export interface TLTSettings {
 }
 
 export const DEFAULT_SETTINGS: TLTSettings = {
+  root: "TLT",
   tasksFolder: "TLT/tasks",
   teamFolder: "TLT/team",
   feedsFolder: "TLT/feeds",
@@ -44,6 +47,24 @@ export const DEFAULT_SETTINGS: TLTSettings = {
   feedIds: {},
   feedNames: {},
 };
+
+/** 根目录 → 六个默认路径（改根目录时用它判断哪几项还没被单独改过） */
+export function pathsFromRoot(root: string) {
+  const base = root.trim().replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+  const join = (sub: string) => (base ? `${base}/${sub}` : sub);
+  return {
+    tasksFolder: join("tasks"),
+    teamFolder: join("team"),
+    feedsFolder: join("feeds"),
+    logsFolder: join("logs"),
+    ideasFile: join("ideas.md"),
+    tagsFile: join("tags.md"),
+  };
+}
+
+/** 受根目录管辖的六个路径 */
+export const PATH_KEYS = ["tasksFolder", "teamFolder", "feedsFolder", "logsFolder", "ideasFile", "tagsFile"] as const;
+export type PathSettingKey = (typeof PATH_KEYS)[number];
 
 export const PEOPLE_COLORS = ["#F0C24B", "#6C8CFF", "#27C1A3", "#B57BFF", "#F2994A", "#FF7A9C", "#5FD6B4", "#7C8BA1"];
 

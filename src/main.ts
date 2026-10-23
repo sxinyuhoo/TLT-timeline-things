@@ -2,7 +2,7 @@ import {
   App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, TFile, normalizePath, requestUrl,
   type SettingDefinition, type SettingDefinitionItem,
 } from "obsidian";
-import { Store, TLTSettings, DEFAULT_SETTINGS } from "./store";
+import { Store, TLTSettings, DEFAULT_SETTINGS, pathsFromRoot, PATH_KEYS } from "./store";
 import { WorkbenchView, VIEW_TYPE_WORKBENCH } from "./views/workbench";
 import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
 import { QuickTaskModal } from "./views/modals";
@@ -16,7 +16,7 @@ const errMsg = (e: unknown): string =>
 
 /** 设置里所有字符串型字段的键（给目录输入框用） */
 type PathKey =
-  | "tasksFolder" | "teamFolder" | "feedsFolder" | "logsFolder"
+  | "root" | "tasksFolder" | "teamFolder" | "feedsFolder" | "logsFolder"
   | "ideasFile" | "tagsFile" | "mineFeed" | "hubPublish" | "hubSync";
 
 interface Settings extends TLTSettings {
@@ -335,6 +335,7 @@ export class TLTSettingTab extends PluginSettingTab {
       {
         type: "group", heading: "目录",
         items: [
+          text("root", "根目录", "下面六项默认都放在这个目录下；留空表示直接用库的根目录。改这里会一起更新它们，单独改过的那项不会被覆盖。", d.root),
           text("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder),
           text("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder),
           text("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder),
@@ -402,10 +403,37 @@ export class TLTSettingTab extends PluginSettingTab {
 
     /* ---------- 目录 ---------- */
     new Setting(containerEl).setName("目录").setHeading();
+    const d = DEFAULTS;
     containerEl.createEl("p", {
       cls: "setting-item-description",
       text: "插件只读这几个目录，不扫全库，也不和别的任务插件共用文件。目录不存在会自动创建；路径改完会重新扫描一次，原来的文件不会搬也不会删。",
     });
+    new Setting(containerEl)
+      .setName("根目录")
+      .setDesc("下面六项默认都放在这个目录下；留空表示直接用库的根目录。改这里会一起更新它们，单独改过的那项不会被覆盖。")
+      .addText((t) => {
+        t.setPlaceholder(d.root).setValue(p.settings.root ?? d.root);
+        const commit = () => {
+          const next = t.inputEl.value.trim().replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+          if (next === p.settings.root) return;
+          const before = pathsFromRoot(p.settings.root);
+          const after = pathsFromRoot(next);
+          const kept: string[] = [];
+          p.settings.root = next;
+          PATH_KEYS.forEach((k) => {
+            if (p.settings[k] === before[k]) p.settings[k] = after[k];
+            else kept.push(k);
+          });
+          void p.saveSettings();
+          new Notice(kept.length
+            ? `根目录已更新，${kept.length} 项自定义路径保持不变`
+            : `根目录已改为 ${next || "（库根目录）"}`);
+          this.renderSettings();
+        };
+        t.inputEl.addEventListener("blur", commit);
+        t.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") t.inputEl.blur(); });
+      });
+
     const folder = (name: PathKey, label: string, desc: string, dflt: string) =>
       new Setting(containerEl)
         .setName(label)
@@ -423,7 +451,6 @@ export class TLTSettingTab extends PluginSettingTab {
           t.inputEl.addEventListener("blur", commit);
           t.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") t.inputEl.blur(); });
         });
-    const d = DEFAULTS;
     folder("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder);
     folder("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder);
     folder("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder);

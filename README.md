@@ -92,7 +92,9 @@ python3 services-py/tlt_service.py --port 8787 --data ./data --seed
 | `TLT/ideas.md` | 随手记：一行一条 |
 | `TLT/tags.md` | 标签库：一行一个 |
 
-字段级格式见 [docs/data-format.md](docs/data-format.md)。五个目录都在设置里可改。
+字段级格式见 [docs/data-format.md](docs/data-format.md)。
+
+六个路径默认都在 `TLT/` 下；**根目录可在设置里改**——改根目录会同步更新这六项，但单独改过的那项不会被覆盖。
 
 ## 命令
 
