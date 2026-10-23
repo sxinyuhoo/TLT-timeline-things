@@ -32,5 +32,8 @@
     "tasks",
     "calendar",
     "notes"
-  ]
+  ],
+  "engines": {
+    "node": ">=22"
+  }
 }
