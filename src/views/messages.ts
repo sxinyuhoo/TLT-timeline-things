@@ -1,7 +1,7 @@
 import { t as T } from "../i18n";
 import { ItemView, WorkspaceLeaf, Notice, App } from "obsidian";
 import type TLTPlugin from "../main";
-import { Store } from "../store";
+import { Store, DEFAULT_SETTINGS } from "../store";
 import { Msg, Feed, todayISO, addDays, D, cleanFeedUrl, errMsg } from "../data";
 import { el, MsgModal, buildMsgFields, popMenu, TltModal } from "./modals";
 import { setSvgMarkup } from "./dom";
@@ -28,6 +28,12 @@ export class MessagesView extends ItemView {
 
   get store(): Store { return this.plugin.store; }
 
+  /**
+   * 视图有可能比插件的 store 先就绪（重启恢复标签页时会撞上），
+   * 所以设置统一走这里：拿不到就用默认值，渲染绝不因此抛错。
+   */
+  private get cfg() { return (this.plugin as { store?: Store } | undefined)?.store?.settings ?? DEFAULT_SETTINGS; }
+
   constructor(leaf: WorkspaceLeaf, plugin: TLTPlugin) {
     super(leaf);
     this.plugin = plugin;
@@ -37,8 +43,19 @@ export class MessagesView extends ItemView {
   getDisplayText() { return "消息中心"; }
   getIcon() { return "rss"; }
 
-  async onOpen() { await this.store.ensureLoaded(); await this.render(); }
-  async refresh() { await this.store.load(); await this.render(); }
+  async onOpen() { await this.ensureData(); await this.render(); }
+  async refresh() { await this.ensureData(true); await this.render(); }
+
+  /** 视图可能比插件先就绪；拿不到 store 就跳过，绝不抛 */
+  private async ensureData(force = false) {
+    const s = (this.plugin as { store?: Store } | undefined)?.store;
+    if (!s) return;
+    try {
+      if (force) await s.load(); else await s.ensureLoaded();
+    } catch (e) {
+      console.error("TLT: 载入数据失败", e);
+    }
+  }
 
   private msgs(): Msg[] {
     return this.store.feeds.flatMap((f) => f.items);
@@ -630,7 +647,7 @@ export class MessagesView extends ItemView {
           act.appendChild(pub);
         } else if (f.mine) {
           const st = this.plugin.hubState();
-          const pid = (this.store.settings.feedIds || {})[f.id] || f.id;
+          const pid = (this.cfg.feedIds || {})[f.id] || f.id;
           s.appendChild(el("div", "tlt-d-body", `订阅地址：${st.publish}/feed?id=${encodeURIComponent(pid)}`));
           const push = el("button", "tlt-btn pri", T("手动推送"));
           push.onclick = () => { void (async () => {

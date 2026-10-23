@@ -1,6 +1,6 @@
 {
   "name": "tlt-timeline-things",
-  "version": "0.4.13",
+  "version": "0.4.14",
   "description": "TLT — 以时间线为中心的任务与消息工作台（Obsidian 插件）",
   "main": "main.js",
   "scripts": {
@@ -12,7 +12,8 @@
     "play": "node test/play.mjs",
     "serve": "cd test && python3 -m http.server 8799",
     "serve:py": "python3 services-py/tlt_service.py --port 8787 --data ./services-py/data",
-    "check:vault": "node test/vault-render.mjs"
+    "check:vault": "node test/vault-render.mjs",
+    "check:load": "node test/plugin-load-check.mjs"
   },
   "devDependencies": {
     "builtin-modules": "^4.0.0",

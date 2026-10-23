@@ -45,7 +45,61 @@ export class TLTPlugin extends Plugin {
   private hub = { publish: "", sync: "", lastSync: "", lastResult: "", lastError: "" };
 
   async onload() {
+    // 重启时 Obsidian 会先恢复上次打开的标签页，视图可能在本函数跑完前就开始渲染，
+    // 所以 settings / store 这两个字段必须**立刻**有值，不能等 loadSettings()。
+    this.settings = { ...DEFAULTS };
+    this.store = new Store(this.app, this.settings);
+    try {
+      await this.boot();
+    } catch (e) {
+      // 兜底：任何一处出错都别让 Obsidian 报「插件加载失败」——给出可读原因，插件保持可用
+      console.error("TLT: 加载失败", e);
+      const detail = e instanceof Error ? (e.stack || e.message) : String(e);
+      new Notice(t("TLT 加载出错：{msg}", { msg: errMsg(e) }));
+      void this.dumpLoadError(detail);
+    }
+  }
+
+  /** 自检：把版本、数据量、目录、上次加载错误写进插件目录，出问题时一看就知道 */
+  async selfCheck() {
+    const s = this.settings;
+    const file = (this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`) + "/tlt-check.log";
+    let lastError = "（无）";
+    try { if (await this.app.vault.adapter.exists(file)) lastError = (await this.app.vault.adapter.read(file)).trim(); } catch { /* 读不到就算了 */ }
+    const msg = Number(this.store.feeds.reduce((n, f) => n + f.items.length, 0));
+    const report = [
+      `TLT v${this.manifest.version} · Obsidian ${(this.app as unknown as { appVersion?: string }).appVersion ?? "?"}`,
+      `时间 ${new Date().toISOString()}`,
+      `根目录 ${s.root || "（库根目录）"}`,
+      `任务目录 ${s.tasksFolder} · 人员目录 ${s.teamFolder} · 消息源目录 ${s.feedsFolder} · 记录目录 ${s.logsFolder}`,
+      `数据：任务 ${this.store.tasks.length} · 人员 ${this.store.staff.length} · 源 ${this.store.feeds.length} · 消息 ${msg} · 记录 ${this.store.logs.length} · 随手记 ${this.store.ideas.length} · 标签 ${this.store.tags.length}`,
+      `主题 ${s.theme} · 语言 ${s.language} · 自动同步 ${s.autoSyncMin} 分 / 自动推送 ${s.autoPushMin} 分`,
+      `上次加载错误：${lastError}`,
+    ].join("\n");
+    try {
+      const dir = this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`;
+      if (!(await this.app.vault.adapter.exists(dir))) await this.app.vault.adapter.mkdir(dir);
+      await this.app.vault.adapter.write(file, report + "\n");
+    } catch (e) { console.error("TLT: 自检写入失败", e); }
+    new Notice(`TLT v${this.manifest.version} 自检：任务 ${this.store.tasks.length} · 人员 ${this.store.staff.length} · 源 ${this.store.feeds.length} · 消息 ${msg}（报告见插件目录 tlt-check.log）`, 8000);
+  }
+
+  /** 加载出错时把原因写进插件目录，方便事后排查（用户只看到一句「加载失败」时尤其有用） */
+  private async dumpLoadError(detail: string) {
+    try {
+      const dir = this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`;
+      await this.app.vault.adapter.write(
+        `${dir}/load-error.log`,
+        `v${this.manifest.version}  ${new Date().toISOString()}\n${detail}\n`,
+      );
+    } catch {
+      /* 诊断文件写不出来就算了，不能因此再抛一次 */
+    }
+  }
+
+  private async boot() {
     await this.loadSettings();
+    this.store.settings = this.settings;
     setLanguage(this.settings.language);
     this.store = new Store(this.app, this.settings);
 
@@ -59,6 +113,7 @@ export class TLTPlugin extends Plugin {
     this.addCommand({ id: "new-task", name: "新建任务", callback: () => { new QuickTaskModal(this.app, this.store, () => this.refreshAll()).open(); } });
     this.addCommand({ id: "seed-demo", name: "生成示例数据", callback: () => { void this.seedDemo(); } });
     this.addCommand({ id: "toggle-theme", name: "切换明暗", callback: () => this.toggleTheme() });
+    this.addCommand({ id: "self-check", name: "自检（写一份诊断报告）", callback: () => { void this.selfCheck(); } });
     this.addCommand({ id: "hub-publish", name: "推送到发布服务", callback: () => { void this.publishAll(); } });
     this.addCommand({ id: "hub-sync", name: "从拉取服务同步", callback: () => { void this.syncAll(); } });
 
@@ -81,8 +136,9 @@ export class TLTPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("delete", reload));
     this.registerEvent(this.app.vault.on("rename", reload));
 
-    // 重启后 Obsidian 会恢复上次打开的视图，那时 store 还是空的；数据读完必须补一次重画
-    this.refreshAll();
+    // 重启后 Obsidian 会恢复上次打开的视图，那时 store 还是空的；数据读完必须补一次重画。
+    // 这一步绝不能把 onload 带崩：视图自己出问题不该让插件「加载失败」。
+    try { this.refreshAll(); } catch (e) { console.error("TLT: 首次刷新失败", e); }
     this.setupTimers();
   }
 
@@ -202,8 +258,18 @@ export class TLTPlugin extends Plugin {
   }
 
   refreshAll() {
-    this.app.workspace.getLeavesOfType(VIEW_TYPE_WORKBENCH).forEach((l) => { void (l.view as WorkbenchView).render(); });
-    this.app.workspace.getLeavesOfType(VIEW_TYPE_MESSAGES).forEach((l) => { void (l.view as MessagesView).render(); });
+    const draw = (type: string) => {
+      for (const l of this.app.workspace.getLeavesOfType(type)) {
+        try {
+          const v = l.view as WorkbenchView | MessagesView;
+          if (v && typeof v.render === "function") void v.render();
+        } catch (e) {
+          console.error("TLT: 刷新视图失败", e);   // 一个视图画不出来，不能连累别的
+        }
+      }
+    };
+    draw(VIEW_TYPE_WORKBENCH);
+    draw(VIEW_TYPE_MESSAGES);
   }
 
   /* ---------- 示例数据 ---------- */

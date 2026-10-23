@@ -500,6 +500,53 @@ await t("改目录：只列出要搬的文件，不自己搬", async () => {
   assert.equal(moves[1].to, "90-插件运营区/team/张三.md");
 });
 
+await t("时序兜底：视图比插件先就绪时不抛错", async () => {
+  document.body.empty();
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  // 现实里的最坏时序：真插件实例，但 store 还没载入过（loaded=false）
+  const inst = makePlugin();
+  inst.store = new Store(app, { ...inst.settings });
+  const v = new WorkbenchView({ app, containerEl: el }, inst);
+  v.containerEl = el; v.contentEl = el.createEl("div");
+  await v.onOpen();                                            // 不应抛，且会自己把数据载进来
+  assert.equal(inst.store.loaded, true, "onOpen 没把数据载进来");
+  const m = new MessagesView({ app, containerEl: el.createEl("div") }, inst);
+  await m.onOpen();
+  assert.ok(true);
+});
+
+await t("时序：视图在插件加载中途被恢复，两边都不炸", async () => {
+  document.body.empty();
+  const inst = makePlugin({ autoSyncMin: 0, autoPushMin: 0 });
+  let v = null;
+  const origRegister = inst.registerView.bind(inst);
+  inst.registerView = (type, factory) => {
+    origRegister(type, factory);
+    if (String(type).includes("workbench")) {           // 工厂一注册，Obsidian 就可能来建视图
+      const el = document.createElement("div");
+      document.body.appendChild(el);
+      v = factory({ app, containerEl: el });
+      v.containerEl = el; v.contentEl = el.createEl("div");
+    }
+  };
+  const loading = inst.onload();
+  await new Promise((r) => window.setTimeout(r, 0));     // 让视图的 onOpen 与 onload 抢跑
+  if (v) await v.onOpen();
+  await loading;                                          // onload 不能被带崩
+  assert.ok(v, "视图没被建出来，用例没生效");
+  assert.ok((inst.store?.tasks?.length ?? 0) >= 0);
+});
+
+await t("时序兜底：某个视图渲染炸了也不影响 onload", async () => {
+  const inst = makePlugin({ autoSyncMin: 0, autoPushMin: 0 });
+  const badLeaf = { view: { render() { throw new Error("boom"); } } };
+  app.workspace.getLeavesOfType = () => [badLeaf];
+  await inst.onload();                                         // 不应 reject
+  app.workspace.getLeavesOfType = () => [];
+  assert.ok(true, "onload 被视图异常带崩了");
+});
+
 await t("星图滚轮缩放", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
@@ -805,3 +852,6 @@ await t("消息弹框：转为任务打开新建表单并预填", async () => {
 });
 
 console.log(`\n${pass} 项通过${process.exitCode ? "，有失败" : "，全部通过"}`);
+
+/* 测试跑完就退出：onload 里注册的定时器会把事件循环挂住 */
+process.exit(process.exitCode ?? 0);

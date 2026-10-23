@@ -19,6 +19,7 @@ export const EN: Record<string, string> = {
   "发布": "Publish",
   "确定": "OK",
   "未知错误": "Unknown error",
+  "TLT 加载出错：{msg}": "TLT failed to load: {msg}",
   "关闭": "Off",
   "全部": "All",
   "本周": "This week",

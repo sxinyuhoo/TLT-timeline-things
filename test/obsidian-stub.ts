@@ -46,6 +46,9 @@ export class Plugin {
   addRibbonIcon() { return document.createElement("div"); }
   addCommand(_c: any) {}
   addSettingTab(_t: any) {}
+  registerInterval(id: number) { return id; }
+  registerDomEvent(_el: any, _type: string, _cb: any) {}
+  register(_cb: any) {}
 }
 
 export class Modal {

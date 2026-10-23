@@ -1,7 +1,7 @@
 import { t as T } from "../i18n";
 import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import type TLTPlugin from "../main";
-import { Store } from "../store";
+import { Store, DEFAULT_SETTINGS } from "../store";
 import {
   Task, Msg, Period, todayISO, addDays,
   hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, ideaTags, ideaFilterTags,
@@ -21,6 +21,12 @@ const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">
 export class WorkbenchView extends ItemView {
   plugin: TLTPlugin;
   get store(): Store { return this.plugin.store; }
+
+  /**
+   * 视图有可能比插件的 store 先就绪（重启恢复标签页时会撞上），
+   * 所以设置统一走这里：拿不到就用默认值，渲染绝不因此抛错。
+   */
+  private get cfg() { return (this.plugin as { store?: Store } | undefined)?.store?.settings ?? DEFAULT_SETTINGS; }
   private tab = "today";
   private viewDate = todayISO();
   private period: Period;
@@ -47,14 +53,28 @@ export class WorkbenchView extends ItemView {
 
   async onOpen() {
     this.contentEl.addEventListener("click", (ev) => { void this.onClick(ev); });
-    await this.store.ensureLoaded();
+    await this.ensureData();
     await this.render();
   }
   async onClose() { this.contentEl.empty(); }
 
   async refresh() {
-    await this.store.load();
+    await this.ensureData(true);
     await this.render();
+  }
+
+  /**
+   * 视图可能比插件先就绪（重启时 Obsidian 会恢复上次打开的标签页），
+   * 那时 plugin.store 还不存在——这里一律宽容处理，绝不往外抛。
+   */
+  private async ensureData(force = false) {
+    const s = (this.plugin as { store?: Store } | undefined)?.store;
+    if (!s) return;
+    try {
+      if (force) await s.load(); else await s.ensureLoaded();
+    } catch (e) {
+      console.error("TLT: 载入数据失败", e);
+    }
   }
 
   /* ================= 渲染 ================= */
@@ -104,7 +124,7 @@ export class WorkbenchView extends ItemView {
     const dot = el("span", "tlt-mark");
     top.append(dot, el("b", "", "TLT"));
     const folder = el("span", "tlt-fold", "TLT/");
-    folder.title = `${this.store.settings.tasksFolder} · ${this.store.settings.teamFolder}`;
+    folder.title = `${this.cfg.tasksFolder} · ${this.cfg.teamFolder}`;
     top.appendChild(folder);
     s.appendChild(top);
 
@@ -618,7 +638,7 @@ export class WorkbenchView extends ItemView {
     const avg = rows.length ? Math.round(rows.reduce((a, r) => a + r.sat.pct, 0) / rows.length) : 0;
     const head = el("div", "tlt-pane-h");
     head.append(el("span", "", `${rows.length} 人 · 平均 ${avg}% · ${over} 人超载 · ${idle} 人偏闲`));
-    head.appendChild(el("span", "tlt-src", this.store.settings.teamFolder));
+    head.appendChild(el("span", "tlt-src", this.cfg.teamFolder));
     head.appendChild(el("span", "tlt-spacer"));
     const add = el("button", "tlt-btn", T("＋ 添加成员"));
     add.dataset.addstaff = "1";
