@@ -70,7 +70,7 @@ function makeVault(root) {
 
 const settings = {
   tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
-  logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的工作动态",
+  logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的动态",
 };
 
 let pass = 0;
@@ -92,17 +92,17 @@ try {
 /* ---------- 1) 发布端：模拟"我"的库 ---------- */
 const A = fs.mkdtempSync(path.join(os.tmpdir(), "tlt-a-"));
 const vaultA = makeVault(A);
-vaultA.files.set("TLT/feeds/我的工作动态.md", `---
-title: 我的工作动态
+vaultA.files.set("TLT/feeds/我的动态.md", `---
+title: 我的动态
 owner: me
 mine: true
 ---
 
-- 2026-10-21 抽检口径 V2 已定稿 [kind:: note] [place:: 会议室] [star:: true]
+- 2026-10-21 示例进展：方案已定稿 [kind:: note] [place:: 会议室] [star:: true]
   > 三处差异写进 V2。
-- 2026-10-22 周会：先把 POC 边界写成一页纸 [kind:: note]
+- 2026-10-22 周会：先把 示例任务：写一页纸 [kind:: note]
 `);
-const storeA = new Store({ vault: vaultA.api, metadataCache: { getFileCache: () => ({ frontmatter: { title: "我的工作动态", owner: "me", mine: true } }) } }, settings);
+const storeA = new Store({ vault: vaultA.api, metadataCache: { getFileCache: () => ({ frontmatter: { title: "我的动态", owner: "me", mine: true } }) } }, settings);
 await storeA.load();
 
 await t("发布：把我的源推到发布服务", async () => {
@@ -115,7 +115,7 @@ await t("发布：把我的源推到发布服务", async () => {
 
 await t("发布服务：GET /feeds 能看到", async () => {
   const r = await fetch(`${PUB}/feeds`).then((x) => x.json());
-  const mine = r.feeds.find((f) => f.id === "我的工作动态");
+  const mine = r.feeds.find((f) => f.id === "我的动态");
   assert.ok(mine, "注册表里没有");
   assert.equal(mine.count, 2);
 });
@@ -127,7 +127,7 @@ const storeB = new Store({ vault: vaultB.api, metadataCache: { getFileCache: () 
 await storeB.load();
 
 await t("订阅：把发布源地址交给拉取服务", async () => {
-  const r = await storeB.subscribeRemote(SYNC, `${PUB}/feed?id=我的工作动态`, "我的工作动态");
+  const r = await storeB.subscribeRemote(SYNC, `${PUB}/feed?id=我的动态`, "我的动态");
   assert.ok(r.ok);
 });
 
@@ -141,11 +141,11 @@ await t("拉取：同步服务返回两条消息", async () => {
 await t("入库：远端消息写成 TLT/feeds/<id>.md", async () => {
   const r = await storeB.pullFromHub(SYNC);
   assert.equal(r.added, 2);
-  const file = [...vaultB.files.keys()].find((k) => k.includes("我的工作动态") && k.startsWith("TLT/feeds/"));
+  const file = [...vaultB.files.keys()].find((k) => k.includes("我的动态") && k.startsWith("TLT/feeds/"));
   assert.ok(file, "没有生成远端源文件");
   const text = vaultB.files.get(file);
   assert.ok(text.includes("[mid::"), "缺少 mid，会重复");
-  assert.ok(text.includes("抽检口径 V2 已定稿"));
+  assert.ok(text.includes("示例进展：方案已定稿"));
   console.log(`      写入 ${file}（${text.split("\\n").length} 行）`);
 });
 
@@ -162,7 +162,7 @@ await t("重新加载后能读到远端消息", async () => {
 });
 
 await t("退订后 /pull 不再返回这个源", async () => {
-  await storeB.unsubscribeRemote(SYNC, `${PUB}/feed?id=我的工作动态`);
+  await storeB.unsubscribeRemote(SYNC, `${PUB}/feed?id=我的动态`);
   const r = await fetch(`${SYNC}/pull`).then((x) => x.json());
   assert.equal(r.feeds.length, 0);
 });

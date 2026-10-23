@@ -59,7 +59,7 @@ await esbuild.build({
       export { MessagesView } from "./src/views/messages";
       export { Store } from "./src/store";
       export { TFile } from "obsidian";
-      export { TLTSettingTab } from "./src/main";
+      export { TLTSettingTab, TLTPlugin } from "./src/main";
     `,
     resolveDir: process.cwd(),
     sourcefile: "test-entry.ts",
@@ -72,7 +72,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TLTSettingTab, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TLTSettingTab, TLTPlugin, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 
 /* ---------- 3) 假 vault ---------- */
@@ -80,59 +80,60 @@ const now = new Date();
 const pad = (n) => String(n).padStart(2, "0");
 const D = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 const files = {
-  "TLT/tasks/千数万问.md": `# 千数万问
+  "TLT/tasks/示例项目.md": `# 示例项目
 
 ## V0.7.4 月报
 
-- [ ] 月报定稿 🛫 ${D} 📅 ${D} [wl:: 30] [pri:: 2] [owner:: [[我]]]
+- [ ] 示例任务：报告定稿 🛫 ${D} 📅 ${D} [wl:: 30] [pri:: 2] [owner:: [[我]]]
   - [ ] 汇总场景数据
   - [ ] 对口径
-- [ ] 待排期的事 [wl:: 10] [owner:: [[许可儿]]]
+- [ ] 待排期的事 [wl:: 10] [owner:: [[张三]]]
 
 ## 推广
 
-- [ ] 湖南 kickoff 📅 ${D} [wl:: 15] [owner:: [[我]]]
-- [ ] 给论文画图 📅 ${D} [wl:: 10] [scope:: 个人] [tags:: 论文]
+- [ ] 示例里程碑：启动 📅 ${D} [wl:: 15] [owner:: [[我]]]
+- [ ] 示例任务：画图 📅 ${D} [wl:: 10] [scope:: 个人] [tags:: 论文]
 `,
-  "TLT/tasks/MinerU.md": `# MinerU
+  "TLT/tasks/示例工具.md": `# 示例工具
 
-## 抽检与调优
+## 抽样与调优
 
-- [ ] 抽检 100 份 🛫 ${D} 📅 ${D} [wl:: 40] [pw:: w] [owner:: [[卢冠宇]]]
+- [ ] 处理 100 份 🛫 ${D} 📅 ${D} [wl:: 40] [pw:: w] [owner:: [[王五]]]
 `,
   "TLT/team/我.md": `---\ntlt: staff\nrole: 负责人\ncapacity: 100\ndays: 5\nskills: [决策]\nstatus: active\n---\n`,
-  "TLT/team/许可儿.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 80\ndays: 4\nskills: [评测]\nstatus: active\n---\n`,
-  "TLT/team/卢冠宇.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\n---\n`,
-  "TLT/feeds/部门消息通知.md": `---\ntitle: 部门消息通知\nowner: 孙晙书\n---\n\n- ${D} 部门宣贯 [kind:: ask] [place:: 三楼] [star:: true]\n  > 覆盖全员\n- ${D} 团建 [kind:: event] [state:: ended]\n`,
+  "TLT/team/张三.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 80\ndays: 4\nskills: [评测]\nstatus: active\n---\n`,
+  "TLT/team/王五.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\n---\n`,
+  "TLT/feeds/部门通知.md": `---\ntitle: 部门通知\nowner: 示例同事\n---\n\n- ${D} 部门宣贯 [kind:: ask] [place:: 三楼] [star:: true]\n  > 覆盖全员\n- ${D} 团建 [kind:: event] [state:: ended]\n`,
   "TLT/feeds/个人.md": `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n- ${D} 记一下周报自动化\n`,
-  "TLT/feeds/我的工作动态.md": `---\ntitle: 我的工作动态\nowner: me\nmine: true\n---\n\n- ${D} 抽检口径 V2 定稿 [kind:: note]\n`,
-  ["TLT/logs/" + D.slice(0, 7) + ".md"]: `# 记录\n\n## ${D}\n\n- 09:30–11:00 抽检口径核对 [proj:: MinerU]\n  > 三处差异\n- 11:00–11:40 需求对齐会 [extra:: true]\n`,
+  "TLT/feeds/我的动态.md": `---\ntitle: 我的动态\nowner: me\nmine: true\n---\n\n- ${D} 示例口径 V2 定稿 [kind:: note]\n`,
+  ["TLT/logs/" + D.slice(0, 7) + ".md"]: `# 记录\n\n## ${D}\n\n- 09:30–11:00 示例记录：核对口径 [proj:: 示例工具]\n  > 三处差异\n- 11:00–11:40 需求对齐会 [extra:: true]\n`,
   "TLT/ideas.md": `# 想法池\n\n- 回归工具化 [type:: 工具] [stage:: 待验证] [star:: 2] [at:: ${D}]\n- 写论文 [type:: 论文] [stage:: 沉淀] [star:: 3] [at:: ${D}]\n  > 语法即护栏\n`,
 };
 
 const fm = {
   "TLT/team/我.md": { role: "负责人", capacity: 100, days: 5, skills: ["决策"], status: "active" },
-  "TLT/team/许可儿.md": { role: "算法工程师", capacity: 80, days: 4, skills: ["评测"], status: "active" },
-  "TLT/team/卢冠宇.md": { role: "算法工程师", capacity: 100, days: 5 },
-  "TLT/feeds/部门消息通知.md": { title: "部门消息通知", owner: "孙晙书" },
-  "TLT/feeds/我的工作动态.md": { title: "我的工作动态", owner: "me", mine: true },
+  "TLT/team/张三.md": { role: "算法工程师", capacity: 80, days: 4, skills: ["评测"], status: "active" },
+  "TLT/team/王五.md": { role: "算法工程师", capacity: 100, days: 5 },
+  "TLT/feeds/部门通知.md": { title: "部门通知", owner: "示例同事" },
+  "TLT/feeds/我的动态.md": { title: "我的动态", owner: "me", mine: true },
   "TLT/feeds/个人.md": { title: "个人", personal: true, owner: "me" },
 };
 
+const createdFolders = [];
 const vault = {
   getMarkdownFiles: () => Object.keys(files).map((p) => new TFile(p)),
   cachedRead: async (f) => files[f.path] ?? "",
   getAbstractFileByPath: (p) => (p in files ? new TFile(p) : null),
   process: async (f, fn) => { files[f.path] = fn(files[f.path]); },
   create: async (p, c) => { files[p] = c; },
-  createFolder: async () => {},
+  createFolder: async (p) => { createdFolders.push(p); },
   on: () => ({}),
 };
 const app = { vault, metadataCache: { getFileCache: (f) => ({ frontmatter: fm[f.path] }) }, workspace: { getLeavesOfType: () => [], getLeaf: () => ({}) } };
 
 const store = new Store(app, {
   tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
-  logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的工作动态",
+  logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的动态",
 });
 await store.load();
 
@@ -150,11 +151,11 @@ await t("任务 5 条、记录 2 条", () => {
 });
 await t("里程碑从 H2 解析", () => {
   const ms = store.milestones().map((m) => m.name).sort();
-  assert.deepEqual(ms, ["V0.7.4 月报", "抽检与调优", "推广"]);
+  assert.deepEqual(ms, ["V0.7.4 月报", "抽样与调优", "推广"]);
 });
 await t("人员 3 位、产能读到", () => {
   assert.equal(store.staff.length, 3);
-  assert.equal(store.staff.find((s) => s.name === "许可儿").capacity, 80);
+  assert.equal(store.staff.find((s) => s.name === "张三").capacity, 80);
 });
 await t("消息源 3 个（含个人）、消息 4 条", () => {
   assert.equal(store.feeds.length, 3);
@@ -174,10 +175,10 @@ await t("想法正文（为什么做）能写回并重读", async () => {
   const it = store.ideas.find((x) => x.title === "test");
   assert.ok(it, "没写入");
   assert.deepEqual(it.tags, ["论文", "测试"]);
-  it.body = "因为每次都要人工抽检";
+  it.body = "因为每次都要人工抽样";
   await store.updateIdea(it);
   await store.load();
-  assert.equal(store.ideas.find((x) => x.title === "test").body, "因为每次都要人工抽检");
+  assert.equal(store.ideas.find((x) => x.title === "test").body, "因为每次都要人工抽样");
 });
 
 /* ---------- 5) 渲染冒烟 ---------- */
@@ -187,7 +188,7 @@ const plugin = {
     root: "TLT", defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
     logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md",
     theme: "auto", hubPublish: "http://127.0.0.1:8787", hubSync: "http://127.0.0.1:8788",
-    autoSyncMin: 15, autoPushMin: 0, mineFeed: "我的工作动态", feedIds: {}, feedNames: {},
+    autoSyncMin: 15, autoPushMin: 0, mineFeed: "我的动态", feedIds: {}, feedNames: {},
   },
   store,
   isLight: () => false,
@@ -204,6 +205,18 @@ const plugin = {
 };
 
 const leaf = { app };
+
+/** 真实插件实例（设置页测试要用它，才能覆盖 applyRootChange 等真实逻辑） */
+function makePlugin(overrides = {}) {
+  const inst = new TLTPlugin(app, { id: "tlt-timeline-things", dir: "tlt-timeline-things" });
+  inst.settings = { ...plugin.settings, ...overrides };
+  inst.store = store;
+  store.settings = inst.settings;
+  inst.saveData = async () => {};
+  inst.refreshAll = () => {};
+  inst.applyTheme = () => {};
+  return inst;
+}
 
 function mount(cls) {
   const v = new cls(leaf, plugin);
@@ -243,7 +256,7 @@ await t("任务视图：工作/个人 标签筛选", async () => {
   btns.find((b) => b.textContent === "个人").dispatchEvent(new MouseEvent("click", { bubbles: true }));
   const only = document.querySelectorAll(".tlt-task").length;
   assert.ok(only > 0 && only < all, `个人筛选后 ${only}/${all}`);
-  assert.ok(document.body.textContent.includes("给论文画图"), "个人任务没出现");
+  assert.ok(document.body.textContent.includes("示例任务：画图"), "个人任务没出现");
 });
 
 await t("页签顺序：任务后是里程碑，随手记后是随手画", async () => {
@@ -266,13 +279,13 @@ await t("搜索：能筛任务，且输入焦点不丢", async () => {
   const all = document.querySelectorAll(".tlt-task").length;
   const input = document.querySelector("[data-search]");
   input.focus();
-  input.value = "抽检";
+  input.value = "抽样";
   input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
   await v.render();
   const now = document.querySelectorAll(".tlt-task").length;
   assert.ok(now > 0 && now < all, `筛完 ${now}/${all}`);
   const again = document.querySelector("[data-search]");
-  assert.equal(again.value, "抽检", "搜索词被清掉");
+  assert.equal(again.value, "抽样", "搜索词被清掉");
   assert.equal(document.activeElement, again, "焦点丢了");
 });
 
@@ -363,7 +376,7 @@ await t("源名称可改，id 不变", async () => {
 
 await t("设置页：无顶级标题、分节顺序、动作按钮", async () => {
   document.body.empty();
-  const tab = new TLTSettingTab(app, plugin);
+  const tab = new TLTSettingTab(app, makePlugin());
   tab.containerEl = document.createElement("div");
   tab.renderSettings();
   const el2 = tab.containerEl;
@@ -391,7 +404,7 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
 
 await t("设置页：改根目录会同步六个路径，自定义项不动", async () => {
   document.body.empty();
-  const p2 = { ...plugin, settings: { ...plugin.settings }, saveSettings: async () => {} };
+  const p2 = makePlugin();
   const tab = new TLTSettingTab(app, p2);
   tab.containerEl = document.createElement("div");
   tab.renderSettings();
@@ -420,6 +433,41 @@ await t("设置页：改根目录会同步六个路径，自定义项不动", as
   assert.equal(p2.settings.root, "Other");
   assert.equal(p2.settings.tasksFolder, "Other/tasks", "其余项应跟随新根目录");
   assert.equal(p2.settings.teamFolder, "我的/团队", "自定义过的那项被覆盖了");
+});
+
+await t("设置页：声明式改根目录同样同步六项并建目录", async () => {
+  document.body.empty();
+  const inst = makePlugin();
+  const tab = new TLTSettingTab(app, inst);
+  tab.containerEl = document.createElement("div");
+  await tab.setControlValue("root", "90-插件运营区");
+  assert.equal(inst.settings.root, "90-插件运营区");
+  assert.equal(inst.settings.tasksFolder, "90-插件运营区/tasks", `声明式没同步：${inst.settings.tasksFolder}`);
+  assert.equal(inst.settings.tagsFile, "90-插件运营区/tags.md");
+  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区")), `没建目录，建了：${createdFolders.join(",")}`);
+});
+
+await t("设置页：路径改乱后「按根目录重排」能拉回来", async () => {
+  const inst = makePlugin({ root: "库/TLT", tasksFolder: "乱写的/任务" });
+  inst.alignPathsToRoot = TLTPlugin.prototype.alignPathsToRoot.bind(inst);
+  await inst.alignPathsToRoot();
+  assert.equal(inst.settings.tasksFolder, "库/TLT/tasks", "没拉回来");
+  assert.equal(inst.settings.logsFolder, "库/TLT/logs");
+});
+
+await t("示例数据不含真实姓名与项目名", async () => {
+  const inst = makePlugin();
+  const created = [];
+  // 只记录、不真写，避免污染后面用同一个假 vault 的用例
+  const realCreate = app.vault.create;
+  app.vault.create = async (p, c) => { created.push([p, c]); return { path: p }; };
+  await inst.seedDemo();
+  app.vault.create = realCreate;
+  const all = created.map(([p, c]) => p + "\n" + c).join("\n");
+  ["孙晙书", "许可儿", "刘戎阳", "卢冠宇", "胡昕宇", "千数万问", "MinerU", "TRC"].forEach((bad) => {
+    assert.ok(!all.includes(bad), `示例数据里还有真实信息：${bad}`);
+  });
+  assert.ok(all.includes("示例项目") || all.includes("示例成员"), "示例数据应该有明显是占位的内容");
 });
 
 await t("星图滚轮缩放", async () => {
@@ -649,12 +697,12 @@ await t("消息中心：点源 → 右栏换面板；再点 → 回概览", asyn
   document.body.empty();
   const mv = mount(MessagesView);
   await mv.onOpen();
-  const mineRow = [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("我的工作动态"));
+  const mineRow = [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("我的动态"));
   mineRow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   let title = document.querySelector(".tlt-fm-side .tlt-d-title").textContent;
-  assert.ok(title.includes("我的工作动态"), `右栏还是 ${title}`);
+  assert.ok(title.includes("我的动态"), `右栏还是 ${title}`);
   assert.ok([...document.querySelectorAll(".tlt-d-act button")].some((b) => b.textContent.includes("取消发布")), "没有取消发布");
-  const again = [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("我的工作动态"));
+  const again = [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("我的动态"));
   again.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   title = document.querySelector(".tlt-fm-side .tlt-d-title").textContent;
   assert.equal(title, "消息源管理");
@@ -665,16 +713,16 @@ await t("消息中心：单击只选一个，⌘ 点才多选", async () => {
   const mv = mount(MessagesView);
   await mv.onOpen();
   const rows = [...document.querySelectorAll(".tlt-fr")].filter((r) => r.textContent.trim());
-  rows.find((r) => r.textContent.includes("部门消息通知")).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  rows.find((r) => r.textContent.includes("部门通知")).dispatchEvent(new MouseEvent("click", { bubbles: true }));
   const n1 = document.querySelectorAll(".tlt-card").length;
-  [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("我的工作动态"))
+  [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("我的动态"))
     .dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true }));
   const n2 = document.querySelectorAll(".tlt-card").length;
   assert.equal(document.querySelectorAll(".tlt-fr.on").length, 2, "没有多选");
   assert.ok(n2 >= n1, "多选后消息数没变多");
   assert.equal(document.querySelector(".tlt-fm-side .tlt-d-title").textContent, "已选 2 个源");
   // 单击换成单个，右栏应该回到"某个源"的管理面板
-  [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("部门消息通知"))
+  [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("部门通知"))
     .dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(document.querySelectorAll(".tlt-fr.on").length, 1, "单击没有收敛成单选");
@@ -684,7 +732,7 @@ await t("消息中心：点消息开弹框（不改筛选）", async () => {
   document.body.empty();
   const mv = mount(MessagesView);
   await mv.onOpen();
-  [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("部门消息通知"))
+  [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("部门通知"))
     .dispatchEvent(new MouseEvent("click", { bubbles: true }));
   const before = document.querySelectorAll(".tlt-card").length;
   document.querySelector(".tlt-card").dispatchEvent(new MouseEvent("click", { bubbles: true }));

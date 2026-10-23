@@ -41,39 +41,39 @@ const T = iso(new Date(now.getTime() + 864e5));
 const MONTH = D.slice(0, 7);
 
 const files: Record<string, string> = {
-  "TLT/tasks/千数万问.md": `# 千数万问
+  "TLT/tasks/示例项目.md": `# 示例项目
 
 ## V0.7.4 月报
 
-- [ ] 月报定稿 🛫 ${D} 📅 ${D} [wl:: 30] [pri:: 2] [owner:: [[我]]]
+- [ ] 示例任务：报告定稿 🛫 ${D} 📅 ${D} [wl:: 30] [pri:: 2] [owner:: [[我]]]
   - [ ] 汇总 10 月场景数据
-  - [ ] 与胡昕宇对口径
+  - [ ] 与赵六对口径
 - [ ] 汇总场景数据 📅 ${T} [wl:: 10] [owner:: [[我]]]
 
 ## 推广
 
-- [ ] 湖南 kickoff 📅 ${T} [wl:: 15] [owner:: [[我]]]
-- [ ] 给论文画图 📅 ${D} [wl:: 10] [scope:: 个人] [tags:: 论文]
+- [ ] 示例里程碑：启动 📅 ${T} [wl:: 15] [owner:: [[我]]]
+- [ ] 示例任务：画图 📅 ${D} [wl:: 10] [scope:: 个人] [tags:: 论文]
 `,
-  "TLT/tasks/MinerU.md": `# MinerU
+  "TLT/tasks/示例工具.md": `# 示例工具
 
-## 抽检与调优
+## 抽样与调优
 
-- [ ] 抽检 100 份 🛫 ${D} 📅 ${D} [wl:: 40] [pw:: w] [owner:: [[卢冠宇]]]
+- [ ] 处理 100 份 🛫 ${D} 📅 ${D} [wl:: 40] [pw:: w] [owner:: [[王五]]]
 `,
   "TLT/team/我.md": `---\ntlt: staff\nrole: 实验室负责人\ncapacity: 100\ndays: 5\nskills: [决策]\nstatus: active\n---\n`,
-  "TLT/team/许可儿.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [评测]\nstatus: active\n---\n`,
-  "TLT/team/刘戎阳.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 90\ndays: 5\nskills: [仿真]\nstatus: active\n---\n`,
-  "TLT/team/卢冠宇.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [解析]\nstatus: active\n---\n`,
-  "TLT/team/胡昕宇.md": `---\ntlt: staff\nrole: 产品经理\ncapacity: 100\ndays: 5\nskills: [需求]\nstatus: active\n---\n`,
+  "TLT/team/张三.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [评测]\nstatus: active\n---\n`,
+  "TLT/team/李四.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 90\ndays: 5\nskills: [仿真]\nstatus: active\n---\n`,
+  "TLT/team/王五.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [解析]\nstatus: active\n---\n`,
+  "TLT/team/赵六.md": `---\ntlt: staff\nrole: 产品经理\ncapacity: 100\ndays: 5\nskills: [需求]\nstatus: active\n---\n`,
   "TLT/feeds/个人.md": `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n- ${D} 记一下周报自动化\n  > 从 tasks 聚合 + 模板渲染。\n`,
-  "TLT/feeds/我的工作动态.md": `---\ntitle: 我的工作动态\nowner: me\nmine: true\ncadence: 随手发\n---\n\n- ${D} 抽检口径 V2 定稿 [kind:: note]\n`,
-  "TLT/feeds/部门消息通知.md": `---\ntitle: 部门消息通知\nowner: 孙晙书\ncadence: 每周 2–3 条\n---\n\n- ${D} 部门宣贯 [kind:: ask] [place:: 三楼] [star:: true]\n  > 覆盖全员\n- ${T} 团建 [kind:: event]\n`,
-  "TLT/feeds/领导交办.md": `---\ntitle: 领导交办\nowner: 我\nmine: true\ncadence: 随时\n---\n\n- ${D} POC 提前到 11 月中 [kind:: risk] [place:: 周会] [star:: true]\n`,
-  [`TLT/logs/${MONTH}.md`]: `# 记录 ${MONTH}\n\n## ${D}\n\n- 09:30–11:00 抽检口径核对 [proj:: MinerU]\n  > 三处差异\n- 11:00–11:40 需求对齐会 [extra:: true]\n`,
+  "TLT/feeds/我的动态.md": `---\ntitle: 我的动态\nowner: me\nmine: true\ncadence: 随手发\n---\n\n- ${D} 示例口径 V2 定稿 [kind:: note]\n`,
+  "TLT/feeds/部门通知.md": `---\ntitle: 部门通知\nowner: 示例同事\ncadence: 每周 2–3 条\n---\n\n- ${D} 部门宣贯 [kind:: ask] [place:: 三楼] [star:: true]\n  > 覆盖全员\n- ${T} 团建 [kind:: event]\n`,
+  "TLT/feeds/上级交办.md": `---\ntitle: 上级交办\nowner: 我\nmine: true\ncadence: 随时\n---\n\n- ${D} 示例风险：排期提前 [kind:: risk] [place:: 周会] [star:: true]\n`,
+  [`TLT/logs/${MONTH}.md`]: `# 记录 ${MONTH}\n\n## ${D}\n\n- 09:30–11:00 示例记录：核对口径 [proj:: 示例工具]\n  > 三处差异\n- 11:00–11:40 需求对齐会 [extra:: true]\n`,
   "TLT/ideas.md": `# 想法池
 
-- 把抽检脚本做成通用回归工具 [type:: 工具] [stage:: 待验证] [at:: ${D}]
+- 把常用脚本做成通用回归工具 [type:: 工具] [stage:: 待验证] [at:: ${D}]
 - 空间检索能不能写成论文 [type:: 论文] [stage:: 沉淀] [at:: ${D}]
 - ETC 门架做路网体检 [type:: 专利] [stage:: 沉淀] [at:: ${D}]
 `,
@@ -116,7 +116,7 @@ const app = {
 
 const store = new Store(app as any, {
   tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
-  logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的工作动态",
+  logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的动态",
 } as any);
 
 const plugin = {

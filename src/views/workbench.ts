@@ -658,7 +658,7 @@ export class WorkbenchView extends ItemView {
     const p = el("div", "tlt-pane");
     const cap = el("div", "tlt-cap");
     const i = el("input");
-    i.placeholder = "随手记一句，前面可以加 #标签，例：#论文 #回归 把抽检脚本做成工具";
+    i.placeholder = "随手记一句，前面可以加 #标签，例：#论文 #灵感 把常用脚本整理成工具";
     i.dataset.ideanew = "1";
     const plus = el("button", "tlt-btn lg", "＋ 随手记");
     plus.dataset.ideanewmodal = "1";

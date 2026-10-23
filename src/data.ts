@@ -285,7 +285,7 @@ export function newMsgLine(m: Partial<Msg> & { title: string }): string {
 /**
  * 月文件：
  * ## 2026-10-20
- * - 09:30–11:00 抽检口径核对 [proj:: MinerU] [kind:: log] [extra:: false]
+ * - 09:30–11:00 做了什么 [proj:: 示例项目] [kind:: log] [extra:: false]
  *   > 正文
  */
 export function parseLogMonth(content: string, file: string): Task[] {

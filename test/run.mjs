@@ -21,15 +21,15 @@ const t = (name, fn) => {
 console.log("data.ts");
 
 t("任务行：标题/日期/占比/优先级/负责人", () => {
-  const line = "- [ ] 抽检报告 🛫 2026-10-20 📅 2026-10-25 [wl:: 30] [pri:: 2] [owner:: [[许可儿]], [[我]]]";
-  const task = d.parseTaskLine(line, { file: "TLT/tasks/MinerU.md", line: 3, project: "MinerU", milestone: "抽检与调优" });
-  assert.equal(task.title, "抽检报告");
+  const line = "- [ ] 抽样报告 🛫 2026-10-20 📅 2026-10-25 [wl:: 30] [pri:: 2] [owner:: [[张三]], [[我]]]";
+  const task = d.parseTaskLine(line, { file: "TLT/tasks/示例工具.md", line: 3, project: "示例工具", milestone: "抽样与调优" });
+  assert.equal(task.title, "抽样报告");
   assert.equal(task.start, "2026-10-20");
   assert.equal(task.due, "2026-10-25");
   assert.equal(task.wl, 30);
   assert.equal(task.pri, 2);
-  assert.deepEqual(task.owners, ["许可儿", "我"]);
-  assert.equal(task.milestone, "抽检与调优");
+  assert.deepEqual(task.owners, ["张三", "我"]);
+  assert.equal(task.milestone, "抽样与调优");
   assert.equal(task.done, false);
 });
 
@@ -77,7 +77,7 @@ t("新任务行：生成后能被解析回来", () => {
 t("消息行", () => {
   const m = d.parseMsgLine(
     "- 2026-10-21 部门宣贯 [kind:: ask] [place:: 三楼会议室] [star:: true] [pin:: 九月复盘]",
-    "部门消息通知",
+    "部门通知",
     ["  > 领导要求本周内完成"]
   );
   assert.equal(m.date, "2026-10-21");
@@ -90,19 +90,19 @@ t("消息行", () => {
 });
 
 t("记录月文件：按 ## 日期分节", () => {
-  const md = `# 记录 2026-10\n\n## 2026-10-20\n\n- 09:30–11:00 抽检口径核对 [proj:: 千数万问]\n  > 三处差异写进 V2\n- 11:00–11:40 需求对齐会 [extra:: true]\n\n## 2026-10-21\n\n- 14:00–15:00 评审 [proj:: TRC]\n`;
+  const md = `# 记录 2026-10\n\n## 2026-10-20\n\n- 09:30–11:00 示例记录：核对口径 [proj:: 示例项目]\n  > 三处差异写进 V2\n- 11:00–11:40 需求对齐会 [extra:: true]\n\n## 2026-10-21\n\n- 14:00–15:00 评审 [proj:: TRC]\n`;
   const list = d.parseLogMonth(md, "TLT/logs/2026-10.md");
   assert.equal(list.length, 3);
   assert.equal(list[0].due, "2026-10-20");
   assert.equal(list[0].st, "09:30");
   assert.equal(list[0].en, "11:00");
-  assert.equal(list[0].project, "千数万问");
+  assert.equal(list[0].project, "示例项目");
   assert.equal(list[1].extra, true);
   assert.equal(list[2].due, "2026-10-21");
 });
 
 t("人员档案", () => {
-  const s = d.parseStaff("许可儿", "TLT/team/许可儿.md", { role: "算法工程师", capacity: 80, days: 4, skills: ["评测", "数据集"], status: "active" });
+  const s = d.parseStaff("张三", "TLT/team/张三.md", { role: "算法工程师", capacity: 80, days: 4, skills: ["评测", "数据集"], status: "active" });
   assert.equal(s.capacity, 80);
   assert.equal(s.days, 4);
   assert.deepEqual(s.skills, ["评测", "数据集"]);
@@ -149,7 +149,7 @@ t("饱和度：人天 ÷ 可用人天", () => {
 
 t("订阅地址清洗", () => {
   const c = d.cleanFeedUrl;
-  assert.equal(c("@url:`http://127.0.0.1:8787/feed?id=部门消息通知`"), "http://127.0.0.1:8787/feed?id=部门消息通知");
+  assert.equal(c("@url:`http://127.0.0.1:8787/feed?id=部门通知`"), "http://127.0.0.1:8787/feed?id=部门通知");
   assert.equal(c("url: http://x/y"), "http://x/y");
   assert.equal(c("  <http://127.0.0.1:8787/feed?id=a>  "), "http://127.0.0.1:8787/feed?id=a");
   assert.equal(c("@URL：http://x"), "http://x");
@@ -179,9 +179,9 @@ t("想法语法：@ 不再参与（会留在标题里）", () => {
 });
 
 t("任务快捷语法", () => {
-  const r = d.parseQuick("抽检报告 #抽检与调优 明天 !!");
-  assert.equal(r.title, "抽检报告");
-  assert.equal(r.milestone, "抽检与调优");
+  const r = d.parseQuick("抽样报告 #抽样与调优 明天 !!");
+  assert.equal(r.title, "抽样报告");
+  assert.equal(r.milestone, "抽样与调优");
   assert.equal(r.pri, 3);
   assert.equal(r.due, d.addDays(d.todayISO(), 1));
 });

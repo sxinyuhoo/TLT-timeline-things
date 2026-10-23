@@ -1,12 +1,12 @@
 import {
-  App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, TFile, normalizePath, requestUrl,
+  App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, normalizePath, requestUrl,
   type SettingDefinition, type SettingDefinitionItem,
 } from "obsidian";
 import { Store, TLTSettings, DEFAULT_SETTINGS, pathsFromRoot, PATH_KEYS } from "./store";
 import { WorkbenchView, VIEW_TYPE_WORKBENCH } from "./views/workbench";
 import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
 import { QuickTaskModal } from "./views/modals";
-import { todayISO, type Period } from "./data";
+import { todayISO, asText, type Period } from "./data";
 
 type ThemeMode = "auto" | "light" | "dark";
 
@@ -36,7 +36,7 @@ const DEFAULTS: Settings = {
   autoPushMin: 0,
 };
 
-export default class TLTPlugin extends Plugin {
+export class TLTPlugin extends Plugin {
   settings: Settings;
   store: Store;
   private hub = { publish: "", sync: "", lastSync: "", lastResult: "", lastError: "" };
@@ -225,87 +225,101 @@ export default class TLTPlugin extends Plugin {
     }
   }
 
+  /**
+   * 写入一份**虚构**的示例数据，方便先看界面。
+   * 这里的所有人名、项目、消息都是编的占位内容，不含任何真实信息。
+   * 已存在的文件一律不覆盖。
+   */
   async seedDemo() {
     const s = this.store.settings;
     await this.store.ensureVault();
     const w = async (path: string, content: string) => {
       const p = normalizePath(path);
-      const f = this.app.vault.getAbstractFileByPath(p);
-      if (f instanceof TFile) return;
+      if (this.app.vault.getAbstractFileByPath(p)) return;
       await this.app.vault.create(p, content);
     };
-
-    await w(`${s.teamFolder}/我.md`, `---\ntlt: staff\nrole: 实验室负责人\ncapacity: 100\ndays: 5\nskills: [决策, 算法]\nstatus: active\n---\n`);
-    await w(`${s.teamFolder}/许可儿.md`, `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [评测, 数据集]\nstatus: active\n---\n`);
-    await w(`${s.teamFolder}/刘戎阳.md`, `---\ntlt: staff\nrole: 算法工程师\ncapacity: 90\ndays: 5\nskills: [交通仿真, 接口]\nstatus: active\n---\n`);
-
     const d = todayISO();
-    await w(`${s.tasksFolder}/千数万问.md`, `# 千数万问
 
-## V0.7.4 月报
+    await w(`${s.teamFolder}/示例成员.md`, `---\ntlt: staff\nrole: 负责人\ncapacity: 100\ndays: 5\nskills: [决策, 评审]\nstatus: active\n---\n`);
+    await w(`${s.teamFolder}/张三.md`, `---\ntlt: staff\nrole: 工程师\ncapacity: 100\ndays: 5\nskills: [实现, 文档]\nstatus: active\n---\n`);
+    await w(`${s.teamFolder}/李四.md`, `---\ntlt: staff\nrole: 工程师\ncapacity: 90\ndays: 5\nskills: [测试, 数据]\nstatus: active\n---\n`);
 
-- [ ] 月报定稿 🛫 ${d} 📅 ${d} [est:: 1.5] [pri:: 2] [owner:: [[我]]]
-  - [ ] 汇总 10 月场景数据
-  - [ ] 与胡昕宇对口径
+    await w(`${s.tasksFolder}/示例项目.md`, `# 示例项目
 
-## 10 月场景推广
+## 第一阶段
 
-- [ ] 湖南 / 江苏 kickoff 📅 ${d} [est:: 0.5] [owner:: [[我]]]
+- [ ] 这是示例任务，换成你自己的 🛫 ${d} 📅 ${d} [est:: 1] [pri:: 2] [owner:: [[示例成员]]]
+  - [ ] 这是子步骤，用两格缩进
+  - [ ] 勾选会写回这一行
+- [ ] 示例任务：没有里程碑的也可以 📅 ${d} [est:: 0.5] [owner:: [[张三]]]
 `);
-    await w(`${s.tasksFolder}/TRC 论文.md`, `# TRC 论文
 
-## L0 基准与实验
-
-- [ ] L0 基准评测 · 数据集构建 🛫 ${d} 📅 ${d} [est:: 6] [pw:: q] [owner:: [[许可儿]]]
-  - [ ] 抽 50 条做人工校验
-  - [ ] 冻结 benchmark 脚本
-`);
-    await w(`${s.feedsFolder}/我的工作动态.md`, `---
-title: 我的工作动态
+    await w(`${s.feedsFolder}/我的消息源.md`, `---
+title: 我的消息源
 owner: me
 mine: true
 cadence: 随手发
-desc: 我发布给组里看的进展与结论
+desc: 我发布出去的动态
 ---
 
-# 我的工作动态
+# 我的消息源
 
-- ${d} 抽检口径 V2 已定稿 [kind:: note] [place:: 会议室] [star:: true]
-  > 三处差异写进 V2，周五前按新口径重跑。
+- ${d} 示例消息：这条会出现在消息中心 [star:: true]
+  > 正文写在缩进的引用里，可以留空。
 `);
-    await w(`${s.feedsFolder}/部门消息通知.md`, `---
-title: 部门消息通知
-owner: 孙晙书
-cadence: 每周 2–3 条
-desc: 宣贯、团建、制度变更、值班安排
----
 
-# 部门消息通知
-
-- ${d} 部门宣贯：四季度安全与合规要求 [kind:: ask] [place:: 三楼会议室] [state:: live]
-  > 领导要求本周内完成，覆盖全员，保留签到记录。
-`);
-    await w(s.logsFolder + `/${d.slice(0, 7)}.md`, `# 记录 ${d.slice(0, 7)}
+    await w(`${s.logsFolder}/${d.slice(0, 7)}.md`, `# 记录 ${d.slice(0, 7)}
 
 ## ${d}
 
-- 09:30–11:00 抽检口径核对 [proj:: 千数万问]
-  > 和冠宇对了三处口径：表格跨页合并、公式回填、扫描页方向。
-- 11:00–11:40 需求对齐会 [proj:: 千数万问] [extra:: true]
-  > 被叫去对齐 POC 范围，周五前一页纸。
+- 09:30–11:00 示例记录：做了什么 [proj:: 示例项目]
+  > 记录是"实际发生"的时间块，和任务的"计划"分开。
+- 11:00–11:40 示例记录：临时的会议 [extra:: true]
+  > 标 [extra:: true] 表示计划外插入。
 `);
-    await w(s.ideasFile, `# 想法池
 
-- 把抽检脚本做成通用回归工具 [type:: 工具] [stage:: 待验证] [star:: 2] [at:: ${d}] [src:: 抽检时]
-  > 现在每次迭代都要人工抽 100 份，脚本散在各处。
-- 空间检索的语法即护栏 [type:: 论文] [stage:: 沉淀] [star:: 3] [at:: ${d}] [src:: 写论文时]
+    await w(s.ideasFile, `# 随手记
+
+- 示例随手记：一行一条，用 #标签 归类 [at:: ${d}]
+  > 正文可选，写"为什么记下来"最有用。
+- 示例随手记：看到就记，不用想放哪个项目 [tags:: 示例] [at:: ${d}]
 `);
 
     await this.store.load();
     this.refreshAll();
-    new Notice("示例数据已生成");
+    new Notice("已写入示例数据（内容都是编的，可直接删）");
+  }
+
+  /**
+   * 根目录变了：只把"还等于旧默认值"的那几项挪过去，用户单独改过的不动。
+   * 声明式设置与命令式设置都走这里，避免两条路径行为不一致。
+   */
+  async applyRootChange(nextRoot: string) {
+    const s = this.settings;
+    const next = nextRoot.trim().replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+    if (next === s.root) return { moved: 0, kept: 0 };
+    const before = pathsFromRoot(s.root);
+    const after = pathsFromRoot(next);
+    let moved = 0, kept = 0;
+    s.root = next;
+    PATH_KEYS.forEach((k) => {
+      if (s[k] === before[k]) { s[k] = after[k]; moved++; } else kept++;
+    });
+    await this.saveSettings();
+    await this.store.ensureVault();      // 立刻把新目录建出来，不用等重启
+    return { moved, kept };
+  }
+
+  /** 把六项强制对齐到根目录（用户把路径改乱之后的修复入口） */
+  async alignPathsToRoot() {
+    const s = this.settings;
+    Object.assign(s, pathsFromRoot(s.root));
+    await this.saveSettings();
+    await this.store.ensureVault();
   }
 }
+
+export default TLTPlugin;
 
 /**
  * 设置页。
@@ -373,10 +387,20 @@ export class TLTSettingTab extends PluginSettingTab {
 
   /** 声明式界面改完值之后的副作用（主题要立刻应用） */
   async setControlValue(key: string, value: unknown): Promise<void> {
+    if (key === "root") {
+      const r = await this.plugin.applyRootChange(asText(value));
+      new Notice(r.kept
+        ? `根目录已更新，${r.kept} 项自定义路径保持不变`
+        : "根目录已更新");
+      this.renderSettings();
+      return;
+    }
     const bag = this.plugin.settings as unknown as Record<string, unknown>;
     bag[key] = value;
     await this.plugin.saveSettings();
     if (key === "theme") this.plugin.applyTheme();
+    // 改了目录就顺手把新目录建出来
+    if ((PATH_KEYS as readonly string[]).includes(key)) await this.plugin.store.ensureVault();
   }
 
   /** 老版本客户端（< 1.13）只认 display()，转发到 renderSettings 以便内部重建这一页 */
@@ -414,21 +438,15 @@ export class TLTSettingTab extends PluginSettingTab {
       .addText((t) => {
         t.setPlaceholder(d.root).setValue(p.settings.root ?? d.root);
         const commit = () => {
-          const next = t.inputEl.value.trim().replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+          const next = t.inputEl.value.trim();
           if (next === p.settings.root) return;
-          const before = pathsFromRoot(p.settings.root);
-          const after = pathsFromRoot(next);
-          const kept: string[] = [];
-          p.settings.root = next;
-          PATH_KEYS.forEach((k) => {
-            if (p.settings[k] === before[k]) p.settings[k] = after[k];
-            else kept.push(k);
-          });
-          void p.saveSettings();
-          new Notice(kept.length
-            ? `根目录已更新，${kept.length} 项自定义路径保持不变`
-            : `根目录已改为 ${next || "（库根目录）"}`);
-          this.renderSettings();
+          void (async () => {
+            const r = await p.applyRootChange(next);
+            new Notice(r.kept
+              ? `根目录已更新，${r.kept} 项自定义路径保持不变`
+              : `根目录已改为 ${next || "（库根目录）"}，目录已就位`);
+            this.renderSettings();
+          })();
         };
         t.inputEl.addEventListener("blur", commit);
         t.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") t.inputEl.blur(); });
@@ -445,7 +463,7 @@ export class TLTSettingTab extends PluginSettingTab {
             const v = t.inputEl.value.trim();
             if (v === p.settings[name]) return;
             p.settings[name] = v;
-            void p.saveSettings();
+            void p.saveSettings().then(() => p.store.ensureVault());
             new Notice("目录已更新");
           };
           t.inputEl.addEventListener("blur", commit);
@@ -512,8 +530,18 @@ export class TLTSettingTab extends PluginSettingTab {
     /* ---------- 维护 ---------- */
     new Setting(containerEl).setName("维护").setHeading();
     new Setting(containerEl)
+      .setName("按根目录重排六个路径")
+      .setDesc("把下面六项重新对齐到当前根目录。路径被改乱、或改了根目录后没跟上时用这个；会覆盖你单独设过的路径。")
+      .addButton((b) => b.setButtonText("重排").onClick(() => {
+        void (async () => {
+          await p.alignPathsToRoot();
+          new Notice("六个路径已按根目录重排，目录已就位");
+          this.renderSettings();
+        })();
+      }));
+    new Setting(containerEl)
       .setName("生成示例数据")
-      .setDesc("在目录里写一份最小可用的样例，方便先看效果。已存在的文件不覆盖。")
+      .setDesc("写一份**虚构**的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。")
       .addButton((b) => b.setButtonText("生成").onClick(() => { void p.seedDemo(); }));
     const store = p.store;
     new Setting(containerEl)
