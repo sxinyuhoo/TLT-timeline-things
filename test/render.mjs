@@ -123,6 +123,13 @@ const fm = {
 const createdFolders = [];
 const vault = {
   getMarkdownFiles: () => Object.keys(files).map((p) => new TFile(p)),
+  adapter: {
+    exists: async (p) => p in files,
+    read: async (p) => files[p] ?? "",
+    write: async (p, c) => { files[p] = c; },
+    mkdir: async () => {},
+    remove: async () => {},
+  },
   cachedRead: async (f) => files[f.path] ?? "",
   getAbstractFileByPath: (p) => (p in files ? new TFile(p) : null),
   process: async (f, fn) => { files[f.path] = fn(files[f.path]); },
@@ -211,8 +218,7 @@ const leaf = { app };
 function makePlugin(overrides = {}) {
   const inst = new TLTPlugin(app, { id: "tlt-timeline-things", dir: "tlt-timeline-things" });
   inst.settings = { ...plugin.settings, ...overrides };
-  inst.store = store;
-  store.settings = inst.settings;
+  inst.store = new Store(app, inst.settings);      // 独立 store：设置类用例不动共享那份
   inst.saveData = async () => {};
   inst.refreshAll = () => {};
   inst.applyTheme = () => {};
@@ -388,7 +394,8 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   assert.deepEqual(heads, ["目录", "口径", "消息服务", "维护"], `分节：${heads}`);
   const buttons = [...el2.querySelectorAll("button")].map((b) => b.textContent);
   assert.ok(buttons.includes("推送我的源") && buttons.includes("同步订阅") && buttons.includes("测试连接"), `按钮：${buttons}`);
-  assert.ok(names.includes("按根目录重排六个路径"), `维护里应有重排入口，实际：${names.join(" / ")}`);
+  const rootRow = [...el2.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "根目录");
+  assert.ok(rootRow && [...rootRow.querySelectorAll("button")].some((b) => b.textContent === "更新"), "根目录那一行应有「更新」按钮");
   assert.ok(el2.textContent.includes("当前读取"), "缺少当前读取");
   // 目录项：显示当前值，占位符是默认值
   const inputs = [...el2.querySelectorAll("input")];
@@ -410,8 +417,9 @@ await t("设置页：改根目录会同步六个路径，自定义项不动", as
   const tab = new TLTSettingTab(app, p2);
   tab.containerEl = document.createElement("div");
   tab.renderSettings();
-  const rootInput = [...tab.containerEl.querySelectorAll("input")].find((i) => i.placeholder === "TLT");
-  assert.ok(rootInput, "没有 TLT 根目录输入框");
+  const rootRow2 = [...tab.containerEl.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "根目录");
+  const rootInput = rootRow2?.querySelector("input");
+  assert.ok(rootInput, "没有根目录输入框");
   assert.equal(rootInput.value, "TLT", "根目录没显示当前值");
 
   // 改根目录 → 六项跟着走
@@ -428,12 +436,13 @@ await t("设置页：改根目录会同步六个路径，自定义项不动", as
   tab2.containerEl = document.createElement("div");
   p2.settings.teamFolder = "我的/团队";
   tab2.renderSettings();
-  const root2 = [...tab2.containerEl.querySelectorAll("input")].find((i) => i.placeholder === "TLT");
+  const row3 = [...tab2.containerEl.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "根目录");
+  const root2 = row3?.querySelector("input");
   root2.value = "Other";
   root2.dispatchEvent(new dom.window.Event("blur"));
   await new Promise((r) => setTimeout(r, 30));
   assert.equal(p2.settings.root, "Other");
-  assert.equal(p2.settings.tasksFolder, "Other/tasks", "其余项应跟随新根目录");
+  assert.equal(p2.settings.tasksFolder, "Other/TLT/tasks", "其余项应跟随新根目录");
   assert.equal(p2.settings.teamFolder, "我的/团队", "自定义过的那项被覆盖了");
 });
 
@@ -444,8 +453,8 @@ await t("设置页：声明式改根目录同样同步六项并建目录", async
   tab.containerEl = document.createElement("div");
   await tab.setControlValue("root", "90-插件运营区");
   assert.equal(inst.settings.root, "90-插件运营区");
-  assert.equal(inst.settings.tasksFolder, "90-插件运营区/tasks", `声明式没同步：${inst.settings.tasksFolder}`);
-  assert.equal(inst.settings.tagsFile, "90-插件运营区/tags.md");
+  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", `声明式没同步：${inst.settings.tasksFolder}`);
+  assert.equal(inst.settings.tagsFile, "90-插件运营区/TLT/tags.md");
   assert.ok(createdFolders.some((x) => x.includes("90-插件运营区")), `没建目录，建了：${createdFolders.join(",")}`);
 });
 
@@ -488,16 +497,18 @@ await t("语言切到英文：设置页与工作台文案跟进", async () => {
 
 await t("改目录：只列出要搬的文件，不自己搬", async () => {
   const inst = makePlugin({
-    root: "90-插件运营区", tasksFolder: "90-插件运营区/tasks", teamFolder: "90-插件运营区/team",
-    feedsFolder: "90-插件运营区/feeds", logsFolder: "90-插件运营区/logs",
+    root: "90-插件运营区", tasksFolder: "90-插件运营区/TLT/tasks", teamFolder: "90-插件运营区/TLT/team",
+    feedsFolder: "90-插件运营区/TLT/feeds", logsFolder: "90-插件运营区/TLT/logs",
   });
+  const realList = app.vault.getMarkdownFiles;
   app.vault.getMarkdownFiles = () => [new TFile("TLT/tasks/示例项目.md"), new TFile("TLT/team/张三.md"), new TFile("别处/无关.md")];
   const old = { ...inst.settings, root: "TLT", tasksFolder: "TLT/tasks", teamFolder: "TLT/team",
     feedsFolder: "TLT/feeds", logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md" };
   const moves = inst.planMove(old);
   assert.equal(moves.length, 2, `应只算 TLT 下的两个文件，实际 ${JSON.stringify(moves)}`);
-  assert.equal(moves[0].to, "90-插件运营区/tasks/示例项目.md");
-  assert.equal(moves[1].to, "90-插件运营区/team/张三.md");
+  assert.equal(moves[0].to, "90-插件运营区/TLT/tasks/示例项目.md");
+  assert.equal(moves[1].to, "90-插件运营区/TLT/team/张三.md");
+  app.vault.getMarkdownFiles = realList;      // 还原，别影响后面的用例
 });
 
 await t("时序兜底：视图比插件先就绪时不抛错", async () => {
@@ -545,6 +556,31 @@ await t("时序兜底：某个视图渲染炸了也不影响 onload", async () =
   await inst.onload();                                         // 不应 reject
   app.workspace.getLeavesOfType = () => [];
   assert.ok(true, "onload 被视图异常带崩了");
+});
+
+await t("根目录语义：数据放 <根目录>/TLT 下，留空则用库根目录的 TLT/", async () => {
+  const keep = { ...store.settings };
+  const inst = makePlugin();
+  await inst.applyRootChange("90-插件运营区");
+  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks");
+  assert.equal(inst.settings.ideasFile, "90-插件运营区/TLT/ideas.md");
+  await inst.applyRootChange("");
+  assert.equal(inst.settings.tasksFolder, "TLT/tasks", `留空应回到库根 TLT/，实际 ${inst.settings.tasksFolder}`);
+  await inst.applyRootChange("90-插件运营区/TLT");           // 根目录本身就叫 TLT：不再套一层
+  assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks");
+  Object.assign(store.settings, keep);                       // 还原，别影响后面的用例
+  await store.load();
+});
+
+await t("冷启动：文件已存在时 createSafe 不算失败", async () => {
+  const inst = makePlugin();
+  const realCreate = app.vault.create;
+  files["TLT/tasks/已存在.md"] = "x";          // 索引不认识它，但磁盘上确实有（冷启动）
+  let threw = false;
+  app.vault.create = async () => { throw new Error("File already exists."); };
+  await inst.store.createSafe("TLT/tasks/已存在.md", "x").catch(() => { threw = true; });
+  app.vault.create = realCreate;
+  assert.equal(threw, false, "文件已存在时不该向上抛");
 });
 
 await t("星图滚轮缩放", async () => {

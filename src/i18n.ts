@@ -45,8 +45,10 @@ export const EN: Record<string, string> = {
   /* ---------- 设置：目录 ---------- */
   "目录": "Folders",
   "根目录": "Root folder",
-  "下面六项默认都放在这个目录下；留空表示直接用库的根目录。改这里会一起更新它们，单独改过的那项不会被覆盖。":
-    "The six paths below default to this folder; leave empty to use the vault root. Changing it updates them together, but a path you edited by hand stays as it is.",
+  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。改这里后点旁边的「更新」就位。":
+    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). After changing it, click Update next to it.",
+  "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。改完点右边「更新」就位。":
+    "The TLT folder lives here: the six paths below sit under its TLT subfolder; leave empty to put it at the vault root (i.e. TLT/). After changing it, click Update on the right.",
   "任务目录": "Tasks folder",
   "一个项目一个文件，## 小节是里程碑，任务一行一条。": "One file per project; a ## heading is a milestone; one task per line.",
   "人员目录": "People folder",
@@ -86,10 +88,11 @@ export const EN: Record<string, string> = {
   "立刻把所有「我发布的源」推一遍。": "Push every published feed right now.",
   "从拉取服务同步": "Sync from pull service",
   "立刻拉取一次订阅的源。": "Pull subscribed feeds once, right now.",
-  "按根目录重排六个路径": "Re-align the six paths to the root folder",
-  "把下面六项重新对齐到当前根目录。路径被改乱、或改了根目录后没跟上时用这个；会覆盖你单独设过的路径。":
-    "Re-align the six paths below to the current root folder. Use this when paths got out of sync or you changed the root and they did not follow. It overwrites paths you set by hand.",
-  "重排": "Re-align",
+  "更新": "Update",
+  "按根目录重建六个路径并创建目录": "Rebuild the six paths from the root folder and create the folders",
+  "按上面的根目录重建六个路径并创建目录；旧目录里还有文件时会问你要不要一起搬过去。":
+    "Rebuild the six paths from the root folder above and create the folders; if the old folders still hold files, it asks whether to move them over.",
+  "已按根目录更新六个路径，目录已就位": "Six paths rebuilt from the root folder; folders are ready",
   "生成示例数据": "Generate sample data",
   "写一份虚构的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。":
     "Write a fictional sample (made-up names and projects) so you can see the UI. Existing files are never overwritten.",

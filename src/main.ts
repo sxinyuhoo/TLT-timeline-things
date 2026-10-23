@@ -135,6 +135,8 @@ export class TLTPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("create", reload));
     this.registerEvent(this.app.vault.on("delete", reload));
     this.registerEvent(this.app.vault.on("rename", reload));
+    // 换主题（或跟随系统日夜切换）时重新落一次令牌类
+    this.registerEvent(this.app.workspace.on("css-change", () => this.applyTheme()));
 
     // 重启后 Obsidian 会恢复上次打开的视图，那时 store 还是空的；数据读完必须补一次重画。
     // 这一步绝不能把 onload 带崩：视图自己出问题不该让插件「加载失败」。
@@ -171,14 +173,27 @@ export class TLTPlugin extends Plugin {
 
   /* ---------- 主题 ---------- */
 
+  /** Obsidian 现在是深是浅（类可能挂在 body 或 html 上，都问一遍，最后按背景亮度兜底） */
+  private obsidianIsDark(): boolean {
+    const cls = `${document.body.className} ${document.documentElement.className}`;
+    if (/\btheme-dark\b/.test(cls)) return true;
+    if (/\btheme-light\b/.test(cls)) return false;
+    const c = getComputedStyle(document.body);
+    const raw = (c.getPropertyValue("--background-primary") || c.backgroundColor || "").trim();
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(raw);
+    if (m) return (Number(m[1]) + Number(m[2]) + Number(m[3])) / 3 < 128;
+    return false;
+  }
   isLight(): boolean {
     if (this.settings.theme === "light") return true;
     if (this.settings.theme === "dark") return false;
-    return document.body.classList.contains("theme-light");   // auto：跟随系统/Obsidian
+    return !this.obsidianIsDark();                            // auto：跟随 Obsidian
   }
+  /** auto 也要落到一个明确类上：否则深浅切换时只有 CSS 猜得到，界面自己不知道 */
   applyTheme() {
-    document.body.toggleClass("tlt-light", this.settings.theme === "light");
-    document.body.toggleClass("tlt-dark", this.settings.theme === "dark");
+    const light = this.isLight();
+    document.body.toggleClass("tlt-light", light);
+    document.body.toggleClass("tlt-dark", !light);
   }
   toggleTheme() {
     // 三态循环：浅 → 深 → 跟随系统
@@ -308,7 +323,7 @@ export class TLTPlugin extends Plugin {
     const w = async (path: string, content: string) => {
       const p = normalizePath(path);
       if (this.app.vault.getAbstractFileByPath(p)) return;
-      await this.app.vault.create(p, content);
+      await this.store.createSafe(p, content);
     };
     const d = todayISO();
 
@@ -476,7 +491,8 @@ export class TLTSettingTab extends PluginSettingTab {
       {
         type: "group", heading: t("目录"),
         items: [
-          text("root", "根目录", "下面六项默认都放在这个目录下；留空表示直接用库的根目录。改这里会一起更新它们，单独改过的那项不会被覆盖。", d.root),
+          text("root", "根目录", "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。改这里后点旁边的「更新」就位。", d.root),
+          { name: t("更新"), desc: t("按上面的根目录重建六个路径并创建目录；旧目录里还有文件时会问你要不要一起搬过去。"), action: () => { void this.alignAndNotify(); } },
           text("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder),
           text("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder),
           text("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder),
@@ -504,7 +520,6 @@ export class TLTSettingTab extends PluginSettingTab {
       {
         type: "group", heading: t("维护"),
         items: [
-          { name: t("按根目录重排六个路径"), desc: t("把下面六项重新对齐到当前根目录。路径被改乱、或改了根目录后没跟上时用这个；会覆盖你单独设过的路径。"), action: () => { void this.alignAndNotify(); } },
           { name: t("推送到发布服务"), desc: t("立刻把所有「我发布的源」推一遍。"), action: () => { void this.plugin.publishAll(); } },
           { name: t("从拉取服务同步"), desc: t("立刻拉取一次订阅的源。"), action: () => { void this.plugin.syncAll(); } },
           { name: t("生成示例数据"), desc: t("写一份虚构的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。"), action: () => { void this.plugin.seedDemo(); } },
@@ -516,7 +531,7 @@ export class TLTSettingTab extends PluginSettingTab {
   /** 重排路径 + 提示（两套界面共用） */
   async alignAndNotify() {
     await this.plugin.alignPathsToRoot();
-    new Notice(t("六个路径已按根目录重排，目录已就位"));
+    new Notice(t("已按根目录更新六个路径，目录已就位"));
     this.renderSettings();
   }
 
@@ -587,7 +602,8 @@ export class TLTSettingTab extends PluginSettingTab {
     });
     new Setting(containerEl)
       .setName(t("根目录"))
-      .setDesc(t("下面六项默认都放在这个目录下；留空表示直接用库的根目录。改这里会一起更新它们，单独改过的那项不会被覆盖。"))
+      .setDesc(t("TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。改完点右边「更新」就位。"))
+      .addButton((b) => b.setButtonText(t("更新")).setTooltip(t("按根目录重建六个路径并创建目录")).onClick(() => { void this.alignAndNotify(); }))
       .addText((tc) => {
         tc.setPlaceholder(d.root).setValue(p.settings.root ?? d.root);
         const commit = () => {
@@ -682,10 +698,6 @@ export class TLTSettingTab extends PluginSettingTab {
 
     /* ---------- 维护 ---------- */
     new Setting(containerEl).setName(t("维护")).setHeading();
-    new Setting(containerEl)
-      .setName(t("按根目录重排六个路径"))
-      .setDesc(t("把下面六项重新对齐到当前根目录。路径被改乱、或改了根目录后没跟上时用这个；会覆盖你单独设过的路径。"))
-      .addButton((b) => b.setButtonText(t("重排")).onClick(() => { void this.alignAndNotify(); }));
     new Setting(containerEl)
       .setName(t("生成示例数据"))
       .setDesc("写一份**虚构**的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。")

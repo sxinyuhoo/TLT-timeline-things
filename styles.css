@@ -18,19 +18,19 @@
 /* 令牌：定义在 body 上，视图与弹窗（挂在 body 下）都能继承 */
 body {
   --tlt-bg: #0E0E12;
-  --tlt-bg2: #101015;
-  --tlt-surface: #12121A;
-  --tlt-surface2: #15151C;
-  --tlt-surface3: #1A1A22;
-  --tlt-line: rgba(255, 255, 255, .06);
-  --tlt-line2: rgba(255, 255, 255, .1);
-  --tlt-line3: #26262F;
-  --tlt-line4: #22222A;
+  --tlt-bg2: #131319;
+  --tlt-surface: #1A1A23;
+  --tlt-surface2: #21212B;
+  --tlt-surface3: #2A2A36;
+  --tlt-line: rgba(255, 255, 255, .07);
+  --tlt-line2: rgba(255, 255, 255, .12);
+  --tlt-line3: #2E2E3A;
+  --tlt-line4: #2C2C38;
   --tlt-ink: #E9EAEF;
-  --tlt-ink2: #B7B8C4;
-  --tlt-ink3: #8A8B96;
-  --tlt-ink4: #5E606D;
-  --tlt-ink5: #3E3F4A;
+  --tlt-ink2: #C2C3CE;
+  --tlt-ink3: #A6A9B6;
+  --tlt-ink4: #8A8E9C;
+  --tlt-ink5: #6E7280;
   --tlt-acc: #5B6CFF;
   --tlt-acc-ink: #E7E9FF;
   --tlt-hot: #D96A6A;
@@ -51,22 +51,35 @@ body.theme-light {
   --tlt-line4: #E2E5EE;
   --tlt-ink: #16181F;
   --tlt-ink2: #4C5260;
-  --tlt-ink3: #767D8C;
-  --tlt-ink4: #9AA1AF;
-  --tlt-ink5: #B7BCC7;
+  --tlt-ink3: #6B7280;
+  --tlt-ink4: #767D8C;
+  --tlt-ink5: #828A99;
   --tlt-acc: #4B5AE0;
   --tlt-hot: #C2554F;
 }
 body.tlt-dark {
-  --tlt-bg: #0E0E12; --tlt-bg2: #101015; --tlt-surface: #12121A; --tlt-surface2: #15151C; --tlt-surface3: #1A1A22;
-  --tlt-line: rgba(255,255,255,.06); --tlt-line2: rgba(255,255,255,.1); --tlt-line3: #26262F; --tlt-line4: #22222A;
-  --tlt-ink: #E9EAEF; --tlt-ink2: #B7B8C4; --tlt-ink3: #8A8B96; --tlt-ink4: #5E606D; --tlt-ink5: #3E3F4A;
-  --tlt-acc: #5B6CFF; --tlt-hot: #D96A6A;
+  --tlt-bg: #0E0E12;
+  --tlt-bg2: #131319;
+  --tlt-surface: #1A1A23;
+  --tlt-surface2: #21212B;
+  --tlt-surface3: #2A2A36;
+  --tlt-line: rgba(255, 255, 255, .07);
+  --tlt-line2: rgba(255, 255, 255, .12);
+  --tlt-line3: #2E2E3A;
+  --tlt-line4: #2C2C38;
+  --tlt-ink: #E9EAEF;
+  --tlt-ink2: #C2C3CE;
+  --tlt-ink3: #A6A9B6;
+  --tlt-ink4: #8A8E9C;
+  --tlt-ink5: #6E7280;
+  --tlt-acc: #5B6CFF;
+  --tlt-acc-ink: #E7E9FF;
+  --tlt-hot: #D96A6A;
 }
 body.tlt-light {
   --tlt-bg: #F5F6FA; --tlt-bg2: #FFFFFF; --tlt-surface: #FAFBFD; --tlt-surface2: #F0F2F7; --tlt-surface3: #E9ECF3;
   --tlt-line: rgba(18,22,38,.09); --tlt-line2: rgba(18,22,38,.17); --tlt-line3: #DBDFE9; --tlt-line4: #E2E5EE;
-  --tlt-ink: #16181F; --tlt-ink2: #4C5260; --tlt-ink3: #767D8C; --tlt-ink4: #9AA1AF; --tlt-ink5: #B7BCC7;
+  --tlt-ink: #16181F; --tlt-ink2: #4C5260; --tlt-ink3: #6B7280; --tlt-ink4: #767D8C; --tlt-ink5: #828A99;
   --tlt-acc: #4B5AE0; --tlt-hot: #C2554F;
 }
 .tlt-root *, .tlt-modal * { box-sizing: border-box; }

@@ -96,7 +96,7 @@ python3 services-py/tlt_service.py --port 8787 --data ./data --seed
 
 字段级格式见 [docs/data-format.md](docs/data-format.md)。
 
-六个路径默认都在 `TLT/` 下；**根目录可在设置里改**——改根目录会同步更新这六项，但单独改过的那项不会被覆盖。
+六个路径默认都在库根目录的 `TLT/` 下；**根目录可在设置里改**——它表示「TLT 目录放在哪」，改完点旁边的「更新」重建六项并创建目录（旧目录里还有文件时会问你要不要一起搬）。
 
 ## 命令
 

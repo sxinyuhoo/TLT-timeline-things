@@ -35,7 +35,7 @@ export interface TLTSettings {
 }
 
 export const DEFAULT_SETTINGS: TLTSettings = {
-  root: "TLT",
+  root: "",
   tasksFolder: "TLT/tasks",
   teamFolder: "TLT/team",
   feedsFolder: "TLT/feeds",
@@ -48,10 +48,15 @@ export const DEFAULT_SETTINGS: TLTSettings = {
   feedNames: {},
 };
 
-/** 根目录 → 六个默认路径（改根目录时用它判断哪几项还没被单独改过） */
+/**
+ * 根目录 → 六个默认路径。
+ * 根目录是「放 TLT 目录的地方」，所以真正的数据目录是 <根目录>/TLT；
+ * 留空表示放在库根目录（即 TLT/）；如果根目录本身就叫 TLT，就不再套一层。
+ */
 export function pathsFromRoot(root: string) {
   const base = root.trim().replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
-  const join = (sub: string) => (base ? `${base}/${sub}` : sub);
+  const dir = !base ? "TLT" : /(^|\/)TLT$/i.test(base) ? base : `${base}/TLT`;
+  const join = (sub: string) => `${dir}/${sub}`;
   return {
     tasksFolder: join("tasks"),
     teamFolder: join("team"),
@@ -95,6 +100,21 @@ export class Store {
     return this.app.vault.getMarkdownFiles().filter((f) => this.inFolder(f.path, folder));
   }
 
+  /**
+   * 建文件。冷启动时 Obsidian 的库索引可能还不认识已存在的文件，
+   * getAbstractFileByPath 返回 null 于是走到 create，而 create 抛
+   * 「File already exists.」——只要文件确实在，就不算失败。
+   */
+  async createSafe(path: string, content: string): Promise<void> {
+    try {
+      await this.app.vault.create(path, content);
+    } catch (e) {
+      const exists = await this.app.vault.adapter.exists(path).catch(() => false);
+      if (exists) return;
+      throw e;
+    }
+  }
+
   async ensureFolder(folder: string) {
     const parts = normalizePath(folder).split("/");
     let cur = "";
@@ -111,7 +131,7 @@ export class Store {
     const path = normalizePath(`${this.settings.feedsFolder}/个人.md`);
     if (this.app.vault.getAbstractFileByPath(path)) return;
     await this.ensureFolder(this.settings.feedsFolder);
-    await this.app.vault.create(path,
+    await this.createSafe(path,
       `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n# 个人\n\n（只有自己看的草稿；从这里可以发布到「我发布的源」）\n`);
   }
 
@@ -294,7 +314,7 @@ export class Store {
     const line = newTaskLine(t);
     if (!file) {
       const head = `# ${project}\n\n${milestone ? `## ${milestone}\n\n` : ""}${line}\n`;
-      await this.app.vault.create(path, head);
+      await this.createSafe(path, head);
       return;
     }
     await this.app.vault.process(file, (data) => {
@@ -326,7 +346,7 @@ export class Store {
     let file = await this.fileByPath(path);
     const body = newLogLine(rec);
     if (!file) {
-      await this.app.vault.create(path, `# 记录 ${month}\n\n## ${dateISO}\n\n${body}\n`);
+      await this.createSafe(path, `# 记录 ${month}\n\n## ${dateISO}\n\n${body}\n`);
       return;
     }
     await this.app.vault.process(file, (data) => {
@@ -355,7 +375,7 @@ export class Store {
     const path = normalizePath(`${this.settings.feedsFolder}/${safe}.md`);
     if (this.app.vault.getAbstractFileByPath(path)) return { ok: false, path };
     await this.ensureFolder(this.settings.feedsFolder);
-    await this.app.vault.create(path, `---\ntitle: ${name}\nowner: me\nmine: true\n---\n\n# ${name}\n\n`);
+    await this.createSafe(path, `---\ntitle: ${name}\nowner: me\nmine: true\n---\n\n# ${name}\n\n`);
     return { ok: true, path };
   }
 
@@ -447,7 +467,7 @@ export class Store {
     let moved = 0;
     if (!file) {
       await this.ensureFolder(this.settings.feedsFolder);
-      await this.app.vault.create(target, head + msgs.map(lineOf).join("\n") + "\n");
+      await this.createSafe(target, head + msgs.map(lineOf).join("\n") + "\n");
       moved = msgs.length;
     } else {
       // 已存在：按「日期+标题」去重后追加，重复发布会覆盖标题/说明
@@ -501,7 +521,7 @@ export class Store {
     if (!pf) {
       const t = personal ? personal.name : "个人";
       await this.ensureFolder(this.settings.feedsFolder);
-      await this.app.vault.create(home, `---\ntitle: ${t}\npersonal: true\nowner: me\n---\n\n# ${t}\n\n`);
+      await this.createSafe(home, `---\ntitle: ${t}\npersonal: true\nowner: me\n---\n\n# ${t}\n\n`);
       pf = await this.fileByPath(home);
     }
     if (!pf) return -1;                     // 落不了地就别删源文件，宁可留着重试
@@ -546,7 +566,7 @@ export class Store {
     const line = newMsgLine(m) + (m.body ? `\n  > ${m.body.replace(/\n/g, "\n  > ")}` : "");
     if (!file) {
       const head = `---\ntitle: ${feedName}\nmine: true\nowner: me\n---\n\n# ${feedName}\n\n${line}\n`;
-      await this.app.vault.create(path, head);
+      await this.createSafe(path, head);
       return;
     }
     await this.app.vault.process(file, (data) => `${data.replace(/\s*$/, "")}\n${line}\n`);
@@ -650,7 +670,7 @@ export class Store {
     let file = await this.fileByPath(path);
     if (!file) {
       await this.ensureFolder(path.split("/").slice(0, -1).join("/") || ".");
-      await this.app.vault.create(path, `# 标签\n\n`);
+      await this.createSafe(path, `# 标签\n\n`);
       file = await this.fileByPath(path);
     }
     return file;
@@ -708,7 +728,7 @@ export class Store {
       (it.tags && it.tags.length ? ` [tags:: ${it.tags.join(", ")}]` : "") +
       (it.body ? `\n  > ${it.body}` : "");
     if (!file) {
-      await this.app.vault.create(path, `# 想法池\n\n${line}\n`);
+      await this.createSafe(path, `# 想法池\n\n${line}\n`);
       return;
     }
     await this.app.vault.process(file, (data) => `${data.replace(/\s*$/, "")}\n${line}\n`);
@@ -761,7 +781,7 @@ export class Store {
     const path = normalizePath(`${this.settings.teamFolder}/${name}.md`);
     if (this.app.vault.getAbstractFileByPath(path)) return false;
     await this.ensureFolder(this.settings.teamFolder);
-    await this.app.vault.create(path, `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: []\nstatus: active\n---\n\n# ${name}\n`);
+    await this.createSafe(path, `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: []\nstatus: active\n---\n\n# ${name}\n`);
     return true;
   }
 
@@ -857,8 +877,10 @@ export class Store {
       let file = this.asFile(this.app.vault.getAbstractFileByPath(path));
       if (!file) {
         await this.ensureFolder(this.settings.feedsFolder);
-        file = await this.app.vault.create(path,
+        await this.createSafe(path,
           `---\ntitle: ${title}\nremote: ${asText(feed.url)}\nown: false\n---\n\n# ${title}\n\n`);
+        file = this.asFile(this.app.vault.getAbstractFileByPath(path));
+        if (!file) return;
       }
       await this.app.vault.process(file, (text) => {
         const lines = text.split(/\r?\n/);
