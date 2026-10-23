@@ -1,5 +1,9 @@
 # 更新日志
 
+## 0.4.8
+
+- `transition` 简写改为显式属性，避免隐式 `all` 被样式检查挑出来
+
 ## 0.4.7
 
 - 通过 Obsidian 官方扫描：内联样式改用 CSS 类、innerHTML 改为 DOM 构建、设置页标题改用 `Setting.setHeading()`、网络请求改用 `requestUrl`、删除文件改用 `FileManager.trashFile`
