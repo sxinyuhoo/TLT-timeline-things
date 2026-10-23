@@ -1188,3 +1188,14 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 /* 通用隐藏：用类而不是内联 style（Obsidian 审核要求） */
 .tlt-hidden { display: none !important; }
 .tlt-dot.k-ms { background: #8B7CF6; }
+
+/* 改目录时列出的待搬文件 */
+.tlt-host .tlt-moves {
+  max-height: 168px;
+  overflow: auto;
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+.tlt-host .tlt-moves .tlt-hint { margin: 0; line-height: 1.7; }

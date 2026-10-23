@@ -11,7 +11,8 @@
     "preview": "node test/preview.mjs",
     "play": "node test/play.mjs",
     "serve": "cd test && python3 -m http.server 8799",
-    "serve:py": "python3 services-py/tlt_service.py --port 8787 --data ./services-py/data"
+    "serve:py": "python3 services-py/tlt_service.py --port 8787 --data ./services-py/data",
+    "check:vault": "node test/vault-render.mjs"
   },
   "devDependencies": {
     "builtin-modules": "^4.0.0",
