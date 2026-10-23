@@ -1,9 +1,9 @@
 {
   "id": "tlt-timeline",
-  "name": "TLT 时间线工作台",
-  "version": "0.4.3",
+  "name": "TLT Timeline Workbench",
+  "version": "0.4.4",
   "minAppVersion": "1.4.0",
-  "description": "以时间线为中心的任务与消息工作台：日历、任务、里程碑、人员负载、随手记，附独立消息中心。",
+  "description": "Timeline-first task and message workbench · 以时间线为中心的任务与消息工作台",
   "author": "sxinyuhoo",
   "isDesktopOnly": false,
   "authorUrl": "https://github.com/sxinyuhoo"

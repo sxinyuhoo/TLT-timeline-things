@@ -1,4 +1,4 @@
-# TLT · Timeline Workbench
+# TLT Timeline Workbench
 
 A **timeline-first** workbench for tasks and messages: calendar, tasks, milestones, team load, quick notes — plus a message center that works on its own.
 

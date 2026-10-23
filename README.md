@@ -1,4 +1,6 @@
-# TLT · 时间线工作台
+# TLT Timeline Workbench · 时间线工作台
+
+> 插件目录里显示的名字是 **TLT Timeline Workbench**（Obsidian 目录只接受 ASCII 名称），中文叫「时间线工作台」。
 
 以**时间线**为中心的任务与消息工作台：日历、任务、里程碑、人员饱和度、随手记，外加一个可以单独使用的消息中心。
 
