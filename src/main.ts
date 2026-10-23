@@ -1,11 +1,23 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, TFile, normalizePath } from "obsidian";
+import {
+  App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, Notice, TFile, normalizePath,
+  type SettingDefinition, type SettingDefinitionItem,
+} from "obsidian";
 import { Store, TLTSettings, DEFAULT_SETTINGS } from "./store";
 import { WorkbenchView, VIEW_TYPE_WORKBENCH } from "./views/workbench";
 import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
 import { QuickTaskModal } from "./views/modals";
-import { todayISO } from "./data";
+import { todayISO, type Period } from "./data";
 
 type ThemeMode = "auto" | "light" | "dark";
+
+/** catch 里拿到的值一律按 unknown 处理，取一条能显示的文案 */
+const errMsg = (e: unknown): string =>
+  e instanceof Error ? e.message : typeof e === "string" ? e : "未知错误";
+
+/** 设置里所有字符串型字段的键（给目录输入框用） */
+type PathKey =
+  | "tasksFolder" | "teamFolder" | "feedsFolder" | "logsFolder"
+  | "ideasFile" | "tagsFile" | "mineFeed" | "hubPublish" | "hubSync";
 
 interface Settings extends TLTSettings {
   theme: ThemeMode;
@@ -36,15 +48,15 @@ export default class TLTPlugin extends Plugin {
     this.registerView(VIEW_TYPE_WORKBENCH, (leaf: WorkspaceLeaf) => new WorkbenchView(leaf, this));
     this.registerView(VIEW_TYPE_MESSAGES, (leaf: WorkspaceLeaf) => new MessagesView(leaf, this));
 
-    this.addRibbonIcon("activity", "时间线工作台", () => this.activateWorkbench());
+    this.addRibbonIcon("activity", "时间线工作台", () => { void this.activateWorkbench(); });
 
-    this.addCommand({ id: "open-workbench", name: "打开工作台", callback: () => this.activateWorkbench() });
-    this.addCommand({ id: "open-messages", name: "打开消息中心（独立页）", callback: () => this.activateMessages() });
-    this.addCommand({ id: "new-task", name: "新建任务", callback: () => new QuickTaskModal(this.app, this.store, () => this.refreshAll()).open() });
-    this.addCommand({ id: "seed-demo", name: "生成示例数据", callback: () => this.seedDemo() });
+    this.addCommand({ id: "open-workbench", name: "打开工作台", callback: () => { void this.activateWorkbench(); } });
+    this.addCommand({ id: "open-messages", name: "打开消息中心（独立页）", callback: () => { void this.activateMessages(); } });
+    this.addCommand({ id: "new-task", name: "新建任务", callback: () => { new QuickTaskModal(this.app, this.store, () => this.refreshAll()).open(); } });
+    this.addCommand({ id: "seed-demo", name: "生成示例数据", callback: () => { void this.seedDemo(); } });
     this.addCommand({ id: "toggle-theme", name: "切换明暗", callback: () => this.toggleTheme() });
-    this.addCommand({ id: "hub-publish", name: "推送到发布服务", callback: () => this.publishAll() });
-    this.addCommand({ id: "hub-sync", name: "从拉取服务同步", callback: () => this.syncAll() });
+    this.addCommand({ id: "hub-publish", name: "推送到发布服务", callback: () => { void this.publishAll(); } });
+    this.addCommand({ id: "hub-sync", name: "从拉取服务同步", callback: () => { void this.syncAll(); } });
 
     this.addSettingTab(new TLTSettingTab(this.app, this));
 
@@ -85,7 +97,8 @@ export default class TLTPlugin extends Plugin {
   /* ---------- 配置 ---------- */
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULTS, await this.loadData());
+    const saved = (await this.loadData()) as Partial<Settings> | null;
+    this.settings = { ...DEFAULTS, ...saved };
   }
   async saveSettings() {
     await this.saveData(this.settings);
@@ -110,7 +123,7 @@ export default class TLTPlugin extends Plugin {
     const cur = this.settings.theme;
     this.settings.theme = cur === "light" ? "dark" : cur === "dark" ? "auto" : "light";
     this.applyTheme();
-    this.saveData(this.settings);
+    void this.saveData(this.settings);
     this.refreshAll();
     new Notice({ light: "浅色", dark: "深色", auto: "跟随系统" }[this.settings.theme]);
   }
@@ -139,9 +152,10 @@ export default class TLTPlugin extends Plugin {
       this.setHubState({ lastResult: `推送 ${mine.length} 个源 / ${total} 条`, lastError: "" });
       if (!silent) new Notice(`已推送 ${mine.length} 个源（${total} 条）`);
       this.refreshAll();
-    } catch (e: any) {
-      this.setHubState({ lastError: "推送失败：" + e.message });
-      new Notice("推送失败：" + e.message);
+    } catch (e) {
+      const msg = errMsg(e);
+      this.setHubState({ lastError: "推送失败：" + msg });
+      new Notice("推送失败：" + msg);
     }
   }
 
@@ -152,9 +166,10 @@ export default class TLTPlugin extends Plugin {
       this.setHubState({ lastSync: stamp, lastResult: `新增 ${r.added} 条`, lastError: "" });
       if (!silent) new Notice(`同步完成：新增 ${r.added} 条`);
       this.refreshAll();
-    } catch (e: any) {
-      this.setHubState({ lastError: "同步失败：" + e.message });
-      new Notice("同步失败：" + e.message);
+    } catch (e) {
+      const msg = errMsg(e);
+      this.setHubState({ lastError: "同步失败：" + msg });
+      new Notice("同步失败：" + msg);
     }
   }
 
@@ -167,7 +182,7 @@ export default class TLTPlugin extends Plugin {
       leaf = workspace.getLeaf("tab");
       await leaf.setViewState({ type: VIEW_TYPE_WORKBENCH, active: true });
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 
   async activateMessages() {
@@ -177,12 +192,12 @@ export default class TLTPlugin extends Plugin {
       leaf = workspace.getLeaf("tab");
       await leaf.setViewState({ type: VIEW_TYPE_MESSAGES, active: true });
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 
   refreshAll() {
-    this.app.workspace.getLeavesOfType(VIEW_TYPE_WORKBENCH).forEach((l) => (l.view as WorkbenchView).render());
-    this.app.workspace.getLeavesOfType(VIEW_TYPE_MESSAGES).forEach((l) => (l.view as MessagesView).render());
+    this.app.workspace.getLeavesOfType(VIEW_TYPE_WORKBENCH).forEach((l) => { void (l.view as WorkbenchView).render(); });
+    this.app.workspace.getLeavesOfType(VIEW_TYPE_MESSAGES).forEach((l) => { void (l.view as MessagesView).render(); });
   }
 
   /* ---------- 示例数据 ---------- */
@@ -273,6 +288,55 @@ class TLTSettingTab extends PluginSettingTab {
   plugin: TLTPlugin;
   constructor(app: App, plugin: TLTPlugin) { super(app, plugin); this.plugin = plugin; }
 
+  /**
+   * 声明式设置：1.13+ 的设置搜索读这里。
+   * display() 保留给更老的客户端，两边字段保持一致。
+   */
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const text = (key: PathKey, name: string, desc: string): SettingDefinition => ({
+      name, desc, control: { type: "text", key },
+    });
+    const pick = (
+      key: "defaultPeriod" | "autoSyncMin" | "autoPushMin" | "theme",
+      name: string, desc: string, options: Record<string, string>,
+    ): SettingDefinition => ({ name, desc, control: { type: "dropdown", key, options } });
+    const every = { "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" };
+
+    return [
+      {
+        type: "group", heading: "目录",
+        items: [
+          text("tasksFolder", "任务目录", "一个项目一个 md，里程碑用 ## 分节，任务一行一条"),
+          text("teamFolder", "人员目录", "一人一个 md，frontmatter 写 role / capacity / days / skills"),
+          text("feedsFolder", "消息源目录", "一源一个 md，正文列表里一行一条消息"),
+          text("logsFolder", "记录目录", "按月一个文件，正文用 ## 日期 分节"),
+          text("ideasFile", "随手记文件", "单文件，一行一条"),
+          text("tagsFile", "标签库文件", "单文件，一行一个标签"),
+        ],
+      },
+      {
+        type: "group", heading: "口径",
+        items: [pick("defaultPeriod", "默认占比周期", "任务占比与饱和度的默认口径",
+          { w: "本周", m: "本月", q: "本季度" })],
+      },
+      {
+        type: "group", heading: "消息服务",
+        items: [
+          text("hubPublish", "发布服务地址", "把「我发布的源」推到这里"),
+          text("hubSync", "拉取服务地址", "从订阅代理同步别人的源"),
+          pick("autoSyncMin", "自动同步间隔", "从拉取服务同步别人的源", every),
+          pick("autoPushMin", "自动推送间隔", "把我发布的源推到发布服务", every),
+        ],
+      },
+      {
+        type: "group", heading: "外观",
+        items: [pick("theme", "主题", "跟随 Obsidian，或强制深/浅色",
+          { auto: "跟随 Obsidian", dark: "深色", light: "浅色" })],
+      },
+    ];
+  }
+
+  // 老版本客户端（< 1.13）只认 display()，所以两边都要有
   display() {
     const { containerEl } = this;
     containerEl.empty();
@@ -282,14 +346,14 @@ class TLTSettingTab extends PluginSettingTab {
       cls: "setting-item-description",
     });
 
-    const folder = (name: keyof TLTSettings, label: string, desc: string) =>
+    const folder = (name: PathKey, label: string, desc: string) =>
       new Setting(containerEl)
         .setName(label)
         .setDesc(desc)
         .addText((t) =>
-          t.setValue(typeof this.plugin.settings[name] === "string" ? (this.plugin.settings[name] as string) : "").onChange(async (v) => {
-            (this.plugin.settings as any)[name] = v.trim();
-            await this.plugin.saveSettings();
+          t.setValue(this.plugin.settings[name]).onChange((v) => {
+            this.plugin.settings[name] = v.trim();
+            void this.plugin.saveSettings();
           })
         );
 
@@ -307,13 +371,13 @@ class TLTSettingTab extends PluginSettingTab {
           .addOptions({ w: "本周", m: "本月", q: "本季度" })
           .setValue(this.plugin.settings.defaultPeriod)
           .onChange(async (v) => {
-            this.plugin.settings.defaultPeriod = v as any;
+            this.plugin.settings.defaultPeriod = v as Period;
             await this.plugin.saveSettings();
           })
       );
 
-    folder("hubPublish" as any, "发布服务地址", "把「我发布的源」推到这里（测试：http://127.0.0.1:8787）");
-    folder("hubSync" as any, "拉取服务地址", "从订阅代理同步别人的源（测试：http://127.0.0.1:8788）");
+    folder("hubPublish", "发布服务地址", "把「我发布的源」推到这里（测试：http://127.0.0.1:8787）");
+    folder("hubSync", "拉取服务地址", "从订阅代理同步别人的源（测试：http://127.0.0.1:8788）");
 
     new Setting(containerEl)
       .setName("自动同步间隔")
@@ -321,7 +385,7 @@ class TLTSettingTab extends PluginSettingTab {
       .addDropdown((d) =>
         d.addOptions({ "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" })
           .setValue(String(this.plugin.settings.autoSyncMin))
-          .onChange(async (v) => { this.plugin.settings.autoSyncMin = Number(v); await this.plugin.saveSettings(); })
+          .onChange((v) => { this.plugin.settings.autoSyncMin = Number(v); void this.plugin.saveSettings(); })
       );
 
     new Setting(containerEl)
@@ -330,7 +394,7 @@ class TLTSettingTab extends PluginSettingTab {
       .addDropdown((d) =>
         d.addOptions({ "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" })
           .setValue(String(this.plugin.settings.autoPushMin))
-          .onChange(async (v) => { this.plugin.settings.autoPushMin = Number(v); await this.plugin.saveSettings(); })
+          .onChange((v) => { this.plugin.settings.autoPushMin = Number(v); void this.plugin.saveSettings(); })
       );
 
     new Setting(containerEl)
@@ -340,10 +404,10 @@ class TLTSettingTab extends PluginSettingTab {
         d
           .addOptions({ auto: "跟随 Obsidian", dark: "深色", light: "浅色" })
           .setValue(this.plugin.settings.theme)
-          .onChange(async (v) => {
+          .onChange((v) => {
             this.plugin.settings.theme = v as ThemeMode;
             this.plugin.applyTheme();
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           })
       );
 
@@ -357,6 +421,6 @@ class TLTSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("生成示例数据")
       .setDesc("在四个目录里写一份最小可用的样例，方便先看效果")
-      .addButton((b) => b.setButtonText("生成").onClick(async () => { await this.plugin.seedDemo(); this.display(); }));
+      .addButton((b) => b.setButtonText("生成").onClick(() => { void this.plugin.seedDemo(); }));
   }
 }

@@ -3,22 +3,23 @@ import esbuild from "esbuild";
 import assert from "node:assert/strict";
 
 await esbuild.build({
-  stdin: { contents: `export { Store } from "./src/store";`, resolveDir: process.cwd(), sourcefile: "s.ts", loader: "ts" },
+  stdin: { contents: `export { Store } from "./src/store"; export { TFile } from "obsidian";`, resolveDir: process.cwd(), sourcefile: "s.ts", loader: "ts" },
   bundle: true, format: "esm", platform: "node", outfile: "test/store-bundle.mjs",
   alias: { obsidian: "./test/obsidian-stub.ts" }, logLevel: "error",
 });
-const { Store } = await import("./store-bundle.mjs?" + Date.now());
+const { Store, TFile } = await import("./store-bundle.mjs?" + Date.now());
 
 /* ---------- 内存 vault ---------- */
 function makeVault(files) {
   const trashed = [];
-  const fileOf = (p) => ({ path: p, basename: p.split("/").pop().replace(/\.md$/, ""), name: p.split("/").pop() });
+  const fileOf = (p) => new TFile(p);
   return {
     files,
     trashed,
     getAbstractFileByPath: (p) => (p in files ? fileOf(p) : null),
     getMarkdownFiles: () => Object.keys(files).map(fileOf),
     cachedRead: async (f) => files[f.path] ?? "",
+    read: async (f) => files[f.path] ?? "",
     create: async (p, c) => { files[p] = c; },
     createFolder: async () => {},
     process: async (f, fn) => { files[f.path] = fn(files[f.path]); },

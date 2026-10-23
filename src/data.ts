@@ -32,6 +32,8 @@ export interface Task {
   extra?: boolean;
   kind: "task" | "log";
   files: string[];
+  /** 记录的正文（kind === "log" 时从续行读到） */
+  note?: string;
 }
 
 export interface Staff {
@@ -45,6 +47,8 @@ export interface Msg {
   state: "live" | "ended"; until: string; body: string;
   /** 5W 里剩下的两个：为什么（缘由/背景）与主题标签 */
   why: string; tags: string[];
+  /** 已读只在本次会话内，不写回文件 */
+  read_?: boolean;
 }
 
 export interface Feed {
@@ -58,6 +62,14 @@ export interface Idea {
 }
 
 /* ---------------- 通用 ---------------- */
+
+/** catch 里拿到的是 unknown，取一条能显示的文案 */
+export const errMsg = (e: unknown): string =>
+  e instanceof Error ? e.message : typeof e === "string" ? e : "未知错误";
+
+/** frontmatter / 行内字段的取值统一按字符串读，非标量当空串 */
+export const asText = (v: unknown): string =>
+  typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : "";
 
 const FIELD_RE = /\[([a-zA-Z\u4e00-\u9fa5]+)::\s*((?:\[\[[^\]]*\]\]|[^\]])*)\]/g;
 
@@ -168,7 +180,7 @@ export function parseTaskLine(
     pri: (Math.max(0, Math.min(3, pri)) as Pri),
     owners: links(f["owner"] || f["who"] || ""),
     tags: (f["tags"] || "").split(/[,，]/).map((x) => x.trim()).filter(Boolean),
-    scope: (f["scope"] === "个人" ? "个人" : "工作") as "工作" | "个人",
+    scope: f["scope"] === "个人" ? "个人" : "工作",
     project: ctx.project,
     milestone: ctx.milestone,
     steps: ctx.steps || [],
@@ -198,7 +210,7 @@ export function newTaskLine(t: Partial<Task> & { title: string }): string {
 }
 
 export function toggleTaskLine(raw: string): string {
-  return raw.replace(/^(\s*[-*+]\s+\[)(.)(\])/, (_m, a, c, b) => `${a}${c.toLowerCase() === "x" ? " " : "x"}${b}`);
+  return raw.replace(/^(\s*[-*+]\s+\[)(.)(\])/, (_m: string, a: string, c: string, b: string) => `${a}${c.toLowerCase() === "x" ? " " : "x"}${b}`);
 }
 
 export function setTaskDue(raw: string, due: string): string {
@@ -212,18 +224,18 @@ export function setTaskField(raw: string, key: string, value: string | number | 
 
 /* ---------------- 人员 ---------------- */
 
-export function parseStaff(name: string, file: string, fm: Record<string, any>): Staff {
-  const num = (v: any, dflt: number) => (v === undefined || v === null || v === "" ? dflt : Number(v) || dflt);
+export function parseStaff(name: string, file: string, fm: Record<string, unknown>): Staff {
+  const num = (v: unknown, dflt: number) => (v === undefined || v === null || v === "" ? dflt : Number(v) || dflt);
   return {
     name,
     file,
-    role: String(fm["role"] || ""),
+    role: asText(fm["role"]),
     capacity: num(fm["capacity"], 100),
     days: num(fm["days"], 5),
-    skills: Array.isArray(fm["skills"]) ? fm["skills"].map(String) : String(fm["skills"] || "").split(/[,，]/).filter(Boolean),
+    skills: Array.isArray(fm["skills"]) ? fm["skills"].map((x) => asText(x)) : asText(fm["skills"]).split(/[,，]/).filter(Boolean),
     status: (fm["status"] || "active") as Staff["status"],
-    note: String(fm["note"] || ""),
-    color: String(fm["color"] || ""),
+    note: asText(fm["note"]),
+    color: asText(fm["color"]),
   };
 }
 
@@ -299,7 +311,7 @@ export function parseLogMonth(content: string, file: string): Task[] {
       wl: 0, pw: "m", pri: 1,
       owners: links(f["who"] || ""),
       tags: (f["tags"] || "").split(/[,，]/).map((x) => x.trim()).filter(Boolean),
-    scope: (f["scope"] === "个人" ? "个人" : "工作") as "工作" | "个人",
+    scope: f["scope"] === "个人" ? "个人" : "工作",
       project: f["proj"] || "",
       milestone: f["ms"] || undefined,
       steps: [],
@@ -307,7 +319,7 @@ export function parseLogMonth(content: string, file: string): Task[] {
       kind: "log",
       files: links(f["out"] || ""),
     });
-    if (f["z"] === "1") (out[out.length - 1] as any).note = body.join("\n");
+    if (f["z"] === "1") out[out.length - 1].note = body.join("\n");
   }
   return out;
 }

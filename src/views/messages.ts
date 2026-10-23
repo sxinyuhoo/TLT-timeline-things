@@ -1,14 +1,14 @@
 import { ItemView, WorkspaceLeaf, Notice, App } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
-import { Msg, Feed, todayISO, addDays, D, cleanFeedUrl } from "../data";
+import { Msg, Feed, todayISO, addDays, D, cleanFeedUrl, errMsg } from "../data";
 import { el, MsgModal, buildMsgFields, popMenu, TltModal } from "./modals";
 import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_MESSAGES = "tlt-messages";
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
-const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]!));
+const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
 
 export class MessagesView extends ItemView {
   plugin: TLTPlugin;
@@ -49,9 +49,9 @@ export class MessagesView extends ItemView {
     [...this.selected].forEach((id) => { if (!alive.has(id)) this.selected.delete(id); });
 
     const root = this.contentEl;
-    const ae = document.activeElement as HTMLInputElement | null;
-    const keep = ae && (ae as any).dataset && (ae as any).dataset.focuskey
-      ? { key: (ae as any).dataset.focuskey as string, start: ae.selectionStart ?? 0, end: ae.selectionEnd ?? 0 }
+    const ae = document.activeElement;
+    const keep = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey
+      ? { key: ae.dataset.focuskey, start: ae.selectionStart ?? 0, end: ae.selectionEnd ?? 0 }
       : null;
     root.empty();
     root.addClass("tlt-root");
@@ -71,7 +71,7 @@ export class MessagesView extends ItemView {
     root.appendChild(outer);
 
     if (keep) {
-      const again = root.querySelector(`[data-focuskey="${keep.key}"]`) as HTMLInputElement | null;
+      const again = root.querySelector<HTMLInputElement>(`[data-focuskey="${keep.key}"]`);
       if (again) { again.focus(); try { again.setSelectionRange(keep.start, keep.end); } catch { /* noop */ } }
     }
   }
@@ -94,7 +94,7 @@ export class MessagesView extends ItemView {
         this.selected.clear();
         this.selected.add(f.id);
       }
-      this.render();
+      void this.render();
     };
     return row;
   }
@@ -115,7 +115,7 @@ export class MessagesView extends ItemView {
 
     const all = el("div", "tlt-fr add");
     all.append(el("span", "tlt-fr-n", this.selected.size ? `已选 ${this.selected.size} 个 · 清除` : "⌘ 点可多选 · 全部源"));
-    all.onclick = () => { this.selected.clear(); this.render(); };
+    all.onclick = () => { this.selected.clear(); void this.render(); };
     r.appendChild(all);
     return r;
   }
@@ -129,7 +129,7 @@ export class MessagesView extends ItemView {
     /* ---- 第一行：搜索 + 新建 ---- */
     const bar = el("div", "tlt-fm-bar");
     const sb = el("div", "tlt-fm-search");
-    const si = el("input") as HTMLInputElement;
+    const si = el("input");
     si.placeholder = "搜索消息";
     si.value = this.q;
     si.dataset.focuskey = "msgsearch";
@@ -138,12 +138,12 @@ export class MessagesView extends ItemView {
     si.addEventListener("compositionend", () => {
       composing = false;
       this.q = si.value.trim();
-      this.render();
+      void this.render();
     });
     si.addEventListener("input", () => {
       if (composing) return;
       this.q = si.value.trim();
-      this.render();
+      void this.render();
     });
     sb.appendChild(si);
     bar.appendChild(sb);
@@ -160,7 +160,7 @@ export class MessagesView extends ItemView {
     const range = el("div", "tlt-seg");
     ([["all", "全部"], ["today", "今天"], ["7", "近 7 天"], ["30", "近 30 天"]] as const).forEach(([v, t]) => {
       const b = el("button", "tlt-seg-b" + (this.range === v ? " on" : ""), t);
-      b.onclick = () => { this.range = v; this.render(); };
+      b.onclick = () => { this.range = v; void this.render(); };
       range.appendChild(b);
     });
     dg.appendChild(range);
@@ -178,13 +178,13 @@ export class MessagesView extends ItemView {
 
     const MODES = [["card", "卡片"], ["spine", "河流"], ["compact", "紧凑"],
       ["bands", "按源分带"], ["axis", "可缩放时间轴"], ["heat", "月度热力"], ["net", "人物脉络"]] as const;
-    const cur = MODES.find(([v]) => v === this.mode)!;
+    const cur = MODES.find(([v]) => v === this.mode) ?? MODES[0];
     const viewBtn = el("button", "tlt-btn tlt-viewbtn");
     viewBtn.append(el("span", "tlt-viewbtn-i", "▤"), el("span", "", cur[1]), el("span", "tlt-viewbtn-c", "⌄"));
     viewBtn.onclick = () => {
       popMenu(viewBtn, MODES.map(([v, t]) => ({
         label: (v === this.mode ? "✓ " : "   ") + t,
-        onClick: () => { this.mode = v as any; this.render(); },
+        onClick: () => { this.mode = v; void this.render(); },
       })), "right");
     };
     t2.appendChild(viewBtn);
@@ -236,7 +236,7 @@ export class MessagesView extends ItemView {
       const lanes = this.axisLanes(items);
       const H = Math.max(120, 54 + lanes.length * 30);
       svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-      setSvgMarkup(svg as SVGSVGElement, this.axisBody(W, H, items));
+      setSvgMarkup(svg, this.axisBody(W, H, items));
       label.textContent = `窗口 ${Math.round(this.tlSpan)} 天 · 滚轮缩放 · 拖动平移 · 双击回到默认（前 3 天后 30 天）`;
     };
     redraw();
@@ -283,7 +283,8 @@ export class MessagesView extends ItemView {
       this.tlSpan = 33; this.tlCenter = 13.5; redraw();
     });
     svg.addEventListener("click", (e) => {
-      const g = (e.target as Element).closest("[data-msg]") as Element | null;
+      const target = e.target;
+      const g = target instanceof Element ? target.closest("[data-msg]") : null;
       if (!g) return;
       const m = items.find((x) => x.id === g.getAttribute("data-msg"));
       if (m) this.openMsg(m);
@@ -385,9 +386,9 @@ export class MessagesView extends ItemView {
 
     const head = el("div", "tlt-heat-h");
     const prev = el("button", "tlt-tlink", "‹");
-    prev.onclick = () => { this.heatMonth = this.shiftMonth(-1); this.render(); };
+    prev.onclick = () => { this.heatMonth = this.shiftMonth(-1); void this.render(); };
     const next = el("button", "tlt-tlink", "›");
-    next.onclick = () => { this.heatMonth = this.shiftMonth(1); this.render(); };
+    next.onclick = () => { this.heatMonth = this.shiftMonth(1); void this.render(); };
     head.append(prev, el("b", "", `${y} 年 ${mo} 月`), next, el("span", "tlt-spacer"),
       el("span", "tlt-heat-l", "少"), el("span", "tlt-heat-i lv1"), el("span", "tlt-heat-i lv2"),
       el("span", "tlt-heat-i lv3"), el("span", "tlt-heat-i lv4"), el("span", "tlt-heat-l", "多"));
@@ -409,7 +410,7 @@ export class MessagesView extends ItemView {
       c.title = `${key} · ${n} 条`;
       c.append(el("span", "tlt-heat-d", String(d)));
       if (n) c.append(el("span", "tlt-heat-n", String(n)));
-      c.onclick = () => { this.heatDay = key; this.render(); };
+      c.onclick = () => { this.heatDay = key; void this.render(); };
       grid.appendChild(c);
     }
     box.appendChild(grid);
@@ -464,11 +465,12 @@ export class MessagesView extends ItemView {
     });
     setSvgMarkup(svg, g);
     svg.addEventListener("click", (ev) => {
-      const t = (ev.target as Element).closest("[data-feed]") as Element | null;
+      const target = ev.target;
+      const t = target instanceof Element ? target.closest("[data-feed]") : null;
       if (!t) return;
-      const id = t.getAttribute("data-feed")!;
+      const id = t.getAttribute("data-feed") ?? "";
       if (this.selected.has(id)) this.selected.delete(id); else this.selected.add(id);
-      this.render();
+      void this.render();
     });
     box.appendChild(svg);
     box.appendChild(el("div", "tlt-hint", "圆＝人（数字是他们发的消息数），胶囊＝消息源，粗细不代表什么。点源可以只看它。"));
@@ -476,7 +478,7 @@ export class MessagesView extends ItemView {
   }
 
   private openMsg(x: Msg) {
-    (x as any).read_ = true;
+    x.read_ = true;
     new MsgModal(this.app, this.store, x, () => this.refresh()).open();
   }
 
@@ -553,7 +555,7 @@ export class MessagesView extends ItemView {
   private visible(): Msg[] {
     const { from, to } = this.bounds();
     return this.msgs()
-      .filter((x) => (this.filter === "star" ? x.star : this.filter === "unread" ? !(x as any).read_ : true))
+      .filter((x) => (this.filter === "star" ? x.star : this.filter === "unread" ? !x.read_ : true))
       .filter((x) => !this.selected.size || this.selected.has(x.feed))
       .filter((x) => !this.q || x.title.includes(this.q) || (x.body || "").includes(this.q) || (x.place || "").includes(this.q))
       .filter((x) => x.date >= from && x.date <= to)
@@ -563,13 +565,13 @@ export class MessagesView extends ItemView {
   /** 回到今天：找得到就滚过去，找不到就把范围放宽再滚 */
   private jumpToday() {
     const go = () => {
-      const el2 = document.querySelector('.tlt-mtl [data-day="today"]') as HTMLElement | null;
+      const el2 = document.querySelector<HTMLElement>('.tlt-mtl [data-day="today"]');
       if (el2) el2.scrollIntoView({ block: "start", behavior: "smooth" });
     };
     if (document.querySelector('.tlt-mtl [data-day="today"]')) { go(); return; }
     this.range = "7";
     if (!this.msgs().some((x) => x.date === todayISO())) this.range = "all";
-    this.render().then(() => window.setTimeout(go, 60));
+    void this.render().then(() => window.setTimeout(go, 60));
   }
 
   /* ---------------- 右栏：消息源管理 ---------------- */
@@ -587,14 +589,14 @@ export class MessagesView extends ItemView {
         const pen = el("button", "tlt-rename", "✎");
         pen.title = "改源名称";
         pen.onclick = () => {
-          const inp = el("input", "tlt-input") as HTMLInputElement;
+          const inp = el("input", "tlt-input");
           inp.value = f.name;
           tw.empty();
           tw.appendChild(inp);
           inp.focus();
           inp.select();
           let done = false;
-          const commit = async () => {
+          const commit = () => { void (async () => {
             if (done) return;
             done = true;
             const v = inp.value.trim();
@@ -603,10 +605,10 @@ export class MessagesView extends ItemView {
               new Notice(`已改名为「${v}」`);
             }
             await this.refresh();
-          };
+          })(); };
           inp.addEventListener("keydown", (e) => {
             if (e.key === "Enter") commit();
-            if (e.key === "Escape") this.render();
+            if (e.key === "Escape") void this.render();
           });
           inp.addEventListener("blur", commit);
         };
@@ -630,33 +632,33 @@ export class MessagesView extends ItemView {
           const pid = (this.store.settings.feedIds || {})[f.id] || f.id;
           s.appendChild(el("div", "tlt-d-body", `订阅地址：${st.publish}/feed?id=${encodeURIComponent(pid)}`));
           const push = el("button", "tlt-btn pri", "手动推送");
-          push.onclick = async () => {
+          push.onclick = () => { void (async () => {
             try {
               const r = await this.store.publishFeed(f, st.publish, pid);
               new Notice(`已推送 ${r.count} 条`);
-            } catch (e: any) { new Notice("推送失败：" + e.message); }
-          };
+            } catch (e) { new Notice("推送失败：" + errMsg(e)); }
+          })(); };
           const unpub = el("button", "tlt-btn danger", "取消发布");
-          unpub.onclick = async () => {
+          unpub.onclick = () => { void (async () => {
             try { await this.store.unpublishFeed(pid, st.publish); } catch { /* 服务没起也不影响本地 */ }
             const back = f.personal ? 0 : await this.store.foldBackToPersonal(f, "个人");
             this.selected.delete(f.id);
             await this.refresh();
             if (back < 0) new Notice("并回个人失败，源文件已保留，稍后再试");
             else new Notice(back ? `已取消发布，${back} 条回到「个人」` : "已取消发布（这个源里没有内容）");
-          };
+          })(); };
           act.append(push, unpub);
         } else {
           const st = this.plugin.hubState();
           if (f.remote) s.appendChild(el("div", "tlt-d-body", f.remote));
           const un = el("button", "tlt-btn danger", "取消订阅");
-          un.onclick = async () => {
+          un.onclick = () => { void (async () => {
             try { await this.store.unsubscribeRemote(st.sync, f.remote || ""); } catch { /* 服务没起就只清本地 */ }
             this.selected.delete(f.id);
             const gone = await this.store.trashFeedFile(f);
             await this.refresh();
             new Notice(gone ? `已取消订阅「${f.name}」，本地文件已进回收站` : `已取消订阅「${f.name}」`);
-          };
+          })(); };
           act.appendChild(un);
         }
         s.appendChild(act);
@@ -685,7 +687,7 @@ export class MessagesView extends ItemView {
   }
 
   private overviewSide(s: HTMLElement): HTMLElement {
-    const unread = this.msgs().filter((x) => !(x as any).read_).length;
+    const unread = this.msgs().filter((x) => !x.read_).length;
     const star = this.msgs().filter((x) => x.star).length;
     s.appendChild(el("div", "tlt-d-title", "消息源管理"));
     const stats = el("div", "tlt-d-stats");
@@ -718,35 +720,35 @@ export class MessagesView extends ItemView {
     const push = el("button", "tlt-btn", "推送我的源");
     push.onclick = () => new PublishModal(this.app, this.store, this.plugin, () => this.render()).open();
     const sync = el("button", "tlt-btn", "同步订阅");
-    sync.onclick = async () => {
+    sync.onclick = () => { void (async () => {
       try {
         const r = await this.store.pullFromHub(st.sync);
         const stamp = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
         this.plugin.setHubState({ lastSync: stamp, lastResult: `新增 ${r.added} 条`, lastError: "" });
         await this.refresh();
         new Notice(`同步完成：新增 ${r.added} 条`);
-      } catch (e: any) { new Notice("同步失败：" + e.message); }
-    };
+      } catch (e) { new Notice("同步失败：" + errMsg(e)); }
+    })(); };
     btns.append(push, sync);
     box.appendChild(btns);
 
-    const input = el("input", "tlt-input") as HTMLInputElement;
+    const input = el("input", "tlt-input");
     input.placeholder = "订阅地址（可粘贴 @URL:…）";
     box.appendChild(input);
     const sub = el("button", "tlt-btn", "订阅这个源");
-    sub.onclick = async () => {
+    sub.onclick = () => { void (async () => {
       const url = cleanFeedUrl(input.value);
       if (!url) { new Notice("先填订阅地址"); return; }
       try {
-        const r: any = await this.store.subscribeRemote(st.sync, url);
+        const r = await this.store.subscribeRemote(st.sync, url);
         if (r.reason === "self") { new Notice("这是你自己发布的源，不需要订阅"); return; }
         if (r.existed) { new Notice("已经订阅过这个源"); input.value = ""; return; }
         input.value = "";
         const p = await this.store.pullFromHub(st.sync);
         await this.refresh();
         new Notice(`已订阅并同步 ${p.added} 条`);
-      } catch (e: any) { new Notice("订阅失败：" + e.message); }
-    };
+      } catch (e) { new Notice("订阅失败：" + errMsg(e)); }
+    })(); };
     box.appendChild(sub);
     return box;
   }
@@ -757,8 +759,8 @@ export class MessagesView extends ItemView {
 class PublishFeedModal extends TltModal {
   store: Store;
   from: Feed;
-  onDone: () => void;
-  constructor(app: App, store: Store, from: Feed, onDone: () => void) {
+  onDone: () => void | Promise<void>;
+  constructor(app: App, store: Store, from: Feed, onDone: () => void | Promise<void>) {
     super(app); this.store = store; this.from = from; this.onDone = onDone;
   }
   onOpen() {
@@ -768,7 +770,7 @@ class PublishFeedModal extends TltModal {
     contentEl.appendChild(el("div", "tlt-m-meta",
       `把「${this.from.name}」里的草稿变成一个别人能订阅的源；发布后它会出现在「我发布的」里。`));
 
-    const nameIn = el("input", "tlt-input wide tlt-input-title") as HTMLInputElement;
+    const nameIn = el("input", "tlt-input wide tlt-input-title");
     nameIn.placeholder = "源名称（别人看到的名字）";
     nameIn.value = (this.store.settings.feedNames || {})[this.from.id] || this.from.name;
     nameIn.oninput = () => {
@@ -778,13 +780,13 @@ class PublishFeedModal extends TltModal {
 
     const descRow = el("div", "tlt-row");
     descRow.appendChild(el("span", "tlt-row-l", "说明"));
-    const descIn = el("input", "tlt-input") as HTMLInputElement;
+    const descIn = el("input", "tlt-input");
     descIn.placeholder = "这个源发什么（可留空）";
     descRow.appendChild(descIn);
 
     const cadRow = el("div", "tlt-row");
     cadRow.appendChild(el("span", "tlt-row-l", "节奏"));
-    const cadIn = el("input", "tlt-input") as HTMLInputElement;
+    const cadIn = el("input", "tlt-input");
     cadIn.placeholder = "比如 每周 2–3 条（可留空）";
     cadRow.appendChild(cadIn);
 
@@ -796,7 +798,7 @@ class PublishFeedModal extends TltModal {
     const cancel = el("button", "tlt-btn", "取消");
     cancel.onclick = () => this.close();
     const ok = el("button", "tlt-btn pri", "发布");
-    ok.onclick = async () => {
+    ok.onclick = () => { void (async () => {
       const name = nameIn.value.trim();
       if (!name) { new Notice("先写源名称"); return; }
       try {
@@ -804,12 +806,12 @@ class PublishFeedModal extends TltModal {
           name, desc: descIn.value.trim(), cadence: cadIn.value.trim(),
         });
         if (!r.ok) { new Notice("发布失败：名称空着"); return; }
-        this.close(); this.onDone();
+        this.close(); void this.onDone();
         new Notice(`已发布「${name}」· 订阅地址在右栏里`);
-      } catch (e: any) {
-        new Notice("发布失败：" + (e?.message || e));
+      } catch (e) {
+        new Notice("发布失败：" + errMsg(e));
       }
-    };
+    })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
     window.setTimeout(() => nameIn.focus(), 50);
@@ -821,9 +823,9 @@ class PublishFeedModal extends TltModal {
 
 class ComposeModal extends TltModal {
   store: Store;
-  onDone: () => void;
+  onDone: () => void | Promise<void>;
   presetFeed?: string;
-  constructor(app: App, store: Store, onDone: () => void, presetFeed?: string) {
+  constructor(app: App, store: Store, onDone: () => void | Promise<void>, presetFeed?: string) {
     super(app); this.store = store; this.onDone = onDone; this.presetFeed = presetFeed;
   }
   onOpen() {
@@ -836,7 +838,7 @@ class ComposeModal extends TltModal {
 
     const srcRow = el("div", "tlt-row");
     srcRow.appendChild(el("span", "tlt-row-l", "消息源"));
-    const src = el("select", "tlt-input") as HTMLSelectElement;
+    const src = el("select", "tlt-input");
     const options: Feed[] = [
       ...this.store.feeds.filter((x) => x.personal),
       ...this.store.feeds.filter((x) => x.mine && !x.personal),
@@ -855,13 +857,13 @@ class ComposeModal extends TltModal {
     const cancel = el("button", "tlt-btn", "取消");
     cancel.onclick = () => this.close();
     const ok = el("button", "tlt-btn pri", "创建");
-    ok.onclick = async () => {
+    ok.onclick = () => { void (async () => {
       const v = f.value();
       if (!v.title) { new Notice("先写标题"); return; }
       if (!src.value) { new Notice("先选一个消息源"); return; }
-      await this.store.addMessage(src.value, v as any);
-      this.close(); this.onDone(); new Notice("已创建消息");
-    };
+      await this.store.addMessage(src.value, v);
+      this.close(); void this.onDone(); new Notice("已创建消息");
+    })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
     window.setTimeout(() => f.titleEl.focus(), 50);
@@ -875,8 +877,8 @@ class ComposeModal extends TltModal {
 class PublishModal extends TltModal {
   store: Store;
   plugin: TLTPlugin;
-  onDone: () => void;
-  constructor(app: App, store: Store, plugin: TLTPlugin, onDone: () => void) {
+  onDone: () => void | Promise<void>;
+  constructor(app: App, store: Store, plugin: TLTPlugin, onDone: () => void | Promise<void>) {
     super(app); this.store = store; this.plugin = plugin; this.onDone = onDone;
   }
   onOpen() {
@@ -890,7 +892,7 @@ class PublishModal extends TltModal {
       const r = el("div", "tlt-row");
       r.appendChild(el("span", "tlt-row-l", f.name.slice(0, 6)));
       const box = el("div", "tlt-row-v");
-      const input = el("input", "tlt-input") as HTMLInputElement;
+      const input = el("input", "tlt-input");
       input.value = (this.store.settings.feedIds || {})[f.id] || f.id;
       box.append(input, el("div", "tlt-hint", `${f.items.length} 条`));
       r.appendChild(box);
@@ -903,7 +905,7 @@ class PublishModal extends TltModal {
     const cancel = el("button", "tlt-btn", "取消");
     cancel.onclick = () => this.close();
     const ok = el("button", "tlt-btn pri", "保存并推送");
-    ok.onclick = async () => {
+    ok.onclick = () => { void (async () => {
       const ids: Record<string, string> = {};
       rows.forEach(({ feed, input }) => { ids[feed.id] = input.value.trim() || feed.id; });
       this.store.settings.feedIds = ids;
@@ -915,9 +917,9 @@ class PublishModal extends TltModal {
           total += r.count || 0;
         }
         new Notice(`已推送 ${rows.length} 个源（${total} 条）`);
-      } catch (e: any) { new Notice("推送失败：" + e.message); }
-      this.close(); this.onDone();
-    };
+      } catch (e) { new Notice("推送失败：" + errMsg(e)); }
+      this.close(); void this.onDone();
+    })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
   }

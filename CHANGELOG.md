@@ -1,5 +1,14 @@
 # 更新日志
 
+## 0.4.9
+
+- 类型收紧：`Store` 的读写、消息服务的线上格式、设置项都补上显式类型，去掉 60 多处 `any`
+- 事件处理器统一用 `void` 包一层：`async` 回调用 IIFE 包起来，不再把 Promise 交给 `void` 期望的位置
+- `catch` 一律按 `unknown` 处理，统一走 `errMsg()`
+- 设置页补 `getSettingDefinitions()`：1.13+ 的设置搜索能搜到本插件的选项
+- 删文件继续走 `FileManager.trashFile()`；`vault.read` 读盘、`instanceOf` 做跨窗口类型判断
+- 官方 linter（`eslint-plugin-obsidianmd`）在 `src/` 上零告警
+
 ## 0.4.8
 
 - `transition` 简写改为显式属性，避免隐式 `all` 被样式检查挑出来

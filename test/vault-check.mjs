@@ -8,7 +8,7 @@ const VAULT = process.argv[2];
 if (!VAULT) { console.error("用法: node test/vault-check.mjs <vault 路径>"); process.exit(2); }
 
 await esbuild.build({
-  stdin: { contents: `export { Store } from "./src/store";`, resolveDir: process.cwd(), sourcefile: "v.ts", loader: "ts" },
+  stdin: { contents: `export { Store } from "./src/store"; export { TFile } from "obsidian";`, resolveDir: process.cwd(), sourcefile: "v.ts", loader: "ts" },
   bundle: true, format: "esm", platform: "node", outfile: "test/store-bundle.mjs",
   external: ["obsidian"],
   logLevel: "error",
@@ -17,13 +17,16 @@ await esbuild.build({
     setup(build) {
       build.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "stub" }));
       build.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
-        contents: `export class TFile{};export class TFolder{};export const normalizePath=p=>p.replace(/^\\/+|\\/+$/g,"");`,
+        contents: `export class TFile{constructor(p){this.path=p||"";this.basename=String(p||"").split("/").pop().replace(/\\.md$/,"");this.name=this.basename+".md";this.extension="md";}};
+export class TFolder{};export class TAbstractFile{};
+export const normalizePath=p=>p.replace(/^\\/+|\\/+$/g,"");
+export async function requestUrl(){ throw new Error("offline"); }`,
         loader: "js",
       }));
     },
   }],
 });
-const { Store } = await import("./store-bundle.mjs?" + Date.now());
+const { Store, TFile } = await import("./store-bundle.mjs?" + Date.now());
 
 const walk = (dir, out = []) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -56,13 +59,12 @@ function frontmatter(text) {
   return fm;
 }
 
-const files = all.map((p) => ({ full: p, path: rel(p), basename: path.basename(p, ".md") }));
+const files = all.map((p) => Object.assign(new TFile(rel(p)), { full: p }));
 const vault = {
   getMarkdownFiles: () => files,
   cachedRead: async (f) => fs.readFileSync(f.full ?? path.join(VAULT, f.path), "utf8"),
   getAbstractFileByPath: (p) => {
-    const hit = files.find((f) => f.path === p);
-    return hit ? { path: hit.path, full: hit.full } : null;
+    return files.find((f) => f.path === p) ?? null;
   },
   process: async () => {},
   create: async () => {},

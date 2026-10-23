@@ -5,8 +5,17 @@
 import { WorkbenchView } from "../src/views/workbench";
 import { MessagesView } from "../src/views/messages";
 import { Store } from "../src/store";
+import { TFile } from "obsidian";
 
 (globalThis as any).createSvg = (tag: string) => document.createElementNS("http://www.w3.org/2000/svg", tag);
+(globalThis as any).createEl = (tag: string, o: any = {}) => {
+  const e = document.createElement(tag);
+  if (typeof o === "string") e.className = o;
+  else { if (o.cls) e.className = o.cls; if (o.text) e.textContent = o.text; }
+  return e;
+};
+
+(Node.prototype as any).instanceOf = function (ctor: any) { return this instanceof ctor; };
 
 /* Obsidian 给 DOM 加的便捷方法（真机有，浏览器里要补） */
 const EP: any = Element.prototype;
@@ -71,9 +80,9 @@ const files: Record<string, string> = {
 };
 
 const vault = {
-  getMarkdownFiles: () => Object.keys(files).map((p) => ({ path: p, basename: p.split("/").pop()!.replace(/\.md$/, "") })),
+  getMarkdownFiles: () => Object.keys(files).map((p) => new TFile(p)),
   cachedRead: async (f: any) => files[f.path] ?? "",
-  getAbstractFileByPath: (p: string) => (p in files ? { path: p } : null),
+  getAbstractFileByPath: (p: string) => (p in files ? new TFile(p) : null),
   process: async (f: any, fn: any) => { files[f.path] = fn(files[f.path]); },
   create: async (p: string, c: string) => { files[p] = c; },
   createFolder: async () => {},

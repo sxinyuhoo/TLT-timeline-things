@@ -17,7 +17,7 @@ const svc = spawn(PY, ["services-py/tlt_service.py", "--port", String(PORT), "--
 await new Promise((r) => setTimeout(r, 900));
 
 await esbuild.build({
-  stdin: { contents: `export { Store } from "./src/store";`, resolveDir: process.cwd(), sourcefile: "h.ts", loader: "ts" },
+  stdin: { contents: `export { Store } from "./src/store"; export { TFile } from "obsidian";`, resolveDir: process.cwd(), sourcefile: "h.ts", loader: "ts" },
   bundle: true, format: "esm", platform: "node", outfile: "test/store-bundle.mjs",
   external: ["obsidian"],
   logLevel: "error",
@@ -25,7 +25,7 @@ await esbuild.build({
     name: "stub", setup(build) {
       build.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "stub" }));
       build.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
-        contents: `export class TFile{};export class TFolder{};
+        contents: `export class TFile{constructor(p){this.path=p||"";this.basename=String(p||"").split("/").pop().replace(/\.md$/,"");this.name=this.basename+".md";this.extension="md";}};export class TFolder{};
 export const normalizePath=p=>p.replace(/^\\/+|\\/+$/g,"");
 export async function requestUrl(req){
   const res = await fetch(req.url, { method: req.method || "GET",
@@ -38,16 +38,17 @@ export async function requestUrl(req){
     },
   }],
 });
-const { Store } = await import("./store-bundle.mjs?" + Date.now());
+const { Store, TFile } = await import("./store-bundle.mjs?" + Date.now());
 
 /** 一个可写的临时 vault */
 function makeVault(root) {
   const files = new Map();
   const abs = (p) => path.join(root, p);
   const api = {
-    getMarkdownFiles: () => [...files.keys()].map((p) => ({ path: p, basename: path.basename(p, ".md") })),
+    getMarkdownFiles: () => [...files.keys()].map((p) => new TFile(p)),
     cachedRead: async (f) => files.get(f.path) ?? "",
-    getAbstractFileByPath: (p) => (files.has(p) ? { path: p } : null),
+    read: async (f) => files.get(f.path) ?? "",
+    getAbstractFileByPath: (p) => (files.has(p) ? new TFile(p) : null),
     create: async (p, content) => {
       files.set(p, content);
       fs.mkdirSync(path.dirname(abs(p)), { recursive: true });

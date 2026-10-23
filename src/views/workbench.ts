@@ -10,11 +10,12 @@ import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
+type TaskDim = "w" | "m" | "q" | "all";
 const PERIOD_LABEL: Record<Period, string> = { w: "本周", m: "本月", q: "本季度" };
 const KIND_LABEL: Record<string, string> = { ask: "要求", event: "活动", risk: "风险", note: "通知" };
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
-const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]!));
+const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
 
 export class WorkbenchView extends ItemView {
   plugin: TLTPlugin;
@@ -26,7 +27,7 @@ export class WorkbenchView extends ItemView {
   private q = "";
   private expanded = new Set<string>();
   private rhythmView: "bars" | "star" = "star";
-  private taskDim: "w" | "m" | "q" | "all" = "m";
+  private taskDim: TaskDim = "m";
   private taskTag: string | null = null;
   private starZoom = 1;
   private scrollToMin: number | null = null;
@@ -44,7 +45,7 @@ export class WorkbenchView extends ItemView {
   getIcon() { return "activity"; }
 
   async onOpen() {
-    this.contentEl.addEventListener("click", (ev) => this.onClick(ev));
+    this.contentEl.addEventListener("click", (ev) => { void this.onClick(ev); });
     await this.render();
   }
   async onClose() { this.contentEl.empty(); }
@@ -58,11 +59,11 @@ export class WorkbenchView extends ItemView {
 
   async render() {
     const root = this.contentEl;
-    const prevScroll = (root.querySelector(".tlt-work") as HTMLElement)?.scrollTop || 0;
+    const prevScroll = root.querySelector<HTMLElement>(".tlt-work")?.scrollTop || 0;
     // 输入框在 render 里会被重建，先记下焦点与光标位置，建完再还回去
-    const ae = document.activeElement as HTMLInputElement | null;
-    const focusKey = ae && (ae as any).dataset && (ae as any).dataset.focuskey
-      ? { key: (ae as any).dataset.focuskey as string, start: ae.selectionStart ?? 0, end: ae.selectionEnd ?? 0 }
+    const ae = document.activeElement;
+    const focusKey = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey
+      ? { key: ae.dataset.focuskey, start: ae.selectionStart ?? 0, end: ae.selectionEnd ?? 0 }
       : null;
     root.empty();
     root.addClass("tlt-root");
@@ -74,11 +75,11 @@ export class WorkbenchView extends ItemView {
     root.appendChild(app);
 
     this.bindInputs(app);
-    const work = app.querySelector(".tlt-work") as HTMLElement;
+    const work = app.querySelector<HTMLElement>(".tlt-work");
     if (work) work.scrollTop = prevScroll;
 
     if (focusKey) {
-      const again = root.querySelector(`[data-focuskey="${focusKey.key}"]`) as HTMLInputElement | null;
+      const again = root.querySelector<HTMLInputElement>(`[data-focuskey="${focusKey.key}"]`);
       if (again) {
         again.focus();
         try { again.setSelectionRange(focusKey.start, focusKey.end); } catch { /* number 型 input 不支持 */ }
@@ -86,7 +87,7 @@ export class WorkbenchView extends ItemView {
     }
 
     // 日历时间轴：挂上 DOM 后同步设 scrollTop（元素还没挂载时设是无效的）
-    const grid = root.querySelector(".tlt-daygrid") as HTMLElement | null;
+    const grid = root.querySelector<HTMLElement>(".tlt-daygrid");
     if (grid?.dataset.scrollTop) {
       grid.scrollTop = Number(grid.dataset.scrollTop) || 0;
       delete grid.dataset.scrollTop;
@@ -162,7 +163,7 @@ export class WorkbenchView extends ItemView {
     top.appendChild(el("div", "tlt-spacer"));
 
     const search = el("div", "tlt-search");
-    const input = el("input") as HTMLInputElement;
+    const input = el("input");
     input.placeholder = { today: "搜索任务 / 记录", month: "搜索任务", ms: "搜索里程碑", staff: "搜索人员", ideas: "搜索随手记", draw: "" }[this.tab] || "搜索";
     input.value = this.q;
     input.dataset.search = "1";
@@ -469,7 +470,7 @@ export class WorkbenchView extends ItemView {
         const base = -90 + i * span;
         const off = list.length > 1 ? (j / (list.length - 1) - 0.5) * span * 0.62 : 0;
         const a = ((base + off) * Math.PI) / 180;
-        const r = at(t.due!);
+        const r = at(t.due);
         pos[t.id] = [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
       });
     });
@@ -497,7 +498,7 @@ export class WorkbenchView extends ItemView {
     });
 
     this.store.milestones().forEach((m) => {
-      const dues = m.tasks.map((t) => t.due).filter(Boolean).sort() as string[];
+      const dues = m.tasks.map((t) => t.due).filter((d): d is string => !!d).sort();
       if (!dues.length) return;
       const i = projects.indexOf(m.project);
       if (i < 0) return;
@@ -656,7 +657,7 @@ export class WorkbenchView extends ItemView {
   private paneIdeas(): HTMLElement {
     const p = el("div", "tlt-pane");
     const cap = el("div", "tlt-cap");
-    const i = el("input") as HTMLInputElement;
+    const i = el("input");
     i.placeholder = "随手记一句，前面可以加 #标签，例：#论文 #回归 把抽检脚本做成工具";
     i.dataset.ideanew = "1";
     const plus = el("button", "tlt-btn lg", "＋ 随手记");
@@ -816,24 +817,24 @@ export class WorkbenchView extends ItemView {
   /* ---------- 交互 ---------- */
 
   private bindInputs(root: HTMLElement) {
-    const search = root.querySelector("[data-search]") as HTMLInputElement;
+    const search = root.querySelector<HTMLInputElement>("[data-search]");
     if (search) {
       let composing = false;
       search.addEventListener("compositionstart", () => { composing = true; });
       search.addEventListener("compositionend", () => {
         composing = false;
         this.q = search.value.trim();
-        this.render();
+        void this.render();
       });
       search.addEventListener("input", () => {
         if (composing) return;           // 拼音还没选字，别拿半成品去筛
         this.q = search.value.trim();
-        this.render();
+        void this.render();
       });
     }
 
-    const ideaNew = root.querySelector("[data-ideanew]") as HTMLInputElement;
-    const ideaPrev = root.querySelector("[data-ideaprev]") as HTMLElement;
+    const ideaNew = root.querySelector<HTMLInputElement>("[data-ideanew]");
+    const ideaPrev = root.querySelector<HTMLElement>("[data-ideaprev]");
     if (ideaNew && ideaPrev) {
       // 只回显命中的标签；没标签就不出现（正文本身不需要预览）
       const paint = () => {
@@ -850,7 +851,7 @@ export class WorkbenchView extends ItemView {
       paint();
     }
     if (ideaNew) {
-      ideaNew.addEventListener("keydown", async (e) => {
+      ideaNew.addEventListener("keydown", (e) => { void (async () => {
         if (e.key !== "Enter") return;
         const v = (e.target as HTMLInputElement).value.trim();
         if (!v) return;
@@ -858,14 +859,14 @@ export class WorkbenchView extends ItemView {
         await this.store.addIdea({ title: parsed.title, tags: parsed.tags });
         await this.refresh();
         new Notice("已收进想法池");
-      });
+      })(); });
     }
   }
 
   /** 空白处点击 → 按坐标算时间 */
   private async onClick(ev: MouseEvent) {
     const t = ev.target as HTMLElement;
-    const pick = (sel: string) => t.closest(sel) as HTMLElement | null;
+    const pick = (sel: string) => t.closest<HTMLElement>(sel);
 
     const tab = pick("[data-tab]");
     if (tab) { this.tab = tab.dataset.tab!; await this.render(); return; }
@@ -880,7 +881,7 @@ export class WorkbenchView extends ItemView {
     const msCard = pick("[data-ms]");
     // 点的是卡片里的任务/勾选框时，不要当成"折叠这个里程碑"
     if (msCard && !(ev.target as Element).closest("[data-task],[data-ck]")) {
-      const key = msCard.dataset.ms!;
+      const key = msCard.dataset.ms ?? "";
       if (this.expanded.has(key)) this.expanded.delete(key); else this.expanded.add(key);
       await this.render();
       return;
@@ -900,7 +901,7 @@ export class WorkbenchView extends ItemView {
     if (tagBtn) { this.taskTag = tagBtn.dataset.tag || null; await this.render(); return; }
 
     const dim = pick("[data-dim]");
-    if (dim) { this.taskDim = dim.dataset.dim as any; await this.render(); return; }
+    if (dim) { this.taskDim = dim.dataset.dim as TaskDim; await this.render(); return; }
 
     const rv = pick("[data-rhythm]");
     if (rv) { this.rhythmView = rv.dataset.rhythm as "bars" | "star"; await this.render(); return; }
@@ -909,7 +910,7 @@ export class WorkbenchView extends ItemView {
     if (period) { this.period = period.dataset.period as Period; await this.render(); return; }
 
     const proj = pick("[data-proj]");
-    if (proj) { this.proj = this.proj === proj.dataset.proj ? null : proj.dataset.proj!; await this.render(); return; }
+    if (proj) { const name = proj.dataset.proj ?? ""; this.proj = this.proj === name ? null : name; await this.render(); return; }
 
     if (pick("[data-theme]")) { this.plugin.toggleTheme(); return; }
 
@@ -922,7 +923,7 @@ export class WorkbenchView extends ItemView {
     const ck = pick("[data-ck]");
     if (ck) {
       ev.stopPropagation();
-      const task = this.findTask(ck.dataset.ck!);
+      const task = this.findTask(ck.dataset.ck ?? "");
       if (task) { await this.store.toggleTask(task); await this.refresh(); }
       return;
     }
@@ -962,18 +963,18 @@ export class WorkbenchView extends ItemView {
 
     const sched = pick("[data-sched]");
     if (sched) {
-      const t = this.findTask(sched.dataset.sched!);
+      const t = this.findTask(sched.dataset.sched ?? "");
       if (t) await this.scheduleTask(t);
       return;
     }
 
     const msPeek = pick("[data-mspeek]");
     if (msPeek) {
-      const [proj, name] = msPeek.dataset.mspeek!.split("::");
+      const [proj, name] = (msPeek.dataset.mspeek ?? "").split("::");
       const ms = this.store.milestones(proj).find((m) => m.name === name);
       if (ms) {
         new MilestonePeekModal(this.app, this.store, ms, () => {
-          this.tab = "ms"; this.proj = proj || null; this.expanded.add(name); this.render();
+          this.tab = "ms"; this.proj = proj || null; this.expanded.add(name); void this.render();
         }).open();
       }
       return;
@@ -981,7 +982,7 @@ export class WorkbenchView extends ItemView {
 
     const peek = pick("[data-peek]");
     if (peek) {
-      const t = this.findTask(peek.dataset.peek!);
+      const t = this.findTask(peek.dataset.peek ?? "");
       if (t) new TaskPeekModal(this.app, this.store, t, () => {
         new TaskModal(this.app, this.store, t, () => this.refresh()).open();
       }).open();
@@ -990,7 +991,7 @@ export class WorkbenchView extends ItemView {
 
     const task = pick("[data-task]");
     if (task) {
-      const tk = this.findTask(task.dataset.task!);
+      const tk = this.findTask(task.dataset.task ?? "");
       if (tk) new TaskModal(this.app, this.store, tk, () => this.refresh()).open();
       return;
     }

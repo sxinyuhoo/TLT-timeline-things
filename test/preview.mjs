@@ -6,10 +6,20 @@ import fs from "node:fs";
 const dom = new JSDOM(`<!doctype html><html><body class="theme-dark"></body></html>`, { pretendToBeVisual: true });
 const g = globalThis;
 g.window = dom.window; g.document = dom.window.document;
-g.HTMLElement = dom.window.HTMLElement; g.Element = dom.window.Element; g.Node = dom.window.Node;
+g.HTMLElement = dom.window.HTMLElement;
+g.Node = dom.window.Node;
+dom.window.Node.prototype.instanceOf = function (ctor) { return this instanceof ctor; };
+ g.Element = dom.window.Element; g.Node = dom.window.Node;
 g.MouseEvent = dom.window.MouseEvent; g.KeyboardEvent = dom.window.KeyboardEvent;
 g.getComputedStyle = dom.window.getComputedStyle;
 g.DOMParser = dom.window.DOMParser;
+g.HTMLInputElement = dom.window.HTMLInputElement;
+g.HTMLSelectElement = dom.window.HTMLSelectElement;
+g.HTMLTextAreaElement = dom.window.HTMLTextAreaElement;
+g.HTMLElement = dom.window.HTMLElement;
+g.Node = dom.window.Node;
+dom.window.Node.prototype.instanceOf = function (ctor) { return this instanceof ctor; };
+
 g.createSvg = (tag) => dom.window.document.createElementNS("http://www.w3.org/2000/svg", tag);
 
 /** Obsidian 的全局 createEl（测试环境补一个） */
@@ -34,11 +44,11 @@ EP.createEl = function (tag, o = {}) {
 };
 
 await esbuild.build({
-  stdin: { contents: `export { WorkbenchView } from "./src/views/workbench"; export { MessagesView } from "./src/views/messages"; export { Store } from "./src/store";`, resolveDir: process.cwd(), sourcefile: "p.ts", loader: "ts" },
+  stdin: { contents: `export { WorkbenchView } from "./src/views/workbench"; export { MessagesView } from "./src/views/messages"; export { Store } from "./src/store"; export { TFile } from "obsidian";`, resolveDir: process.cwd(), sourcefile: "p.ts", loader: "ts" },
   bundle: true, format: "esm", platform: "node", outfile: "test/bundle.mjs",
   alias: { obsidian: "./test/obsidian-stub.ts" }, logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile } = await import("./bundle.mjs?" + Date.now());
 
 const now = new Date();
 const pad = (n) => String(n).padStart(2, "0");
@@ -143,9 +153,9 @@ const fm = {
 };
 
 const vault = {
-  getMarkdownFiles: () => Object.keys(files).map((p) => ({ path: p, basename: p.split("/").pop().replace(/\.md$/, "") })),
+  getMarkdownFiles: () => Object.keys(files).map((p) => new TFile(p)),
   cachedRead: async (f) => files[f.path] ?? "",
-  getAbstractFileByPath: (p) => (p in files ? { path: p } : null),
+  getAbstractFileByPath: (p) => (p in files ? new TFile(p) : null),
   process: async (f, fn) => { files[f.path] = fn(files[f.path]); },
   create: async (p, c) => { files[p] = c; },
   createFolder: async () => {},

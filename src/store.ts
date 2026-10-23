@@ -1,10 +1,23 @@
-import { App, TFile, normalizePath, requestUrl } from "obsidian";
+import { App, TAbstractFile, TFile, normalizePath, requestUrl } from "obsidian";
 import {
   Task, Staff, Feed, Idea, Msg, Period,
   parseTaskLine, parseStaff, parseMsgLine, parseLogMonth, parseIdeaLine,
   newTaskLine, newMsgLine, newLogLine, toggleTaskLine, setTaskDue, setTaskField, stripFields,
-  todayISO, monthBounds,
+  todayISO, monthBounds, asText,
 } from "./data";
+
+/** 消息服务的线上格式（发布端 / 订阅代理），字段都可缺 */
+interface WireItem {
+  mid?: string; date?: string; title?: string; kind?: string; place?: string;
+  who?: string[]; star?: boolean; state?: string; until?: string; body?: string;
+}
+interface WireFeed {
+  url?: string; ok?: boolean; error?: string; id?: string; title?: string; items?: WireItem[];
+}
+interface PullResponse { feeds?: WireFeed[]; pulledAt?: string }
+interface SubsResponse { subs?: { url?: string }[] }
+interface SubscribeResult { ok?: boolean; count?: number; existed?: boolean; reason?: string }
+interface PublishResult { ok?: boolean; count?: number; id?: string }
 
 export interface TLTSettings {
   tasksFolder: string;
@@ -127,7 +140,7 @@ export class Store {
     // 人员：team/*.md 的 frontmatter
     const staff = this.filesIn(this.settings.teamFolder);
     staff.forEach((file, idx) => {
-      const fm = (this.app.metadataCache.getFileCache(file)?.frontmatter || {}) as Record<string, any>;
+      const fm = (this.app.metadataCache.getFileCache(file)?.frontmatter || {}) as Record<string, unknown>;
       const s = parseStaff(file.basename, file.path, fm);
       if (!s.color) s.color = PEOPLE_COLORS[idx % PEOPLE_COLORS.length];
       this.staff.push(s);
@@ -136,7 +149,7 @@ export class Store {
     // 消息源：feeds/*.md
     for (const file of this.filesIn(this.settings.feedsFolder)) {
       const text = await this.app.vault.cachedRead(file);
-      const fm = (this.app.metadataCache.getFileCache(file)?.frontmatter || {}) as Record<string, any>;
+      const fm = (this.app.metadataCache.getFileCache(file)?.frontmatter || {}) as Record<string, unknown>;
       const lines = text.split(/\r?\n/);
       const items: Msg[] = [];
       for (let i = 0; i < lines.length; i++) {
@@ -152,12 +165,12 @@ export class Store {
       this.feeds.push({
         id: file.basename,
         file: file.path,
-        name: String(fm["title"] || file.basename),
-        desc: String(fm["desc"] || fm["description"] || ""),
-        cadence: String(fm["cadence"] || ""),
-        owner: String(fm["owner"] || ""),
+        name: asText(fm["title"]) || file.basename,
+        desc: asText(fm["desc"]) || asText(fm["description"]),
+        cadence: asText(fm["cadence"]),
+        owner: asText(fm["owner"]),
         mine: fm["mine"] === true || fm["owner"] === "me",
-        remote: String(fm["remote"] || ""),
+        remote: asText(fm["remote"]),
         personal: fm["personal"] === true,
         items,
       });
@@ -191,9 +204,8 @@ export class Store {
 
   /* ---------------- 写 ---------------- */
 
-  /** 宽容判定：TFile 没有 children，TFolder 有（也便于单测替身） */
-  private asFile(f: any): TFile | null {
-    return f && typeof f.path === "string" && !f.children ? (f as TFile) : null;
+  private asFile(f: TAbstractFile | null | undefined): TFile | null {
+    return f instanceof TFile ? f : null;
   }
 
   private async fileByPath(path: string): Promise<TFile | null> {
@@ -414,7 +426,7 @@ export class Store {
         old.split(/\r?\n/)
           .map((l) => /^\s*[-*+]\s+(?:(\d{4}-\d{2}-\d{2})\s+)?(.+?)(?:\s+\[|$)/.exec(l))
           .filter(Boolean)
-          .map((m) => keyOf(m![1] || "", stripFields(m![2]).trim())),
+          .map((m) => keyOf(m[1] || "", stripFields(m[2]).trim())),
       );
       const fresh = msgs.filter((m) => !have.has(keyOf(m.date, m.title)));
       await this.app.vault.process(file, (data) => {
@@ -447,9 +459,7 @@ export class Store {
     const src = await this.fileByPath(feed.file);
     let body = "";
     if (src) {
-      const raw = typeof (this.app.vault as any).read === "function"
-        ? await (this.app.vault as any).read(src)
-        : await this.app.vault.cachedRead(src);
+      const raw = await this.app.vault.read(src);
       body = String(raw)
         .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "")     // 去掉 frontmatter
         .replace(/^\s*#.*$/gm, "")                          // 去掉标题行
@@ -472,7 +482,7 @@ export class Store {
           data.split(/\r?\n/)
             .map((l) => /^\s*[-*+]\s+(?:(\d{4}-\d{2}-\d{2})\s+)?(.+?)(?:\s+\[|$)/.exec(l))
             .filter(Boolean)
-            .map((m) => `${m![1] || ""}\u0000${stripFields(m![2]).trim()}`),
+            .map((m) => `${m[1] || ""}\u0000${stripFields(m[2]).trim()}`),
         );
         const add = body.split(/\r?\n/).filter((l) => {
           const m = /^\s*[-*+]\s+(?:(\d{4}-\d{2}-\d{2})\s+)?(.+?)(?:\s+\[|$)/.exec(l);
@@ -735,7 +745,7 @@ export class Store {
   /* ---------------- Hub：发布 / 拉取 ---------------- */
 
   /** 统一走 requestUrl：不受 CORS 限制，也不触发审核的 fetch 警告 */
-  private async httpJson(url: string, init: { method?: string; body?: unknown } = {}): Promise<any> {
+  private async httpJson<T>(url: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
     const res = await requestUrl({
       url,
       method: init.method || "GET",
@@ -744,14 +754,14 @@ export class Store {
       throw: false,
     });
     if (res.status >= 400) throw new Error(`HTTP ${res.status}`);
-    return res.json;
+    return res.json as T;
   }
 
   /** 把一个本地源的全部消息推给发布服务 */
   async publishFeed(feed: Feed, hubUrl: string, publishId?: string) {
     const base = hubUrl.replace(/\/$/, "");
     const pid = publishId || (this.settings.feedIds || {})[feed.id] || feed.id;
-    await this.httpJson(`${base}/register`, {
+    await this.httpJson<PublishResult>(`${base}/register`, {
       method: "POST",
       body: { id: pid, title: feed.name, desc: feed.desc, owner: feed.owner },
     });
@@ -760,7 +770,7 @@ export class Store {
       date: m.date, title: m.title, kind: m.kind, place: m.place, who: m.who,
       star: m.star, state: m.state, until: m.until, body: m.body,
     }));
-    return await this.httpJson(`${base}/publish`, {
+    return await this.httpJson<PublishResult>(`${base}/publish`, {
       method: "POST",
       body: { id: pid, title: feed.name, items },
     });
@@ -769,7 +779,7 @@ export class Store {
   /** 取消发布：从发布服务上摘掉这个源 */
   async unpublishFeed(publishId: string, hubUrl: string) {
     const base = hubUrl.replace(/\/$/, "");
-    try { await this.httpJson(`${base}/feed?id=${encodeURIComponent(publishId)}`, { method: "DELETE" }); return true; }
+    try { await this.httpJson<unknown>(`${base}/feed?id=${encodeURIComponent(publishId)}`, { method: "DELETE" }); return true; }
     catch { return false; }
   }
 
@@ -785,28 +795,32 @@ export class Store {
     if (mine.some((f) => norm(feedUrl).includes(`id=${f.id}`) || norm(feedUrl).includes(`id=${encodeURIComponent(f.id)}`))) {
       return { ok: false, count: 0, existed: true, reason: "self" as const };
     }
-    const cur = await this.httpJson(`${base}/subscriptions`).catch(() => ({ subs: [] }));
-    const existed = (cur.subs || []).some((sub: any) => norm(sub.url) === norm(feedUrl));
-    if (existed) return { ok: true, count: (cur.subs || []).length, existed: true };
-    const res = await this.httpJson(`${base}/subscribe`, { method: "POST", body: { url: feedUrl, name } });
+    const cur = await this.httpJson<SubsResponse>(`${base}/subscriptions`).catch((): SubsResponse => ({ subs: [] }));
+    const subs = cur.subs ?? [];
+    if (subs.some((sub) => norm(sub.url ?? "") === norm(feedUrl))) {
+      return { ok: true, count: subs.length, existed: true };
+    }
+    const res = await this.httpJson<SubscribeResult>(`${base}/subscribe`, { method: "POST", body: { url: feedUrl, name } });
     return { ...res, existed: false };
   }
 
   async unsubscribeRemote(syncUrl: string, feedUrl: string) {
     const base = syncUrl.replace(/\/$/, "");
-    try { await this.httpJson(`${base}/subscribe?url=${encodeURIComponent(feedUrl)}`, { method: "DELETE" }); return true; }
+    try { await this.httpJson<unknown>(`${base}/subscribe?url=${encodeURIComponent(feedUrl)}`, { method: "DELETE" }); return true; }
     catch { return false; }
   }
 
   /** 从拉取服务同步：把远端消息写进 TLT/feeds/<id>.md（按 mid 去重） */
   async pullFromHub(syncUrl: string) {
     const base = syncUrl.replace(/\/$/, "");
-    const data = await this.httpJson(`${base}/pull`);
+    const data = await this.httpJson<PullResponse>(`${base}/pull`);
     let added = 0, updated = 0;
 
-    for (const feed of data.feeds || []) {
-      if (!feed.ok || !feed.items?.length) continue;
-      const rawId = String(feed.id || feed.title || "远程源");
+    for (const feed of data.feeds ?? []) {
+      const items = feed.items ?? [];
+      if (!feed.ok || !items.length) continue;
+      const title = asText(feed.title) || asText(feed.id) || "远程源";
+      const rawId = title;
       const id = rawId.replace(/[\\/:*?"<>|]/g, "-");
       // 远端源单独前缀，避免和本地同名源混在一起
       const path = normalizePath(`${this.settings.feedsFolder}/远程-${id}.md`);
@@ -814,12 +828,12 @@ export class Store {
       if (!file) {
         await this.ensureFolder(this.settings.feedsFolder);
         file = await this.app.vault.create(path,
-          `---\ntitle: ${feed.title}\nremote: ${feed.url}\nown: false\n---\n\n# ${feed.title}\n\n`);
+          `---\ntitle: ${title}\nremote: ${asText(feed.url)}\nown: false\n---\n\n# ${title}\n\n`);
       }
       await this.app.vault.process(file, (text) => {
         const lines = text.split(/\r?\n/);
-        for (const it of feed.items) {
-          const mid = it.mid || `${id}-${it.date}-${it.title}`;
+        for (const it of items) {
+          const mid = asText(it.mid) || `${id}-${asText(it.date)}-${asText(it.title)}`;
           const idx = lines.findIndex((l) => l.includes(`[mid:: ${mid}]`));
           const stateField = it.state === "ended" ? " [state:: ended]" : "";
           if (idx >= 0) {
@@ -828,7 +842,7 @@ export class Store {
             }
             continue;
           }
-          const head = `- ${it.date} ${it.title}` +
+          const head = `- ${asText(it.date)} ${asText(it.title)}` +
             (it.kind && it.kind !== "note" ? ` [kind:: ${it.kind}]` : "") +
             (it.place ? ` [place:: ${it.place}]` : "") +
             (it.who?.length ? ` [who:: ${it.who.join(", ")}]` : "") +
@@ -867,8 +881,8 @@ export class Store {
     const live = this.tasks.filter((t) => t.kind === "task");
     const inM = (d?: string) => !!d && d >= start && d <= end;
     return {
-      late: live.filter((t) => !t.done && inM(t.due) && t.due! < todayISO()),
-      todo: live.filter((t) => !t.done && inM(t.due) && t.due! >= todayISO()),
+      late: live.filter((t) => !t.done && inM(t.due) && t.due < todayISO()),
+      todo: live.filter((t) => !t.done && inM(t.due) && t.due >= todayISO()),
       done: live.filter((t) => t.done && inM(t.due)),
       pending: live.filter((t) => !t.done && !t.due),
     };
