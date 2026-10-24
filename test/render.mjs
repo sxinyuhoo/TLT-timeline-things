@@ -159,6 +159,17 @@ await store.load();
 
 /* ---------- 4) 断言数据层 ---------- */
 let pass = 0;
+/** 点弹窗里的按钮（迁移确认等），返回是否点到了 */
+const clickModal = async (label) => {
+  const modal = document.querySelector(".modal");
+  if (!modal) return false;
+  const btn = [...modal.querySelectorAll("button")].find((b) => b.textContent === label);
+  if (!btn) return false;
+  btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
+  return true;
+};
+
 const t = async (name, fn) => {
   // 用例共享同一份夹具与同一个 store：跑完一律还原，避免"上一个用例把文件搬走了"这类污染
   const snapFiles = JSON.parse(JSON.stringify(files));
@@ -445,7 +456,8 @@ await t("设置页：声明式改根目录同样同步六项并建目录", async
   await tab.alignAndNotify();                                // 点「更新」
   assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", `点更新后应同步：${inst.settings.tasksFolder}`);
   assert.equal(inst.settings.tagsFile, "90-插件运营区/TLT/tags.md");
-  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), "点更新后应把目录建出来");
+  await clickModal("确认搬运");                               // 有迁移 → 先确认
+  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), "确认搬运后应把目录建出来");
 });
 
 await t("点「更新」：路径与根目录对不上时也要收敛（历史状态修复）", async () => {
@@ -467,6 +479,7 @@ await t("设置页：输入只记值，点「更新」才同步六项、建目�
   let updates = 0;
   tab.update = () => { updates++; };
   const before = createdFolders.length;
+  const n0 = (globalThis.__notices || []).length;
   await tab.setControlValue("root", "9");
   await tab.setControlValue("root", "90");
   await tab.setControlValue("root", "90-插件运营区");
@@ -478,9 +491,10 @@ await t("设置页：输入只记值，点「更新」才同步六项、建目�
   await tab.alignAndNotify();                                   // 点「更新」
   assert.equal(inst.settings.tasksFolder, "90-插件运营区/TLT/tasks", "点更新后应同步六项");
   assert.equal(inst.settings.tagsFile, "90-插件运营区/TLT/tags.md");
-  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), "点更新后应建目录");
-  const said = (globalThis.__notices || []).slice(-3).join(" | ");
-  assert.ok(/项路径已同步/.test(said) && /目录已就位/.test(said), "点更新后应有提示，实际：" + said);
+  assert.ok(await clickModal("确认搬运"), "有迁移时应弹窗确认");
+  assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), "确认后应建目录");
+  const said = (globalThis.__notices || []).slice(n0).join(" | ");
+  assert.ok(/已搬|项路径已同步/.test(said), "应有搬运/同步提示，实际：" + said);
 });
 
 await t("点「更新」：派生路径跟随根目录，手工改过的那项不动", async () => {
@@ -692,6 +706,13 @@ await t("改根目录默认把数据整棵搬过去（不再两边各留一份�
   app.fileManager.renameFile = async (f, to) => { renamed.push([f.path, to]); await realRename(f, to); };
   inst.settings.root = "工作";
   const r = await inst.applyNow();
+  assert.equal(r.pending, true, "有迁移时应先弹窗确认");
+  assert.equal(renamed.length, 0, "确认之前不该动文件");
+  const modal = document.querySelector(".modal");
+  assert.ok(modal && /迁移 \d+ 个文件/.test(modal.textContent || ""), "弹窗应写清要迁移几个文件");
+  [...modal.querySelectorAll("button")].find((b) => b.textContent === "确认搬运")
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r2) => window.setTimeout(r2, 50));
   app.fileManager.renameFile = realRename;
   const diag = JSON.stringify({ r, tasks: inst.settings.tasksFolder, root: inst.settings.root, renamed });
   assert.equal(renamed.length, fixtureUnderTLT, "应把旧目录下所有文件都搬走 | " + diag);
@@ -711,6 +732,7 @@ await t("搬运通知里要写清旧目录是清空还是保留", async () => {
   globalThis.__notices.push = (m) => { said.push(m); return realPush(m); };
   inst.settings.root = "工作";
   await inst.applyNow();
+  await clickModal("确认搬运");
   globalThis.__notices.push = realPush;
   const text = said.join(" | ");
   assert.ok(/已搬 \d+ 个文件到新目录/.test(text), "没报告搬了几个：" + text);

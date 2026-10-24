@@ -411,7 +411,7 @@ desc: 我发布出去的动态
    * 「更新」按钮唯一会做的事：按当前设置重建派生路径，并把旧位置的数据搬过来。
    * 打字阶段只写设置值、别的什么都不动（用户要求：只有点「更新」才真正更新）。
    */
-  async applyNow(): Promise<{ movedFiles: number; blocked: number; kept: number; moved: number }> {
+  async applyNow(): Promise<{ movedFiles: number; blocked: number; pending: boolean; kept: number; moved: number }> {
     const s = this.settings;
     const snapshot = { ...s };
     const after = pathsFromRoot(s.root);
@@ -432,10 +432,7 @@ desc: 我发布出去的动态
       await this.saveSettings();
       new Notice(t("已取消更新，设置与目录都保持原样"));
     });
-    if (!res.blocked) {
-      await this.store.ensureVault();                   // 再补建
-      if (res.movedFiles) await this.notifyMove(snapshot, res.movedFiles);
-    }
+    if (!res.pending) await this.store.ensureVault();    // 没有迁移就直接补建
     return { ...res, kept, moved };
   }
 
@@ -443,21 +440,28 @@ desc: 我发布出去的动态
    * 把旧位置的数据搬到新位置。
    * 只有在"目标已有同名文件"时才弹窗，且弹窗只有两个出口：确认搬运 / 取消更新。
    */
-  private async relocate(old: Settings, onCancel?: () => void | Promise<void>): Promise<{ movedFiles: number; blocked: number }> {
+  /**
+   * 把旧位置的数据搬到新位置。
+   * 只要这次更新涉及迁移，就先弹窗把「从哪搬到哪、搬几个」摆出来，由用户确认；
+   * 弹窗只有两个出口：确认搬运 / 取消更新（取消会把整次操作回滚）。
+   */
+  private async relocate(old: Settings, onCancel?: () => void | Promise<void>): Promise<{ movedFiles: number; blocked: number; pending: boolean }> {
     const moves = this.planMove(old);
-    if (!moves.length) return { movedFiles: 0, blocked: 0 };
+    if (!moves.length) return { movedFiles: 0, blocked: 0, pending: false };
     const blocked = moves.filter((m) => this.app.vault.getAbstractFileByPath(m.to));
-    if (blocked.length) {
-      new MoveDataModal(this.app, moves, blocked.length, async () => {
-        const st = await this.doMove(moves);
-        await this.store.ensureVault();
-        await this.notifyMove(old, st.moved);
-        this.refreshAll();
-      }, onCancel).open();
-      return { movedFiles: 0, blocked: blocked.length };
-    }
-    const st = await this.doMove(moves);
-    return { movedFiles: st.moved, blocked: 0 };
+    const info = {
+      fromDir: this.oldDataDir(old),
+      toDir: this.oldDataDir(this.settings),
+      moves,
+      blocked: blocked.length,
+    };
+    new MoveDataModal(this.app, info, async () => {
+      const st = await this.doMove(moves);
+      await this.store.ensureVault();
+      await this.notifyMove(old, st.moved);
+      this.refreshAll();
+    }, onCancel).open();
+    return { movedFiles: 0, blocked: blocked.length, pending: true };
   }
 
   /** 旧数据目录的路径（去掉 /tasks 尾巴） */
@@ -634,7 +638,7 @@ export class TLTSettingTab extends PluginSettingTab {
   /** 重排路径 + 提示（两套界面共用） */
   async alignAndNotify() {
     const r = await this.plugin.applyNow();
-    if (r.blocked) return;                       // 目标已有同名文件：弹窗里问过了
+    if (r.pending) return;                       // 迁移交给弹窗确认，提示也由它给
     const dataDir = this.plugin.settings.tasksFolder.replace(/\/tasks$/, "");
     const bits: string[] = [];
     bits.push(t("{n} 项路径已同步", { n: r.moved }));

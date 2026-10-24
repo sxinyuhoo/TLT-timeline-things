@@ -52,32 +52,37 @@ export class TltModal extends Modal {
  * 动用户的文件必须先问：可以搬，也可以只改路径（文件留在原地）。
  */
 export class MoveDataModal extends TltModal {
-  private moves: { from: string; to: string }[];
-  private blocked: number;
+  private info: { fromDir: string; toDir: string; moves: { from: string; to: string }[]; blocked: number };
   private onConfirm: () => void | Promise<void>;
   private onCancel?: () => void | Promise<void>;
 
   constructor(
-    app: App, moves: { from: string; to: string }[], blocked: number,
-    onConfirm: () => void | Promise<void>, onCancel?: () => void | Promise<void>,
+    app: App,
+    info: { fromDir: string; toDir: string; moves: { from: string; to: string }[]; blocked: number },
+    onConfirm: () => void | Promise<void>,
+    onCancel?: () => void | Promise<void>,
   ) {
     super(app);
-    this.moves = moves;
-    this.blocked = blocked;
+    this.info = info;
     this.onConfirm = onConfirm;
     this.onCancel = onCancel;
   }
 
   onOpen() {
     const { contentEl } = this;
-    contentEl.appendChild(el("div", "tlt-m-title", `目标位置已有 ${this.blocked} 个同名文件`));
+    const { fromDir, toDir, moves, blocked } = this.info;
+    contentEl.appendChild(el("div", "tlt-m-title", `迁移 ${moves.length} 个文件`));
     contentEl.appendChild(el("div", "tlt-hint",
-      "这些同名文件不会被覆盖，会留在旧目录里。其余文件按「更新」的默认行为搬过去——搬运用 Obsidian 自己的改名，双链不会断。"));
+      `从 ${fromDir || "（库根目录）"} 搬到 ${toDir || "（库根目录）"}。搬运用 Obsidian 自己的改名，双链不会断；旧目录里的空文件夹会保留，可以自己删。`));
+    if (blocked) {
+      contentEl.appendChild(el("div", "tlt-hint warn",
+        `目标位置已有 ${blocked} 个同名文件：这些不会被覆盖，会留在旧目录，其余照常搬。`));
+    }
     const list = el("div", "tlt-moves");
-    this.moves.slice(0, 6).forEach((m) => {
+    moves.slice(0, 6).forEach((m) => {
       list.appendChild(el("div", "tlt-hint", `${m.from} → ${m.to}`));
     });
-    if (this.moves.length > 6) list.appendChild(el("div", "tlt-hint", `…还有 ${this.moves.length - 6} 个`));
+    if (moves.length > 6) list.appendChild(el("div", "tlt-hint", `…还有 ${moves.length - 6} 个`));
     contentEl.appendChild(list);
 
     const foot = el("div", "tlt-m-foot");

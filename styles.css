@@ -1240,3 +1240,6 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 /* 面包屑里被选中的项目：可点击（回到全部） */
 .tlt-crumb-proj { cursor: pointer; color: var(--tlt-acc) !important; }
 .tlt-crumb-proj:hover { text-decoration: underline; }
+
+/* 弹窗里的提示：需要留意的一条 */
+.tlt-host .tlt-hint.warn { color: var(--tlt-hot); }
