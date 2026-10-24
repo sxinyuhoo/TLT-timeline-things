@@ -1056,6 +1056,14 @@ await t("新建任务：开始/截止同一行，负责人是框选而不是平�
   await new Promise((r) => window.setTimeout(r, 20));
   const rows = [...m.querySelectorAll(".tlt-pickrow")];
   assert.ok(rows.length >= 1, "框选面板里应列出人员");
+  // 面板要够大：固定定位、至少 300 宽、能滚出多人
+  const pop = m.querySelector(".tlt-pickpop");
+  const cssPop = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-pickpop \{[^}]*position: fixed/.test(cssPop), "面板应用 fixed 定位（absolute 会被弹窗裁掉）");
+  assert.ok(/\.tlt-pickpop \{[^}]*width: 300px/.test(cssPop), "面板宽度至少 300px");
+  assert.ok(/\.tlt-pickpop \{[^}]*max-height: 60vh/.test(cssPop), "面板高度给足（60vh）");
+  assert.ok(/\.tlt-picksearch \{[^}]*width: 100%/.test(cssPop), "搜索框应占满面板宽度");
+  assert.ok(!/\.tlt-picksearch[^{]*\{[^}]*width: 66px/.test(cssPop), "搜索框不该继承 .tlt-input.small 的 66px");
   // 点一个名字 → 变成已选 chip
   rows[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 10));

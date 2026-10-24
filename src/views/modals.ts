@@ -233,14 +233,14 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
       line.appendChild(chip);
     });
     const btn = el("button", "tlt-btn tiny", draft.owners.length ? T("选择…") : T("选择负责人…"));
-    btn.onclick = () => { openPanel(); };
+    btn.onclick = () => { openPanel(btn); };
     line.appendChild(btn);
   };
 
-  const openPanel = () => {
+  const openPanel = (anchorEl: HTMLElement) => {
     pop.empty();
-    const search = el("input", "tlt-input small");
-    search.placeholder = T("搜名字");
+    const search = el("input", "tlt-input tlt-picksearch");
+    search.placeholder = T("搜名字或岗位");
     const list = el("div", "tlt-picklist");
     const draw = () => {
       list.empty();
@@ -264,6 +264,18 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
     draw();
     pop.append(search, list);
     pop.removeClass("tlt-hidden");
+    // 面板是 fixed 定位：按触发按钮的位置摆，宽度至少 300、最多到弹窗右边界
+    const r = anchorEl.getBoundingClientRect();
+    const width = Math.max(300, Math.min(420, window.innerWidth - r.left - 16));
+    const below = window.innerHeight - r.bottom - 12;
+    const above = r.top - 12;
+    const openUp = below < 220 && above > below;
+    pop.style.width = `${width}px`;
+    pop.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - width - 12))}px`;
+    pop.style.maxHeight = `${Math.max(180, Math.min(420, openUp ? above : below))}px`;
+    pop.style.top = openUp
+      ? `${Math.max(12, r.top - Math.min(420, above) - 6)}px`
+      : `${r.bottom + 6}px`;
     window.setTimeout(() => search.focus(), 20);
   };
 
@@ -276,6 +288,12 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
     }
   };
   window.setTimeout(() => document.addEventListener("click", onDoc), 0);
+  const onScroll = (ev: Event) => {
+    if (pop.classList.contains("tlt-hidden")) return;
+    if (pop.contains(ev.target as Node)) return;      // 面板自己滚动不收起
+    pop.addClass("tlt-hidden");
+  };
+  window.setTimeout(() => document.addEventListener("scroll", onScroll, true), 0);
 
   paint();
   wrap.append(line, pop);
