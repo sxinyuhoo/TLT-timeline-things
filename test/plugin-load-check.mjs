@@ -92,6 +92,7 @@ const PluginClass = mod.default ?? mod;
 console.log("导出形态:", typeof PluginClass, "原型上有 onload:", typeof PluginClass.prototype?.onload);
 
 const inst = new PluginClass(app, { id: "tlt-timeline-things", dir: "tlt-timeline-things", version: "0.4.13", minAppVersion: "1.8.7" });
+if (process.env.TLT_LANG) settings.language = process.env.TLT_LANG;   // 想验英文就 TLT_LANG=en
 inst.loadData = async () => settings;
 // 模拟「重启时先恢复视图，再跑完 onload」——旧标签页在数据就绪前就构造
 const { WorkbenchView } = await import("./vault-render-bundle.mjs").catch(() => ({}));
@@ -124,6 +125,10 @@ try {
   const missing = want.filter((x) => !ids.includes(x));
   if (missing.length) { console.error("命令缺失 ✗ →", missing.join(", "), "实际：", ids.join(", ")); process.exitCode = 1; }
   else console.log(`命令注册 ✓  ${ids.length} 个（含快捷命令 ${want.length} 个）`);
+  const names = cmds.map((c) => c.name);
+  console.log("命令名：" + names.slice(0, 6).join(" / "));
+  const cjk = names.filter((n) => /[\u4e00-\u9fff]/.test(n));
+  if (process.env.TLT_LANG === "en" && cjk.length) { console.error("英文界面下命令名还有中文 ✗ →", cjk.join(", ")); process.exitCode = 1; }
   /* 顺带点一下「快捷命令…」看看弹窗能不能开 */
   const menu = cmds.find((c) => c.id === "quick-menu");
   menu?.callback?.();

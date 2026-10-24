@@ -13,10 +13,10 @@ import { setSvgMarkup } from "./dom";
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
 type TaskDim = "w" | "m" | "q" | "all";
-const PERIOD_LABEL: Record<Period, string> = { w: "本周", m: "本月", q: "本季度" };
-const KIND_LABEL: Record<string, string> = { ask: "要求", event: "活动", risk: "风险", note: "通知" };
+const periodLabel = (p: Period) => ({ w: T("本周"), m: T("本月"), q: T("本季度") }[p]);
+const kindLabel = (k: string) => ({ ask: T("要求"), event: T("活动"), risk: T("风险"), note: T("通知") })[k] || k;
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
-const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+const weekday = (i: number) => [T("日"), T("一"), T("二"), T("三"), T("四"), T("五"), T("六")][i] || "";
 const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
 
 /** 项目配色：星图扇形与侧栏色块共用，颜色一致才好认 */
@@ -53,7 +53,7 @@ export class WorkbenchView extends ItemView {
   }
 
   getViewType() { return VIEW_TYPE_WORKBENCH; }
-  getDisplayText() { return "时间线工作台"; }
+  getDisplayText() { return T("时间线工作台"); }
   getIcon() { return "activity"; }
 
   async onOpen() {
@@ -78,7 +78,7 @@ export class WorkbenchView extends ItemView {
     try {
       if (force) await s.load(); else await s.ensureLoaded();
     } catch (e) {
-      console.error("TLT: 载入数据失败", e);
+      console.error(T("TLT: 载入数据失败"), e);
     }
   }
 
@@ -161,7 +161,7 @@ export class WorkbenchView extends ItemView {
       });
       const bar = el("div", "tlt-pbar");
       const fill = el("i"); fill.style.width = pct + "%"; bar.appendChild(fill);
-      const meta = el("div", "tlt-pmeta", `${list.filter((t) => !t.done).length} 项未完成 · ${list.filter((t) => t.milestone).length} 个里程碑任务`);
+      const meta = el("div", "tlt-pmeta", T("{a} 项未完成 · {b} 个里程碑任务", { a: list.filter((t) => !t.done).length, b: list.filter((t) => t.milestone).length }));
       card.append(row, bar, meta);
       scroll.appendChild(card);
     });
@@ -205,7 +205,7 @@ export class WorkbenchView extends ItemView {
 
     const seg = el("div", "tlt-seg tlt-period");
     (["w", "m", "q"] as Period[]).forEach((p) => {
-      const b = el("button", "tlt-seg-b" + (this.period === p ? " on" : ""), PERIOD_LABEL[p]);
+      const b = el("button", "tlt-seg-b" + (this.period === p ? " on" : ""), periodLabel(p));
       b.dataset.period = p;
       seg.appendChild(b);
     });
@@ -214,9 +214,9 @@ export class WorkbenchView extends ItemView {
     const idea = this.store.ideas;
     const box = el("div", "tlt-ideabox");
     box.dataset.tab = "ideas";
-    box.append(el("span", "", "✦ 随手记"), el("b", "", String(idea.length)));
+    box.append(el("span", "", T("✦ 随手记")), el("b", "", String(idea.length)));
     const stale = idea.filter((i) => i.stage !== "已立项" && (Date.now() - D(i.at).getTime()) / 864e5 > 14).length;
-    if (stale) box.append(el("span", "tlt-stale", `${stale} 条待回看`));
+    if (stale) box.append(el("span", "tlt-stale", T("{n} 条待回看", { n: stale })));
     scroll.appendChild(box);
     s.appendChild(scroll);
 
@@ -225,7 +225,7 @@ export class WorkbenchView extends ItemView {
     const me = this.store.staff.find((x) => x.name === mine);
     const sat = saturation(this.store.tasks, mine, this.period, { capacity: me?.capacity ?? 100, days: me?.days ?? 5 });
     const foot = el("div", "tlt-sfoot");
-    foot.append(el("span", "", `完成 ${done}/${all.length}`), el("span", "", `${PERIOD_LABEL[this.period]}我 ${sat.pct}%`));
+    foot.append(el("span", "", T("完成 {a}/{b}", { a: done, b: all.length })), el("span", "", T("{p}我 {n}%", { p: periodLabel(this.period), n: sat.pct })));
     s.appendChild(foot);
     return s;
   }
@@ -238,7 +238,7 @@ export class WorkbenchView extends ItemView {
     const crumbs = el("div", "tlt-crumbs");
     const who = this.proj
       ? el("b", "tlt-crumb-proj", this.proj)
-      : el("b", "", "全部工作");
+      : el("b", "", T("全部工作"));
     if (this.proj) {
       who.dataset.projclear = "1";
       who.title = T("只看这一个项目，点击回到全部");
@@ -250,7 +250,7 @@ export class WorkbenchView extends ItemView {
 
     const search = el("div", "tlt-search");
     const input = el("input");
-    input.placeholder = { today: "搜索任务 / 记录", month: "搜索任务", ms: "搜索里程碑", staff: "搜索人员", ideas: "搜索随手记", draw: "" }[this.tab] || "搜索";
+    input.placeholder = { today: T("搜索任务 / 记录"), month: T("搜索任务"), ms: T("搜索里程碑"), staff: T("搜索人员"), ideas: T("搜索随手记"), draw: "" }[this.tab] || T("搜索");
     input.value = this.q;
     input.dataset.search = "1";
     input.dataset.focuskey = "search";
@@ -259,14 +259,14 @@ export class WorkbenchView extends ItemView {
 
     const theme = el("button", "tlt-btn", this.plugin.isLight() ? "☾" : "☀");
     theme.dataset.theme = "1";
-    theme.title = "切换明暗";
+    theme.title = T("切换明暗");
     const add = el("button", "tlt-btn pri lg", T("＋ 新建"));
     add.dataset.newtask = "1";
     top.append(theme, add);
     m.appendChild(top);
 
     const tabs = el("div", "tlt-tabs");
-    [["today", "日历"], ["month", "任务"], ["ms", "里程碑"], ["staff", "人员"], ["ideas", "随手记"], ["draw", "随手画"]].forEach(([k, label]) => {
+    [["today", T("日历")], ["month", T("任务")], ["ms", T("里程碑")], ["staff", T("人员")], ["ideas", T("随手记")], ["draw", T("随手画")]].forEach(([k, label]) => {
       const b = el("button", "tlt-tab" + (this.tab === k ? " on" : ""), T(label));
       b.dataset.tab = k;
       tabs.appendChild(b);
@@ -285,7 +285,7 @@ export class WorkbenchView extends ItemView {
   }
 
   private tabName() {
-    const names: Record<string, string> = { today: "日历", month: "任务", ms: "里程碑", staff: "人员", ideas: "随手记", draw: "随手画" };
+    const names: Record<string, string> = { today: T("日历"), month: T("任务"), ms: T("里程碑"), staff: T("人员"), ideas: T("随手记"), draw: T("随手画") };
     return names[this.tab] ? T(names[this.tab]) : "";
   }
 
@@ -314,11 +314,11 @@ export class WorkbenchView extends ItemView {
     const next = el("button", "tlt-dnav", "›"); next.dataset.dnav = "1";
     const dl = D(sel);
     const lab = el("div", "tlt-dlabel");
-    lab.append(`${dl.getMonth() + 1} 月 ${dl.getDate()} 日`);
-    lab.createEl("em", { text: `周${WEEK[dl.getDay()]}${sel === todayISO() ? " · 今天" : ""}` });
+    lab.append(T("{m} 月 {d} 日", { m: dl.getMonth() + 1, d: dl.getDate() }));
+    lab.createEl("em", { text: T("周{w}", { w: weekday(dl.getDay()) }) + (sel === todayISO() ? T(" · 今天") : "") });
     const todayBtn = el("button", "tlt-btn", T("回到今天")); todayBtn.dataset.today = "1";
     bar.append(prev, lab, next, todayBtn, el("span", "tlt-spacer"),
-      el("span", "tlt-dhint", `${this.logsOn(sel).length} 条记录 · ${this.unscheduled(sel).length} 未排`));
+      el("span", "tlt-dhint", T("{a} 条记录 · {b} 未排", { a: this.logsOn(sel).length, b: this.unscheduled(sel).length })));
 
     // 7 天条
     const strip = el("div", "tlt-strip");
@@ -326,7 +326,7 @@ export class WorkbenchView extends ItemView {
       const k = addDays(sel, i);
       const cell = el("div", "tlt-ds" + (k === sel ? " sel" : "") + (k === todayISO() ? " today" : ""));
       cell.dataset.day = k;
-      cell.append(el("span", "tlt-dw", WEEK[D(k).getDay()]), el("span", "tlt-dn", String(D(k).getDate())));
+      cell.append(el("span", "tlt-dw", weekday(D(k).getDay())), el("span", "tlt-dn", String(D(k).getDate())));
       const b = el("span", "tlt-db" + (this.tasksForDay(k).length ? " on" : ""));
       cell.appendChild(b);
       strip.appendChild(cell);
@@ -360,7 +360,7 @@ export class WorkbenchView extends ItemView {
       blk.style.height = `${Math.max(26, ((b - a) / 60) * HOUR_PX)}px`;
       const c = el("div", "tlt-blk-c");
       c.append(el("div", "tlt-blk-t", t.title),
-        el("div", "tlt-blk-m", `${t.st}–${t.en} · 计划${t.wl ? " · " + t.wl + "%" : ""}`));
+        el("div", "tlt-blk-m", `${t.st}–${t.en} · ${T("计划")}${t.wl ? " · " + t.wl + "%" : ""}`));
       blk.appendChild(c);
       inner.appendChild(blk);
     });
@@ -373,7 +373,7 @@ export class WorkbenchView extends ItemView {
       blk.style.height = `${Math.max(26, ((b - a) / 60) * HOUR_PX)}px`;
       const c = el("div", "tlt-blk-c");
       c.append(el("div", "tlt-blk-t", l.title),
-        el("div", "tlt-blk-m", `${l.st}–${l.en} · ${l.extra ? "临时" : "记录"}${l.project ? " · " + l.project : ""}`));
+        el("div", "tlt-blk-m", `${l.st}–${l.en} · ${l.extra ? T("临时") : T("记录")}${l.project ? " · " + l.project : ""}`));
       blk.appendChild(c);
       inner.appendChild(blk);
     });
@@ -383,7 +383,7 @@ export class WorkbenchView extends ItemView {
       if (nm > DAY_FROM && nm < DAY_TO) {
         const line = el("div", "tlt-now");
         line.style.top = `${((nm - DAY_FROM) / 60) * HOUR_PX}px`;
-        line.appendChild(el("b", "", `现在 ${minToHHMM(nm)}`));
+        line.appendChild(el("b", "", T("现在 {t}", { t: minToHHMM(nm) })));
         inner.appendChild(line);
       }
     }
@@ -402,7 +402,7 @@ export class WorkbenchView extends ItemView {
       uns.forEach((t) => {
         const c = el("span", "tlt-chipq");
         c.dataset.sched = t.id;
-        c.title = "点一下排进这天的时间表";
+        c.title = T("点一下排进这天的时间表");
         c.textContent = `${t.title}${t.wl ? " · " + t.wl + "%" : ""}`;
         chips.appendChild(c);
       });
@@ -414,18 +414,18 @@ export class WorkbenchView extends ItemView {
     const extra = logs.filter((l) => l.extra).length;
     const b2 = el("div", "tlt-box");
     b2.appendChild(el("div", "tlt-box-h", T("这天 · 计划与实际")));
-    [["计划", plan], ["记录", logs.length], ["其中临时", extra]].forEach(([n, v]) => {
+    [[T("计划"), plan], [T("记录"), logs.length], [T("其中临时"), extra]].forEach(([n, v]) => {
       const r = el("div", "tlt-sum");
       r.append(el("span", "tlt-sum-n", String(n)));
       const bar2 = el("span", "tlt-sum-b");
       const fill = el("i"); fill.style.width = `${Math.min(100, (Number(v) / 6) * 100)}%`;
       bar2.appendChild(fill);
-      r.append(bar2, el("span", "tlt-sum-v", `${v} 条`));
+      r.append(bar2, el("span", "tlt-sum-v", T("{n} 条", { n: v })));
       b2.appendChild(r);
     });
     if (logs.length) {
       const pct = Math.round((extra / logs.length) * 100);
-      b2.appendChild(el("div", "tlt-hint", `临时占了这天记录的 ${pct}%`));
+      b2.appendChild(el("div", "tlt-hint", T("临时占了这天记录的 {n}%", { n: pct })));
     }
     side.appendChild(b2);
     wrap.appendChild(side);
@@ -461,10 +461,10 @@ export class WorkbenchView extends ItemView {
 
     const head = el("div", "tlt-rhythm-h");
     head.append(el("span", "tlt-rhythm-t", T("节奏 · 21 天")));
-    head.appendChild(el("span", "tlt-rhythm-s", `${dueN} 个到期 · ${msN} 个里程碑 · 最挤 ${D(busy).getMonth() + 1}/${D(busy).getDate()}（${bn} 件）`));
+    head.appendChild(el("span", "tlt-rhythm-s", T("{a} 个到期 · {b} 个里程碑 · 最挤 {c}（{d} 件）", { a: dueN, b: msN, c: `${D(busy).getMonth() + 1}/${D(busy).getDate()}`, d: bn })));
     head.appendChild(el("span", "tlt-spacer"));
     const seg = el("div", "tlt-seg tlt-rhythm-seg");
-    ([["bars", "条带"], ["star", "星图"]] as const).forEach(([k, t]) => {
+    ([["bars", T("条带")], ["star", T("星图")]] as const).forEach(([k, t]) => {
       const b = el("button", "tlt-seg-b" + (this.rhythmView === k ? " on" : ""), t);
       b.dataset.rhythm = k;
       seg.appendChild(b);
@@ -486,7 +486,7 @@ export class WorkbenchView extends ItemView {
       i.style.height = `${n ? 6 + Math.round((n / max) * 22) : 3}px`;
       i.style.opacity = String(n ? 0.35 + Math.min(0.55, n * 0.13) : 0.08);
       c.appendChild(i);
-      c.title = `${k} · ${n} 件`;
+      c.title = T("{k} · {n} 件", { k, n });
       mini.appendChild(c);
     });
     wrap.appendChild(mini);
@@ -574,7 +574,7 @@ export class WorkbenchView extends ItemView {
     [0, 7, 14, 21].forEach((d) => {
       const r = r0 + (d / 21) * (R - r0);
       body += `<circle class="tlt-ring" cx="${cx}" cy="${cy}" r="${r.toFixed(1)}"/>`;
-      body += `<text class="tlt-rlab" x="${(cx + 3).toFixed(1)}" y="${(cy - r + 9).toFixed(1)}">${d === 0 ? "今天" : "+" + d + "天"}</text>`;
+      body += `<text class="tlt-rlab" x="${(cx + 3).toFixed(1)}" y="${(cy - r + 9).toFixed(1)}">${d === 0 ? T("今天") : "+" + d + " " + T("天")}</text>`;
     });
     projects.forEach((p, i) => {
       const a = ((-90 + i * span) * Math.PI) / 180;
@@ -643,19 +643,19 @@ export class WorkbenchView extends ItemView {
     const p = el("div", "tlt-pane");
     const m = this.tasksInDim();
     const head = el("div", "tlt-pane-h");
-    const label = { w: "本周", m: "本月", q: "本季度", all: "全部" }[this.taskDim];
-    head.append(el("span", "", `${label} · ${m.late.length} 逾期 / ${m.todo.length} 要做 / ${m.done.length} 已完成 / ${m.pending.length} 待排期`));
+    const label = { w: T("本周"), m: T("本月"), q: T("本季度"), all: T("全部") }[this.taskDim];
+    head.append(el("span", "", T("{l} · {a} 逾期 / {b} 要做 / {c} 已完成 / {d} 待排期", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.pending.length })));
     head.appendChild(el("span", "tlt-spacer"));
     const tags = Array.from(new Set(["工作", "个人", ...this.store.tasks.flatMap((t) => t.tags || [])]));
     const tf = el("div", "tlt-seg tlt-tag-seg");
-    [{ v: null, t: "全部" }, ...tags.map((t) => ({ v: t, t }))].forEach(({ v: tv, t }) => {
+    [{ v: null, t: T("全部") }, ...tags.map((t) => ({ v: t, t: t === "工作" ? T("工作") : t === "个人" ? T("个人") : t }))].forEach(({ v: tv, t }) => {
       const b = el("button", "tlt-seg-b" + (this.taskTag === tv ? " on" : ""), t);
       b.dataset.tag = tv ?? "";
       tf.appendChild(b);
     });
     head.appendChild(tf);
     const seg = el("div", "tlt-seg tlt-dim-seg");
-    ([["w", "本周"], ["m", "本月"], ["q", "本季度"], ["all", "全部"]] as const).forEach(([k, t]) => {
+    ([["w", T("本周")], ["m", T("本月")], ["q", T("本季度")], ["all", T("全部")]] as const).forEach(([k, t]) => {
       const b2 = el("button", "tlt-seg-b" + (this.taskDim === k ? " on" : ""), t);
       b2.dataset.dim = k;
       seg.appendChild(b2);
@@ -663,10 +663,10 @@ export class WorkbenchView extends ItemView {
     head.appendChild(seg);
     p.appendChild(head);
     const groups: [string, Task[], string][] = [
-      [`${label}逾期`, m.late, "#D98B5F"],
-      [`${label}要做`, m.todo, "#5B6CFF"],
-      [`${label}已完成`, m.done, "#4FB59A"],
-      ["待排期（未分配时间）", m.pending, "#8B7CF6"],
+      [T("{l}逾期", { l: label }), m.late, "#D98B5F"],
+      [T("{l}要做", { l: label }), m.todo, "#5B6CFF"],
+      [T("{l}已完成", { l: label }), m.done, "#4FB59A"],
+      [T("待排期（未分配时间）"), m.pending, "#8B7CF6"],
     ];
     groups.forEach(([name, list, color]) => {
       const g = el("div", "tlt-mgrp");
@@ -674,7 +674,7 @@ export class WorkbenchView extends ItemView {
       const dot = el("span", "tlt-dot"); dot.style.background = color;
       h.append(dot, el("span", "", name), el("span", "tlt-mgc", String(list.length)));
       g.appendChild(h);
-      if (!list.length) g.appendChild(el("div", "tlt-empty", "没有"));
+      if (!list.length) g.appendChild(el("div", "tlt-empty", T("没有")));
       list.forEach((t) => g.appendChild(this.taskRow(t)));
       p.appendChild(g);
     });
@@ -764,12 +764,12 @@ export class WorkbenchView extends ItemView {
     body.appendChild(title);
     const meta = el("div", "tlt-task-m");
     if (t.milestone) meta.appendChild(el("span", "tlt-tag", t.milestone));
-    meta.appendChild(el("span", "", t.due ? t.due.slice(5) : "待排期"));
-    if (t.est !== undefined) meta.appendChild(el("span", "tlt-wl", `${t.est} 人天`));
+    meta.appendChild(el("span", "", t.due ? t.due.slice(5) : T("待排期")));
+    if (t.est !== undefined) meta.appendChild(el("span", "tlt-wl", `${t.est} ${T("人天")}`));
     else if (t.wl) meta.appendChild(el("span", "tlt-wl", `${t.wl}%`));
-    if (t.scope === "个人") meta.appendChild(el("span", "tlt-tag own", "个人"));
+    if (t.scope === "个人") meta.appendChild(el("span", "tlt-tag own", T("个人")));
     (t.tags || []).forEach((tg) => meta.appendChild(el("span", "tlt-tag", tg)));
-    if (t.owners.length) meta.appendChild(el("span", "", t.owners.join("、")));
+    if (t.owners.length) meta.appendChild(el("span", "", t.owners.join(T("、"))));
     if (t.files.length) meta.appendChild(el("span", "", `▤ ${t.files.length}`));
     body.appendChild(meta);
     r.appendChild(body);
@@ -791,14 +791,14 @@ export class WorkbenchView extends ItemView {
     const idle = rows.filter((r) => r.sat.pct < 60).length;
     const avg = rows.length ? Math.round(rows.reduce((a, r) => a + r.sat.pct, 0) / rows.length) : 0;
     const head = el("div", "tlt-pane-h");
-    head.append(el("span", "", `${rows.length} 人 · 平均 ${avg}% · ${over} 人超载 · ${idle} 人偏闲`));
+    head.append(el("span", "", T("{n} 人 · 平均 {a}% · {o} 人超载 · {i} 人偏闲", { n: rows.length, a: avg, o: over, i: idle })));
     head.appendChild(el("span", "tlt-src", this.cfg.teamFolder));
     head.appendChild(el("span", "tlt-spacer"));
     const add = el("button", "tlt-btn", T("＋ 添加成员"));
     add.dataset.addstaff = "1";
     head.appendChild(add);
     p.appendChild(head);
-    p.appendChild(el("div", "tlt-hint", "档案来自 team/<姓名>.md 的 frontmatter——岗位、产能、在岗天数都在文件里改；TLT 只读，任务侧只负责分配与统计。"));
+    p.appendChild(el("div", "tlt-hint", T("档案来自 crew/<姓名>.md 的 frontmatter——岗位、产能、在岗天数都在文件里改；TLT 只读，任务侧只负责分配与统计。")));
 
     const grid = el("div", "tlt-staffgrid");
     rows.forEach(({ s, sat }) => {
@@ -808,7 +808,7 @@ export class WorkbenchView extends ItemView {
       const av = el("span", "tlt-av", s.name.slice(-2));
       av.style.background = s.color;
       const who = el("div", "tlt-who");
-      who.append(el("div", "tlt-sname", s.name), el("div", "tlt-srole", `${s.role || "—"}${s.days < 5 ? ` · 每周 ${s.days} 天` : ""}`));
+      who.append(el("div", "tlt-sname", s.name), el("div", "tlt-srole", `${s.role || "—"}${s.days < 5 ? T(" · 每周 {n} 天", { n: s.days }) : ""}`));
       const pct = el("span", "tlt-spct", String(sat.pct) + "%");
       h.append(av, who, pct);
       card.appendChild(h);
@@ -819,8 +819,8 @@ export class WorkbenchView extends ItemView {
       card.appendChild(bar);
       const list = this.store.tasks.filter((t) => !t.done && t.owners.includes(s.name) && (t.pw || "m") === this.period);
       const meta = el("div", "tlt-smeta");
-      meta.append(el("span", "", `${list.length} 项任务`),
-        el("span", "", `${sat.sum} / ${sat.avail} 人天`));
+      meta.append(el("span", "", T("{n} 项任务", { n: list.length })),
+        el("span", "", T("{a} / {b} 人天", { a: sat.sum, b: sat.avail })));
       card.appendChild(meta);
       grid.appendChild(card);
     });
@@ -835,13 +835,13 @@ export class WorkbenchView extends ItemView {
     const p = el("div", "tlt-pane");
     const cap = el("div", "tlt-cap");
     const i = el("input");
-    i.placeholder = "随手记一句，前面可以加 #标签，例：#论文 #灵感 把常用脚本整理成工具";
+    i.placeholder = T("随手记一句，前面可以加 #标签，例：#论文 #灵感 把常用脚本整理成工具");
     i.dataset.ideanew = "1";
     const plus = el("button", "tlt-btn lg", T("＋ 随手记"));
     plus.dataset.ideanewmodal = "1";
     cap.append(el("span", "tlt-plus", "✦"), i, plus);
     p.appendChild(cap);
-    p.appendChild(el("div", "tlt-hint", "用 # 打标签，想打几个打几个。回车收录；也可以点「＋ 随手记」用表单。"));
+    p.appendChild(el("div", "tlt-hint", T("用 # 打标签，想打几个打几个。回车收录；也可以点「＋ 随手记」用表单。")));
     const prev = el("div", "tlt-idea-prev");
     prev.dataset.ideaprev = "1";
     p.appendChild(prev);
@@ -852,14 +852,14 @@ export class WorkbenchView extends ItemView {
       .filter((i) => !this.ideaTags.size || ideaFilterTags(i).some((t) => this.ideaTags.has(t)));
     const stale = this.store.ideas.filter((x) => (Date.now() - D(x.at).getTime()) / 864e5 > 14).length;
     const meta = el("div", "tlt-ideas-meta");
-    meta.append(el("span", "", `${shown.length} 条随手记`),
+    meta.append(el("span", "", T("{n} 条随手记", { n: shown.length })),
       el("span", "tlt-sep-dot", "·"),
-      el("span", "", stale ? `${stale} 条超过两周没动` : "没有搁太久的"));
+      el("span", "", stale ? T("{n} 条超过两周没动", { n: stale }) : T("没有搁太久的")));
     p.appendChild(meta);
 
     if (allTags.length) {
       const tf = el("div", "tlt-tagpick");
-      const all = el("button", "tlt-tagp" + (this.ideaTags.size ? "" : " on"), "全部");
+      const all = el("button", "tlt-tagp" + (this.ideaTags.size ? "" : " on"), T("全部"));
       all.dataset.itag = "";
       tf.appendChild(all);
       allTags.forEach((t) => {
@@ -876,7 +876,7 @@ export class WorkbenchView extends ItemView {
       c.dataset.idea = it.id;
       const h = el("div", "tlt-ih");
       ideaTags(it).forEach((tg) => h.append(el("span", "tlt-chip-s", tg)));
-      if (!ideaTags(it).length) h.append(el("span", "tlt-itype", "未打标签"));
+      if (!ideaTags(it).length) h.append(el("span", "tlt-itype", T("未打标签")));
       c.append(h, el("div", "tlt-it", it.title));
       if (it.body) c.appendChild(el("div", "tlt-ib", it.body));
       const meta = el("div", "tlt-im");
@@ -885,7 +885,7 @@ export class WorkbenchView extends ItemView {
       grid.appendChild(c);
     });
     p.appendChild(grid);
-    if (!this.store.ideas.length) p.appendChild(el("div", "tlt-empty", "还没有随手记。一行就能记，正文可以永远不写。"));
+    if (!this.store.ideas.length) p.appendChild(el("div", "tlt-empty", T("还没有随手记。一行就能记，正文可以永远不写。")));
     return p;
   }
 
@@ -895,15 +895,15 @@ export class WorkbenchView extends ItemView {
   private paneDraw(): HTMLElement {
     const p = el("div", "tlt-pane");
     const head = el("div", "tlt-pane-h");
-    head.append(el("span", "", "随手画 · 功能预留"));
+    head.append(el("span", "", T("随手画 · 功能预留")));
     p.appendChild(head);
     const box = el("div", "tlt-emptybox");
     box.append(
-      el("div", "tlt-empty-k", "随手画"),
-      el("div", "tlt-empty-d", "先占个位置：随手记里的草图、白板、截图批注会在这里。还没有实现，标记为预留。"),
+      el("div", "tlt-empty-k", T("随手画")),
+      el("div", "tlt-empty-d", T("先占个位置：随手记里的草图、白板、截图批注会在这里。还没有实现，标记为预留。")),
     );
     const chips = el("div", "tlt-quick");
-    ["手绘草图", "思维导图", "截图批注", "与随手记互转"].forEach((t) => chips.appendChild(el("span", "tlt-chip off", t)));
+    [T("手绘草图"), T("思维导图"), T("截图批注"), T("与随手记互转")].forEach((t) => chips.appendChild(el("span", "tlt-chip off", t)));
     box.appendChild(chips);
     p.appendChild(box);
     return p;
@@ -918,9 +918,9 @@ export class WorkbenchView extends ItemView {
     const finished = ms.filter(isDone);
 
     const head = el("div", "tlt-pane-h");
-    head.append(el("span", "", `${ms.length} 个里程碑 · ${active.length} 开展中 · ${finished.length} 已完成`));
+    head.append(el("span", "", T("{a} 个里程碑 · {b} 开展中 · {c} 已完成", { a: ms.length, b: active.length, c: finished.length })));
     p.appendChild(head);
-    if (!ms.length) p.appendChild(el("div", "tlt-empty", "任务文件里用「## 里程碑名」分节，这里就会出现里程碑。"));
+    if (!ms.length) p.appendChild(el("div", "tlt-empty", T("任务文件里用「## 里程碑名」分节，这里就会出现里程碑。")));
 
     // 开展中的放上面，已完成的收在下面
     const paintGroup = (group: string, list: { name: string; project: string; tasks: Task[] }[]) => {
@@ -960,13 +960,13 @@ export class WorkbenchView extends ItemView {
     const r = el("aside", "tlt-msgs");
     const head = el("div", "tlt-msgs-h");
     const unread = this.allMsgs().filter((m) => !m.read_ && m.state !== "ended").length;
-    head.append(el("b", "", "消息"));
+    head.append(el("b", "", T("消息")));
     const badge = el("span", "tlt-badge", String(unread));
     head.appendChild(badge);
     const expand = el("button", "tlt-expand-btn");
     expand.dataset.expand = "1";
-    expand.title = "在独立页打开消息中心";
-    expand.append(el("span", "tlt-expand-i", "⤢"), el("span", "", "消息中心"));
+    expand.title = T("在独立页打开消息中心");
+    expand.append(el("span", "tlt-expand-i", "⤢"), el("span", "", T("消息中心")));
     head.appendChild(expand);
     r.appendChild(head);
 
@@ -977,7 +977,7 @@ export class WorkbenchView extends ItemView {
     items.forEach((m) => {
       if (m.date !== last) {
         const d = D(m.date);
-        list.appendChild(el("div", "tlt-mday" + (m.date === todayISO() ? " today" : ""), `${d.getMonth() + 1}/${d.getDate()} · 周${WEEK[d.getDay()]}`));
+        list.appendChild(el("div", "tlt-mday" + (m.date === todayISO() ? " today" : ""), `${d.getMonth() + 1}/${d.getDate()} · ${T("周{w}", { w: weekday(d.getDay()) })}`));
         last = m.date;
       }
       const n = el("div", "tlt-mnode" + (m.star ? " star" : "") + (m.read_ ? " read" : "") + (m.state === "ended" ? " ended" : ""));
@@ -989,13 +989,13 @@ export class WorkbenchView extends ItemView {
       if (m.star) nh.appendChild(el("span", "tlt-sk", "★"));
       n.appendChild(nh);
       n.appendChild(el("div", "tlt-nm2",
-        `${KIND_LABEL[m.kind]}${m.place ? " · " + m.place : ""}${m.state === "ended" ? " · 已结束" : ""}`));
+        `${kindLabel(m.kind)}${m.place ? " · " + m.place : ""}${m.state === "ended" ? T(" · 已结束") : ""}`));
       list.appendChild(n);
     });
-    if (!items.length) list.appendChild(el("div", "tlt-empty", "还没有消息。在 feeds/ 里建一个源，或点 ＋ 发布一条。"));
+    if (!items.length) list.appendChild(el("div", "tlt-empty", T("还没有消息。在 feeds/ 里建一个源，或点 ＋ 发布一条。")));
     r.appendChild(list);
 
-    const foot = el("div", "tlt-mfoot", `源 ${this.store.feeds.length} · 消息 ${items.length}`);
+    const foot = el("div", "tlt-mfoot", T("源 {s} · 消息 {m}", { s: this.store.feeds.length, m: items.length }));
     r.appendChild(foot);
     return r;
   }
@@ -1032,7 +1032,7 @@ export class WorkbenchView extends ItemView {
         if (!c.tags.length) { ideaPrev.empty(); ideaPrev.addClass("hide"); return; }
         ideaPrev.removeClass("hide");
         ideaPrev.empty();
-        ideaPrev.createSpan({ cls: "tlt-pv-l", text: "识别到" });
+        ideaPrev.createSpan({ cls: "tlt-pv-l", text: T("识别到") });
         c.tags.forEach((tg) => {
           ideaPrev.createSpan({ cls: "tlt-pv on", text: `#${tg}` });
         });
@@ -1048,7 +1048,7 @@ export class WorkbenchView extends ItemView {
         const parsed = parseIdeaText(v);
         await this.store.addIdea({ title: parsed.title, tags: parsed.tags });
         await this.refresh();
-        new Notice("已收进想法池");
+        new Notice(T("已收进想法池"));
       })(); });
     }
   }
@@ -1207,14 +1207,14 @@ export class WorkbenchView extends ItemView {
     if (busy.length) {
       start = Math.max(...busy.map((b) => hhmmToMin(b.en) || (hhmmToMin(b.st) || 540) + 30));
     }
-    if (start >= 22 * 60) { new Notice("这天排满了，换一天试试"); return; }
+    if (start >= 22 * 60) { new Notice(T("这天排满了，换一天试试")); return; }
     const end = Math.min(23 * 60, start + 60);
     if (t.due !== day) await this.store.setDue(t, day);
     await this.store.setField(t, "st", minToHHMM(start));
     await this.store.setField(t, "en", minToHHMM(end));
     this.scrollToMin = start;
     await this.refresh();
-    new Notice(`已排入 ${minToHHMM(start)}–${minToHHMM(end)}`);
+    new Notice(T("已排入 {a}–{b}", { a: minToHHMM(start), b: minToHHMM(end) }));
   }
 
   private findTask(id: string): Task | undefined {

@@ -11,7 +11,7 @@ import {
   archiveProjectFlow, quickMenuFlow, quickIdeaFlow, newMessageFlow,
 } from "./actions";
 import { todayISO, asText, type Period } from "./data";
-import { t, setLanguage, LANGUAGE_LABELS, type Language } from "./i18n";
+import { t, t as T, setLanguage, LANGUAGE_LABELS, type Language } from "./i18n";
 import { attachFolderSuggest } from "./views/folder-suggest";
 
 type ThemeMode = "auto" | "light" | "dark";
@@ -52,6 +52,22 @@ export class TLTPlugin extends Plugin {
   settings: Settings;
   store: Store;
   private hub = { publish: "", sync: "", lastSync: "", lastResult: "", lastError: "" };
+  /** 已注册的命令 + 取名字的函数：切语言时原地改名，不用重载插件 */
+  private cmdNames: { cmd: { name: string }; name: () => string }[] = [];
+  private settingTab?: TLTSettingTab;
+
+  private cmd(entry: { id: string; name: string; callback: () => void }) {
+    const c = this.addCommand(entry);
+    this.cmdNames.push({ cmd: c, name: () => entry.name });
+    return c;
+  }
+
+  /** 切语言后：命令名、设置页、两个视图一起换 */
+  relabel() {
+    this.cmdNames.forEach((x) => { x.cmd.name = x.name(); });
+    this.settingTab?.rerender();
+    this.refreshAll();
+  }
 
   async onload() {
     // 重启时 Obsidian 会先恢复上次打开的标签页，视图可能在本函数跑完前就开始渲染，
@@ -113,25 +129,26 @@ export class TLTPlugin extends Plugin {
     this.registerView(VIEW_TYPE_WORKBENCH, (leaf: WorkspaceLeaf) => new WorkbenchView(leaf, this));
     this.registerView(VIEW_TYPE_MESSAGES, (leaf: WorkspaceLeaf) => new MessagesView(leaf, this));
 
-    this.addRibbonIcon("activity", "时间线工作台", () => { void this.activateWorkbench(); });
+    this.addRibbonIcon("activity", T("时间线工作台"), () => { void this.activateWorkbench(); });
 
-    this.addCommand({ id: "open-workbench", name: "打开工作台", callback: () => { void this.activateWorkbench(); } });
-    this.addCommand({ id: "open-messages", name: "打开消息中心（独立页）", callback: () => { void this.activateMessages(); } });
+    this.cmd({ id: "open-workbench", name: t("打开工作台"), callback: () => { void this.activateWorkbench(); } });
+    this.cmd({ id: "open-messages", name: t("打开消息中心（独立页）"), callback: () => { void this.activateMessages(); } });
     const refresh = () => this.refreshAll();
     // —— 快捷命令（原生，不依赖 QuickAdd）——
-    this.addCommand({ id: "quick-menu", name: t("快捷命令…"), callback: () => quickMenuFlow(this.app, this.store, refresh, { workbench: () => this.activateWorkbench(), messages: () => this.activateMessages() }) });
-    this.addCommand({ id: "new-task", name: t("登记任务"), callback: () => taskRegisterFlow(this.app, this.store, refresh) });
-    this.addCommand({ id: "new-idea", name: t("随手记"), callback: () => quickIdeaFlow(this.app, this.store, refresh) });
-    this.addCommand({ id: "new-message", name: t("新建消息"), callback: () => newMessageFlow(this.app, this.store, refresh) });
-    this.addCommand({ id: "new-project", name: t("新建项目"), callback: () => newProjectFlow(this.app, this.store, refresh) });
-    this.addCommand({ id: "new-milestone", name: t("新建里程碑"), callback: () => { void newMilestoneFlow(this.app, this.store, refresh); } });
-    this.addCommand({ id: "archive-project", name: t("归档项目"), callback: () => { void archiveProjectFlow(this.app, this.store, refresh); } });
-    this.addCommand({ id: "delete-task", name: t("删除任务"), callback: () => { void deleteTaskFlow(this.app, this.store, refresh); } });
-    this.addCommand({ id: "toggle-theme", name: "切换明暗", callback: () => this.toggleTheme() });
-    this.addCommand({ id: "hub-publish", name: "推送到发布服务", callback: () => { void this.publishAll(); } });
-    this.addCommand({ id: "hub-sync", name: "从拉取服务同步", callback: () => { void this.syncAll(); } });
+    this.cmd({ id: "quick-menu", name: t("快捷命令…"), callback: () => quickMenuFlow(this.app, this.store, refresh, { workbench: () => this.activateWorkbench(), messages: () => this.activateMessages() }) });
+    this.cmd({ id: "new-task", name: t("登记任务"), callback: () => taskRegisterFlow(this.app, this.store, refresh) });
+    this.cmd({ id: "new-idea", name: t("随手记"), callback: () => quickIdeaFlow(this.app, this.store, refresh) });
+    this.cmd({ id: "new-message", name: t("新建消息"), callback: () => newMessageFlow(this.app, this.store, refresh) });
+    this.cmd({ id: "new-project", name: t("新建项目"), callback: () => newProjectFlow(this.app, this.store, refresh) });
+    this.cmd({ id: "new-milestone", name: t("新建里程碑"), callback: () => { void newMilestoneFlow(this.app, this.store, refresh); } });
+    this.cmd({ id: "archive-project", name: t("归档项目"), callback: () => { void archiveProjectFlow(this.app, this.store, refresh); } });
+    this.cmd({ id: "delete-task", name: t("删除任务"), callback: () => { void deleteTaskFlow(this.app, this.store, refresh); } });
+    this.cmd({ id: "toggle-theme", name: t("切换明暗"), callback: () => this.toggleTheme() });
+    this.cmd({ id: "hub-publish", name: t("推送到发布服务"), callback: () => { void this.publishAll(); } });
+    this.cmd({ id: "hub-sync", name: t("从拉取服务同步"), callback: () => { void this.syncAll(); } });
 
-    this.addSettingTab(new TLTSettingTab(this.app, this));
+    this.settingTab = new TLTSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
 
     this.applyTheme();
     await this.store.ensureVault();
@@ -216,7 +233,7 @@ export class TLTPlugin extends Plugin {
     this.applyTheme();
     void this.saveData(this.settings);
     this.refreshAll();
-    new Notice({ light: "浅色", dark: "深色", auto: "跟随系统" }[this.settings.theme]);
+    new Notice({ light: T("浅色"), dark: T("深色"), auto: T("跟随系统") }[this.settings.theme]);
   }
 
   /* ---------- Hub ---------- */
@@ -236,7 +253,7 @@ export class TLTPlugin extends Plugin {
 
   async publishAll(silent = false) {
     const mine = this.store.feeds.filter((f) => f.mine);
-    if (!mine.length) { new Notice("没有我发布的源"); return; }
+    if (!mine.length) { new Notice(T("没有我发布的源")); return; }
     try {
       let total = 0;
       for (const f of mine) { const r = await this.store.publishFeed(f, this.settings.hubPublish); total += r.count || 0; }
@@ -245,8 +262,8 @@ export class TLTPlugin extends Plugin {
       this.refreshAll();
     } catch (e) {
       const msg = errMsg(e);
-      this.setHubState({ lastError: "推送失败：" + msg });
-      new Notice("推送失败：" + msg);
+      this.setHubState({ lastError: T("推送失败：") + msg });
+      new Notice(T("推送失败：") + msg);
     }
   }
 
@@ -259,8 +276,8 @@ export class TLTPlugin extends Plugin {
       this.refreshAll();
     } catch (e) {
       const msg = errMsg(e);
-      this.setHubState({ lastError: "同步失败：" + msg });
-      new Notice("同步失败：" + msg);
+      this.setHubState({ lastError: T("同步失败：") + msg });
+      new Notice(T("同步失败：") + msg);
     }
   }
 
@@ -374,7 +391,7 @@ desc: 我发布出去的动态
 ## ${d}
 
 - 09:30–11:00 示例记录：做了什么 [proj:: 示例项目]
-  > 记录是"实际发生"的时间块，和任务的"计划"分开。
+  > 记录是实际发生的时间块，和任务的计划分开。
 - 11:00–11:40 示例记录：临时的会议 [extra:: true]
   > 标 [extra:: true] 表示计划外插入。
 `);
@@ -382,13 +399,13 @@ desc: 我发布出去的动态
     await w(s.ideasFile, `# 随手记
 
 - 示例随手记：一行一条，用 #标签 归类 [at:: ${d}]
-  > 正文可选，写"为什么记下来"最有用。
+  > 正文可选，写为什么记下来最有用。
 - 示例随手记：看到就记，不用想放哪个项目 [tags:: 示例] [at:: ${d}]
 `);
 
     await this.store.load();
     this.refreshAll();
-    new Notice("已写入示例数据（内容都是编的，可直接删）");
+    new Notice(T("已写入示例数据（内容都是编的，可直接删）"));
   }
 
   /**
@@ -560,37 +577,37 @@ export class TLTSettingTab extends PluginSettingTab {
     const d = DEFAULTS;
 
     return [
-      pick("language", "界面语言", "设置面板与插件界面用什么语言。",
+      pick("language", T("界面语言"), T("设置面板与插件界面用什么语言。"),
         { auto: t("自动（跟随 Obsidian）"), zh: LANGUAGE_LABELS.zh, en: LANGUAGE_LABELS.en }),
-      pick("theme", "主题", "跟随 Obsidian，或强制深色/浅色。主界面右上角也能切。",
+      pick("theme", T("主题"), T("跟随 Obsidian，或强制深色/浅色。主界面右上角也能切。"),
         { auto: t("跟随 Obsidian"), dark: t("深色"), light: t("浅色") }),
       {
         type: "group", heading: t("目录"),
         items: [
-          folder("root", "根目录", "TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入只做记录，点右边的「更新」才真正生效（重建六项路径 + 把数据搬过去）。", d.root),
+          folder("root", T("根目录"), T("TLT 目录放在这里：下面六项都在它的 TLT 子目录下；留空表示放在库根目录（即 TLT/）。输入只做记录，点右边的「更新」才真正生效（重建六项路径 + 把数据搬过去）。"), d.root),
           { name: t("更新"), desc: t("按当前设置重建六个路径，并把旧位置的数据搬过来；目标已有同名文件时才会问你。"), action: () => { void this.alignAndNotify(); } },
-          folder("tasksFolder", "任务目录", "一个项目一个文件，## 小节是里程碑，任务一行一条。", d.tasksFolder),
-          folder("teamFolder", "人员目录", "一人一个文件，frontmatter 写 role / capacity / days / skills。", d.teamFolder),
-          folder("feedsFolder", "消息源目录", "一个源一个文件，正文列表一行一条消息。", d.feedsFolder),
-          folder("logsFolder", "记录目录", "按月一个文件，正文用 ## 日期 分节。", d.logsFolder),
-          text("ideasFile", "随手记文件", "单文件，一行一条。", d.ideasFile),
-          text("tagsFile", "标签库文件", "单文件，一行一个标签。", d.tagsFile),
+          folder("tasksFolder", T("任务目录"), T("一个项目一个文件，## 小节是里程碑，任务一行一条。"), d.tasksFolder),
+          folder("teamFolder", T("人员目录"), T("一人一个文件，frontmatter 写 role / capacity / days / skills。"), d.teamFolder),
+          folder("feedsFolder", T("消息源目录"), T("一个源一个文件，正文列表一行一条消息。"), d.feedsFolder),
+          folder("logsFolder", T("记录目录"), T("按月一个文件，正文用 ## 日期 分节。"), d.logsFolder),
+          text("ideasFile", T("随手记文件"), T("单文件，一行一条。"), d.ideasFile),
+          text("tagsFile", T("标签库文件"), T("单文件，一行一个标签。"), d.tagsFile),
         ],
       },
       {
         type: "group", heading: t("口径"),
         items: [
-          pick("defaultPeriod", "默认占比周期", "占比与饱和度的默认口径，界面上随时可切。",
+          pick("defaultPeriod", T("默认占比周期"), T("占比与饱和度的默认口径，界面上随时可切。"),
             { w: t("本周"), m: t("本月"), q: t("本季度") }),
         ],
       },
       {
         type: "group", heading: t("消息服务"),
         items: [
-          text("hubPublish", "发布服务地址", "把「我发布的源」推到这里。发布端与订阅端可以是同一个地址。", d.hubPublish),
-          text("hubSync", "拉取服务地址", "从这里同步订阅的源。留空则完全离线，只用库内 Markdown。", d.hubSync),
-          pick("autoSyncMin", "自动同步间隔", "按这个间隔自动拉取订阅的源。", every),
-          pick("autoPushMin", "自动推送间隔", "按这个间隔把我发布的源推上去。", every),
+          text("hubPublish", T("发布服务地址"), T("把「我发布的源」推到这里。发布端与订阅端可以是同一个地址。"), d.hubPublish),
+          text("hubSync", T("拉取服务地址"), T("从这里同步订阅的源。留空则完全离线，只用库内 Markdown。"), d.hubSync),
+          pick("autoSyncMin", T("自动同步间隔"), T("按这个间隔自动拉取订阅的源。"), every),
+          pick("autoPushMin", T("自动推送间隔"), T("按这个间隔把我发布的源推上去。"), every),
         ],
       },
       {
@@ -648,7 +665,7 @@ export class TLTSettingTab extends PluginSettingTab {
     bag[key] = value;
     await this.plugin.saveSettings();
     if (key === "theme") this.plugin.applyTheme();
-    if (key === "language") { setLanguage(asText(value)); this.rerender(); }
+    if (key === "language") { setLanguage(asText(value)); this.plugin.relabel(); }
   }
 
   /** 老版本客户端（< 1.13）只认 display()，转发到 renderSettings 以便内部重建这一页 */
@@ -672,14 +689,13 @@ export class TLTSettingTab extends PluginSettingTab {
             p.settings.language = v as Language;
             setLanguage(v);
             void p.saveSettings();
-            p.refreshAll();
-            this.renderSettings();
+            p.relabel();
           });
       });
 
     new Setting(containerEl)
       .setName(t("主题"))
-      .setDesc("跟随 Obsidian，或强制深色/浅色。主界面右上角的按钮也能切。")
+      .setDesc(T("跟随 Obsidian，或强制深色/浅色。主界面右上角的按钮也能切。"))
       .addDropdown((d) =>
         d.addOptions({ auto: t("跟随 Obsidian"), dark: t("深色"), light: t("浅色") })
           .setValue(p.settings.theme)
@@ -695,7 +711,7 @@ export class TLTSettingTab extends PluginSettingTab {
     const d = DEFAULTS;
     containerEl.createEl("p", {
       cls: "setting-item-description",
-      text: "插件只读这几个目录，不扫全库，也不和别的任务插件共用文件。目录不存在会自动创建；路径改完会重新扫描一次，原来的文件不会搬也不会删。",
+      text: T("插件只读这几个目录，不扫全库，也不和别的任务插件共用文件。目录不存在会自动创建；路径改完会重新扫描一次，原来的文件不会搬也不会删。"),
     });
     new Setting(containerEl)
       .setName(t("根目录"))
@@ -749,7 +765,7 @@ export class TLTSettingTab extends PluginSettingTab {
       .setName(t("默认占比周期"))
       .setDesc(t("占比与饱和度的默认口径，界面上随时可切。"))
       .addDropdown((dd) =>
-        dd.addOptions({ w: "本周", m: "本月", q: "本季度" })
+        dd.addOptions({ w: T("本周"), m: T("本月"), q: T("本季度") })
           .setValue(p.settings.defaultPeriod)
           .onChange((v) => {
             p.settings.defaultPeriod = v as Period;
@@ -761,9 +777,9 @@ export class TLTSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName(t("消息服务")).setHeading();
     containerEl.createEl("p", {
       cls: "setting-item-description",
-      text: "服务是可选的：不填就完全离线，只用库内的 Markdown。发布端与订阅端可以是同一个地址（仓库里的 services-py 就是同进程同端口）。",
+      text: T("服务是可选的：不填就完全离线，只用库内的 Markdown。发布端与订阅端可以是同一个地址（仓库里的 services-py 就是同进程同端口）。"),
     });
-    const intervals = { "0": "关闭", "5": "5 分钟", "15": "15 分钟", "30": "30 分钟", "60": "1 小时" };
+    const intervals = { "0": T("关闭"), "5": T("5 分钟"), "15": T("15 分钟"), "30": T("30 分钟"), "60": T("1 小时") };
     folder("hubPublish", t("发布服务地址"), t("把「我发布的源」推到这里。"), d.hubPublish);
     folder("hubSync", t("拉取服务地址"), t("从这里同步订阅的源。"), d.hubSync);
     new Setting(containerEl)
@@ -782,28 +798,28 @@ export class TLTSettingTab extends PluginSettingTab {
       );
     const hub = p.hubState();
     new Setting(containerEl)
-      .setName("推送与同步")
+      .setName(T("推送与同步"))
       .setDesc(hub.lastSync
         ? `上次同步 ${hub.lastSync} · ${hub.lastResult || "无变化"}${hub.lastError ? ` · ${hub.lastError}` : ""}`
-        : "还没同步过。也可以点下面的按钮手动来一次。")
-      .addButton((b) => b.setButtonText("推送我的源").onClick(() => { void p.publishAll(); }))
-      .addButton((b) => b.setButtonText("同步订阅").onClick(() => { void p.syncAll(); }))
-      .addButton((b) => b.setButtonText("测试连接").onClick(() => { void this.testBoth(); }));
+        : T("还没同步过。也可以点下面的按钮手动来一次。"))
+      .addButton((b) => b.setButtonText(T("推送我的源")).onClick(() => { void p.publishAll(); }))
+      .addButton((b) => b.setButtonText(T("同步订阅")).onClick(() => { void p.syncAll(); }))
+      .addButton((b) => b.setButtonText(T("测试连接")).onClick(() => { void this.testBoth(); }));
     containerEl.createEl("p", {
       cls: "setting-item-description",
-      text: "「测试连接」会分别请求发布服务的 /feeds 与拉取服务的 /subscriptions，只读、不改数据。",
+      text: T("「测试连接」会分别请求发布服务的 /feeds 与拉取服务的 /subscriptions，只读、不改数据。"),
     });
 
     /* ---------- 维护 ---------- */
     new Setting(containerEl).setName(t("维护")).setHeading();
     new Setting(containerEl)
       .setName(t("生成示例数据"))
-      .setDesc("写一份**虚构**的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。")
-      .addButton((b) => b.setButtonText("生成").onClick(() => { void p.seedDemo(); }));
+      .setDesc(T("写一份**虚构**的样例（人名和项目都是编的），方便先看界面。已存在的文件不覆盖。"))
+      .addButton((b) => b.setButtonText(T("生成")).onClick(() => { void p.seedDemo(); }));
     const store = p.store;
     new Setting(containerEl)
-      .setName("当前读取")
-      .setDesc(`${store.tasks.length} 条任务 · ${store.logs.length} 条记录 · ${store.staff.length} 位成员 · ${store.feeds.length} 个源（${store.feeds.reduce((n, f) => n + f.items.length, 0)} 条消息）· ${store.ideas.length} 条随手记`);
+      .setName(T("当前读取"))
+      .setDesc(T("{a} 条任务 · {b} 条记录 · {c} 位成员 · {d} 个源（{e} 条消息）· {f} 条随手记", { a: store.tasks.length, b: store.logs.length, c: store.staff.length, d: store.feeds.length, e: store.feeds.reduce((n, f) => n + f.items.length, 0), f: store.ideas.length }));
     this.footerVersion();
   }
 

@@ -139,6 +139,13 @@ Archive and restore both ask first and spell out the move.
 - Tasks are not archived. A task's lifecycle is done / deleted — moving single lines to another file would break the "one project, one file" rule and split progress stats.
 - Nothing is deleted; to really remove something use "Delete a task" or delete the file yourself.
 
+## Interface language
+
+Settings → “Interface language”: Auto (follow Obsidian) / 中文 / English.
+
+- Applies **immediately**: the settings tab, workbench, message center, every modal and the command-palette names all switch together — no reload.
+- Your data stays as-is: task titles, project names and `工作/个人` tags are written back unchanged; only UI text follows the language.
+
 ## Privacy and network
 
 - Requests only happen when **you** configure a message service; without one the plugin is fully offline.

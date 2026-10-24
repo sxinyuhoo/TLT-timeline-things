@@ -1,13 +1,13 @@
 {
   "name": "tlt-timeline-things",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "TLT — 以时间线为中心的任务与消息工作台（Obsidian 插件）",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
     "test": "node test/run.mjs && node test/render.mjs",
-    "test:all": "node test/run.mjs && node test/render.mjs && node test/feed-lifecycle.mjs && node test/commands.mjs && node test/rss-e2e.mjs && node test/py-service.mjs && node test/hub-e2e.mjs",
+    "test:all": "node test/run.mjs && node test/render.mjs && node test/feed-lifecycle.mjs && node test/commands.mjs && node test/i18n.mjs && node test/rss-e2e.mjs && node test/py-service.mjs && node test/hub-e2e.mjs",
     "preview": "node test/preview.mjs",
     "play": "node test/play.mjs",
     "serve": "cd test && python3 -m http.server 8799",

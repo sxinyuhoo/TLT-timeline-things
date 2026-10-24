@@ -72,18 +72,18 @@ export class MoveDataModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     const { fromDir, toDir, moves, blocked } = this.info;
-    contentEl.appendChild(el("div", "tlt-m-title", `迁移 ${moves.length} 个文件`));
+    contentEl.appendChild(el("div", "tlt-m-title", T("迁移 {n} 个文件", { n: moves.length })));
     contentEl.appendChild(el("div", "tlt-hint",
-      `从 ${fromDir || "（库根目录）"} 搬到 ${toDir || "（库根目录）"}。搬运用 Obsidian 自己的改名，双链不会断；旧目录里的空文件夹会保留，可以自己删。`));
+      T("从 {a} 搬到 {b}。搬运用 Obsidian 自己的改名，双链不会断；旧目录里的空文件夹会保留，可以自己删。", { a: fromDir || T("（库根目录）"), b: toDir || T("（库根目录）") })));
     if (blocked) {
       contentEl.appendChild(el("div", "tlt-hint warn",
-        `目标位置已有 ${blocked} 个同名文件：这些不会被覆盖，会留在旧目录，其余照常搬。`));
+        T("目标位置已有 {n} 个同名文件：这些不会被覆盖，会留在旧目录，其余照常搬。", { n: blocked })));
     }
     const list = el("div", "tlt-moves");
     moves.slice(0, 6).forEach((m) => {
       list.appendChild(el("div", "tlt-hint", `${m.from} → ${m.to}`));
     });
-    if (moves.length > 6) list.appendChild(el("div", "tlt-hint", `…还有 ${moves.length - 6} 个`));
+    if (moves.length > 6) list.appendChild(el("div", "tlt-hint", T("…还有 {n} 个", { n: moves.length - 6 })));
     contentEl.appendChild(list);
 
     const foot = el("div", "tlt-m-foot");
@@ -108,9 +108,9 @@ function projectPicker(app: App, store: Store, parent: HTMLElement, init: { proj
   const proj = el("select", "tlt-input");
   const fillProjects = (keep?: string) => {
     proj.empty();
-    [...store.projects(), T("未归属")].forEach((p) => {
+    [...store.projects(), "未归属"].forEach((p) => {
       const o = createEl("option");
-      o.value = p; o.textContent = p;
+      o.value = p; o.textContent = p === "未归属" ? T("未归属") : p;
       if (p === (keep || draft.project)) o.selected = true;
       proj.appendChild(o);
     });
@@ -183,11 +183,12 @@ function tagPicker(store: Store, parent: HTMLElement, draft: { tags: string[] })
   const tagRow = row(parent, T("标签"));
   const tagWrap = el("div", "tlt-quick");
   const known = Array.from(new Set(store.tasks.flatMap((x) => x.tags || [])));
-  const all = Array.from(new Set([T("工作"), T("个人"), ...store.tags, ...known, ...draft.tags]));
+  const all = Array.from(new Set(["工作", "个人", ...store.tags, ...known, ...draft.tags]));
   const paint = () => {
     tagWrap.empty();
     all.forEach((tg) => {
-      const b = el("button", "tlt-chip" + (draft.tags.includes(tg) ? " on" : ""), tg);
+      const label = tg === "工作" ? T("工作") : tg === "个人" ? T("个人") : tg;
+      const b = el("button", "tlt-chip" + (draft.tags.includes(tg) ? " on" : ""), label);
       b.onclick = () => {
         draft.tags = draft.tags.includes(tg) ? draft.tags.filter((x) => x !== tg) : [...draft.tags, tg];
         paint();
@@ -362,7 +363,7 @@ export class TaskModal extends TltModal {
 
     // 工作量（人天）：与新建一致
     const estRow = row(contentEl, T("工作量"));
-    const estSeg = seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + " 天" })), this.draft.est || 1, (v) => {
+    const estSeg = seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") })), this.draft.est || 1, (v) => {
       this.draft.est = v;
     });
     // 常用档之外的值：一个小的「自定义」入口，平时不占地方
@@ -443,29 +444,29 @@ export class LogModal extends TltModal {
     contentEl.addClass("tlt-modal");
     contentEl.appendChild(el("div", "tlt-m-title", this.log.title));
     contentEl.appendChild(el("div", "tlt-m-meta",
-      `${this.log.due} · ${this.log.st || ""}${this.log.en ? "–" + this.log.en : ""}${this.log.extra ? " · 计划外" : ""}${this.log.project ? " · " + this.log.project : ""}`));
+      `${this.log.due} · ${this.log.st || ""}${this.log.en ? "–" + this.log.en : ""}${this.log.extra ? " · " + T("计划外") : ""}${this.log.project ? " · " + this.log.project : ""}`));
 
     const body = el("textarea", "tlt-textarea");
-    body.placeholder = "谈了什么 / 决定了什么 / 下一步（会写成文件里的引用块）";
+    body.placeholder = T("谈了什么 / 决定了什么 / 下一步（会写成文件里的引用块）");
     body.value = this.log.note || "";
     contentEl.appendChild(body);
 
     const foot = el("div", "tlt-m-foot");
-    const del = el("button", "tlt-btn danger", "删除这条记录");
+    const del = el("button", "tlt-btn danger", T("删除这条记录"));
     del.onclick = () => { void (async () => {
       await this.store.deleteLog(this.log);
-      this.close(); void this.onChange(); new Notice("已删除记录");
+      this.close(); void this.onChange(); new Notice(T("已删除记录"));
     })(); };
-    const open = el("button", "tlt-btn", "打开月文件");
+    const open = el("button", "tlt-btn", T("打开月文件"));
     open.onclick = () => {
       const f = this.app.vault.getAbstractFileByPath(this.log.file);
       if (f instanceof TFile) void this.app.workspace.getLeaf(false).openFile(f);
       this.close();
     };
-    const ok = el("button", "tlt-btn pri", "保存");
+    const ok = el("button", "tlt-btn pri", T("保存"));
     ok.onclick = () => { void (async () => {
       await this.store.updateLogBody(this.log, body.value);
-      this.close(); void this.onChange(); new Notice("已写回记录");
+      this.close(); void this.onChange(); new Notice(T("已写回记录"));
     })(); };
     foot.append(del, open, ok);
     contentEl.appendChild(foot);
@@ -502,33 +503,33 @@ export class QuickTaskModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", "新建任务"));
+    contentEl.appendChild(el("div", "tlt-m-title", T("新建任务")));
 
     // 只有任务名
     const title = el("input", "tlt-input wide");
-    title.placeholder = "任务名";
+    title.placeholder = T("任务名");
     title.value = this.preset.title || "";
     contentEl.appendChild(title);
 
     // 项目（可选可新建）
-    const projRow = row(contentEl, "项目");
+    const projRow = row(contentEl, T("项目"));
     const projWrap = el("div", "tlt-pick");
     const proj = el("select", "tlt-input");
     const fillProjects = (keep?: string) => {
       proj.empty();
       [...this.store.projects(), "未归属"].forEach((p) => {
         const o = createEl("option");
-        o.value = p; o.textContent = p;
+        o.value = p; o.textContent = p === "未归属" ? T("未归属") : p;
         if (p === (keep || this.draft.project)) o.selected = true;
         proj.appendChild(o);
       });
       const n = createEl("option");
-      n.value = "__new__"; n.textContent = "＋ 新建项目…";
+      n.value = "__new__"; n.textContent = T("＋ 新建项目…");
       proj.appendChild(n);
     };
     fillProjects();
     const projNew = el("input", "tlt-input");
-    projNew.placeholder = "新项目名（= 文件名）";
+    projNew.placeholder = T("新项目名（= 文件名）");
     projNew.addClass("tlt-hidden");
     proj.onchange = () => {
       if (proj.value === "__new__") {
@@ -546,17 +547,17 @@ export class QuickTaskModal extends TltModal {
     projRow.appendChild(projWrap);
 
     // 里程碑（跟着项目变，也能新建）
-    const msRow = row(contentEl, "里程碑");
+    const msRow = row(contentEl, T("里程碑"));
     const msWrap = el("div", "tlt-pick");
     const msSel = el("select", "tlt-input");
     const msNew = el("input", "tlt-input");
-    msNew.placeholder = "新里程碑名";
+    msNew.placeholder = T("新里程碑名");
     msNew.addClass("tlt-hidden");
     const fillMs = () => {
       msSel.empty();
       const list = this.draft.project ? this.store.milestones(this.draft.project).map((m) => m.name) : [];
       const o0 = createEl("option");
-      o0.value = ""; o0.textContent = "（不归里程碑）";
+      o0.value = ""; o0.textContent = T("（不归里程碑）");
       msSel.appendChild(o0);
       list.forEach((name) => {
         const o = createEl("option");
@@ -564,7 +565,7 @@ export class QuickTaskModal extends TltModal {
         msSel.appendChild(o);
       });
       const n = createEl("option");
-      n.value = "__new__"; n.textContent = "＋ 新建里程碑…";
+      n.value = "__new__"; n.textContent = T("＋ 新建里程碑…");
       msSel.appendChild(n);
       msSel.value = list.includes(this.draft.milestone) ? this.draft.milestone : "";
     };
@@ -581,14 +582,15 @@ export class QuickTaskModal extends TltModal {
     msRow.appendChild(msWrap);
 
     // 标签（工作 / 个人 也当成普通标签，不再单独设「范围」）
-    const tagRow = row(contentEl, "标签");
+    const tagRow = row(contentEl, T("标签"));
     const tagWrap = el("div", "tlt-quick");
     const knownTags = Array.from(new Set(this.store.tasks.flatMap((t) => t.tags || [])));
     const allTags = Array.from(new Set(["工作", "个人", ...knownTags]));
     const paintTags = () => {
       tagWrap.empty();
       allTags.forEach((tg) => {
-        const b = el("button", "tlt-chip" + (this.draft.tags.includes(tg) ? " on" : ""), tg);
+        const label = tg === "工作" ? T("工作") : tg === "个人" ? T("个人") : tg;
+        const b = el("button", "tlt-chip" + (this.draft.tags.includes(tg) ? " on" : ""), label);
         b.onclick = () => {
           const a = this.draft.tags;
           this.draft.tags = a.includes(tg) ? a.filter((x) => x !== tg) : [...a, tg];
@@ -597,7 +599,7 @@ export class QuickTaskModal extends TltModal {
         tagWrap.appendChild(b);
       });
       const add = el("input", "tlt-input small");
-      add.placeholder = "新标签";
+      add.placeholder = T("新标签");
       add.onkeydown = (e) => {
         if (e.key !== "Enter") return;
         const v = add.value.trim();
@@ -624,8 +626,8 @@ export class QuickTaskModal extends TltModal {
     dateRow.appendChild(dline);
 
     // 人天
-    const estRow = row(contentEl, "工作量");
-    seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + " 天" })), this.draft.est, (v) => {
+    const estRow = row(contentEl, T("工作量"));
+    seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") })), this.draft.est, (v) => {
       this.draft.est = v; estInput.value = String(v);
     });
     const estInput = el("input", "tlt-input small tlt-est-custom");
@@ -640,8 +642,8 @@ export class QuickTaskModal extends TltModal {
     estRow.appendChild(estInput);
 
     // 优先级
-    const priRow = row(contentEl, "优先级");
-    seg<Pri>(priRow, [{ v: 0, t: "低" }, { v: 1, t: "普通" }, { v: 2, t: "高" }, { v: 3, t: "紧急" }], this.draft.pri, (v) => (this.draft.pri = v));
+    const priRow = row(contentEl, T("优先级"));
+    seg<Pri>(priRow, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri, (v) => (this.draft.pri = v));
 
     // 负责人：一个紧凑的框选控件（点开是带搜索的勾选列表）
     const whoRow = row(contentEl, T("负责人"));
@@ -649,12 +651,12 @@ export class QuickTaskModal extends TltModal {
     else ownerSelect(this.store, whoRow, this.draft);
 
     const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", "创建");
+    const ok = el("button", "tlt-btn pri", T("创建"));
     ok.onclick = () => { void (async () => {
       const name = title.value.trim();
-      if (!name) { new Notice("先写任务名"); return; }
+      if (!name) { new Notice(T("先写任务名")); return; }
       await this.store.addTask(this.draft.project, this.draft.milestone || undefined, {
         title: name,
         start: this.draft.start,
@@ -664,7 +666,7 @@ export class QuickTaskModal extends TltModal {
         owners: this.draft.owners,
         tags: this.draft.tags,
       });
-      this.close(); void this.onChange(); new Notice("已创建任务");
+      this.close(); void this.onChange(); new Notice(T("已创建任务"));
     })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
@@ -687,8 +689,8 @@ export class QuickLogModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", `记一条 · ${this.date}`));
-    contentEl.appendChild(el("div", "tlt-m-meta", "记录是「实际发生」的事；计划外的事也记在这里"));
+    contentEl.appendChild(el("div", "tlt-m-title", T("记一条 · {d}", { d: this.date })));
+    contentEl.appendChild(el("div", "tlt-m-meta", T("记录是「实际发生」的事；计划外的事也记在这里")));
 
     const st = el("input", "tlt-input");
     st.type = "time"; st.value = this.startAt;
@@ -701,27 +703,27 @@ export class QuickLogModal extends TltModal {
     contentEl.appendChild(times);
 
     const title = el("input", "tlt-input wide");
-    title.placeholder = "做了什么";
+    title.placeholder = T("做了什么");
     contentEl.appendChild(title);
     const body = el("textarea", "tlt-textarea");
-    body.placeholder = "正文（可留空）";
+    body.placeholder = T("正文（可留空）");
     contentEl.appendChild(body);
 
     const extra = el("label", "tlt-check");
     const cb = el("input"); cb.type = "checkbox";
-    extra.append(cb, el("span", "", "计划外（临时插入）"));
+    extra.append(cb, el("span", "", T("计划外（临时插入）")));
     contentEl.appendChild(extra);
 
     const foot = el("div", "tlt-m-foot");
-    const ok = el("button", "tlt-btn pri", "记录");
+    const ok = el("button", "tlt-btn pri", T("记录"));
     ok.onclick = () => { void (async () => {
       if (!title.value.trim()) return;
       await this.store.addLog(this.date, {
         st: st.value, en: en.value, title: title.value.trim(), body: body.value.trim() || undefined, extra: cb.checked,
       });
-      this.close(); void this.onChange(); new Notice("已写入记录");
+      this.close(); void this.onChange(); new Notice(T("已写入记录"));
     })(); };
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
@@ -748,7 +750,7 @@ export class StaffModal extends TltModal {
     const av = el("span", "tlt-av big", s.name.slice(-2));
     if (s.color) av.style.background = s.color;
     const who = el("div", "tlt-who");
-    who.append(el("div", "tlt-staff-name", s.name), el("div", "tlt-staff-role", s.role || "未填岗位"));
+    who.append(el("div", "tlt-staff-name", s.name), el("div", "tlt-staff-role", s.role || T("未填岗位")));
     head.append(av, who);
     contentEl.appendChild(head);
 
@@ -759,51 +761,51 @@ export class StaffModal extends TltModal {
       c.append(el("span", "tlt-staff-l", label), el("b", "", value));
       grid.appendChild(c);
     };
-    cell("产能", `${s.capacity}%`);
-    cell("在岗", `每周 ${s.days} 天`);
-    cell("可用", `${sat.avail} 人天/月`);
-    cell("已排", `${sat.sum} 人天（${sat.pct}%）`);
+    cell(T("产能"), `${s.capacity}%`);
+    cell(T("在岗"), T("每周 {n} 天", { n: s.days }));
+    cell(T("可用"), T("每月 {n} 人天", { n: sat.avail }));
+    cell(T("已排"), T("{n} 人天（{p}%）", { n: sat.sum, p: sat.pct }));
     contentEl.appendChild(grid);
 
     const skillRow = el("div", "tlt-staff-line");
-    skillRow.appendChild(el("span", "tlt-staff-l", "技能"));
+    skillRow.appendChild(el("span", "tlt-staff-l", T("技能")));
     const chips = el("div", "tlt-quick");
     (s.skills || []).length
       ? s.skills.forEach((k) => chips.appendChild(el("span", "tlt-chip on", k)))
-      : chips.appendChild(el("span", "tlt-hint", "还没填"));
+      : chips.appendChild(el("span", "tlt-hint", T("还没填")));
     skillRow.appendChild(chips);
     contentEl.appendChild(skillRow);
 
     if (s.note) {
       const noteRow = el("div", "tlt-staff-line");
-      noteRow.appendChild(el("span", "tlt-staff-l", "备注"));
+      noteRow.appendChild(el("span", "tlt-staff-l", T("备注")));
       noteRow.appendChild(el("div", "tlt-staff-note", s.note));
       contentEl.appendChild(noteRow);
     }
 
     const tasks = this.store.tasks.filter((t) => !t.done && t.owners.includes(s.name));
     const listRow = el("div", "tlt-staff-line");
-    listRow.appendChild(el("span", "tlt-staff-l", "手上"));
+    listRow.appendChild(el("span", "tlt-staff-l", T("手上")));
     const ul = el("div", "tlt-staff-tasks");
     tasks.length
       ? tasks.slice(0, 6).forEach((t) => {
           const r = el("div", "tlt-staff-task");
-          r.append(el("span", "", t.title), el("span", "tlt-hint", t.est !== undefined ? `${t.est} 人天` : t.due || ""));
+          r.append(el("span", "", t.title), el("span", "tlt-hint", t.est !== undefined ? `${t.est} ${T("人天")}` : t.due || ""));
           ul.appendChild(r);
         })
-      : ul.appendChild(el("div", "tlt-hint", "这个周期没有任务"));
+      : ul.appendChild(el("div", "tlt-hint", T("这个周期没有任务")));
     listRow.appendChild(ul);
     contentEl.appendChild(listRow);
 
-    contentEl.appendChild(el("div", "tlt-hint", `档案文件：${s.file}`));
+    contentEl.appendChild(el("div", "tlt-hint", T("档案文件：{p}", { p: s.file })));
 
     const foot = el("div", "tlt-m-foot");
-    const del = el("button", "tlt-btn danger", "删除档案");
+    const del = el("button", "tlt-btn danger", T("删除档案"));
     del.onclick = () => { void (async () => {
       await this.store.removeStaff(s);
-      this.close(); void this.onChange?.(); new Notice(`已删除 ${s.name} 的档案`);
+      this.close(); void this.onChange?.(); new Notice(T("已删除 {n} 的档案", { n: s.name }));
     })(); };
-    const open = el("button", "tlt-btn pri", "打开档案文件");
+    const open = el("button", "tlt-btn pri", T("打开档案文件"));
     open.onclick = () => {
       const file = this.app.vault.getAbstractFileByPath(s.file);
       if (file instanceof TFile) void this.app.workspace.getLeaf(false).openFile(file);
@@ -832,11 +834,11 @@ export class TaskPeekModal extends TltModal {
     const t = this.task;
     contentEl.appendChild(el("div", "tlt-peek-title", t.title));
     const rows: [string, string][] = [
-      ["项目", `${t.project}${t.milestone ? " · " + t.milestone : ""}`],
-      ["时间", `${t.start ? t.start + " → " : ""}${t.due || "未排期"}`],
-      ["工作量", t.est !== undefined ? `${t.est} 人天` : t.wl ? `${t.wl}%` : "未估"],
-      ["负责人", t.owners.length ? t.owners.join("、") : "未分配"],
-      ["状态", t.done ? "已完成" : "进行中"],
+      [T("项目"), `${t.project}${t.milestone ? " · " + t.milestone : ""}`],
+      [T("时间"), `${t.start ? t.start + " → " : ""}${t.due || T("未排期")}`],
+      [T("工作量"), t.est !== undefined ? `${t.est} ${T("人天")}` : t.wl ? `${t.wl}%` : T("未估")],
+      [T("负责人"), t.owners.length ? t.owners.join(T("、")) : T("未分配")],
+      [T("状态"), t.done ? T("已完成") : T("进行中")],
     ];
     rows.forEach(([k, v]) => {
       const r = el("div", "tlt-peek-row");
@@ -844,7 +846,7 @@ export class TaskPeekModal extends TltModal {
       contentEl.appendChild(r);
     });
     const foot = el("div", "tlt-m-foot");
-    const open = el("button", "tlt-btn pri", "打开任务 →");
+    const open = el("button", "tlt-btn pri", T("打开任务 →"));
     open.onclick = () => { this.close(); void this.onJump(); };
     foot.appendChild(open);
     contentEl.appendChild(foot);
@@ -868,10 +870,10 @@ export class MilestonePeekModal extends TltModal {
     const done = m.tasks.filter((t) => t.done).length;
     contentEl.appendChild(el("div", "tlt-peek-title", m.name));
     const rows: [string, string][] = [
-      ["项目", m.project],
-      ["进度", `${done}/${m.tasks.length}（${Math.round((done / m.tasks.length) * 100)}%）`],
-      ["人天", `${m.tasks.reduce((n, t) => n + (t.est || 0), 0)} 天`],
-      ["负责人", Array.from(new Set(m.tasks.flatMap((t) => t.owners))).join("、") || "未分配"],
+      [T("项目"), m.project],
+      [T("进度"), T("{a}/{b}（{p}%）", { a: done, b: m.tasks.length, p: Math.round((done / m.tasks.length) * 100) })],
+      [T("人天"), T("{n} 天", { n: m.tasks.reduce((n, t) => n + (t.est || 0), 0) })],
+      [T("负责人"), Array.from(new Set(m.tasks.flatMap((t) => t.owners))).join(T("、")) || T("未分配")],
     ];
     rows.forEach(([k, v]) => {
       const r = el("div", "tlt-peek-row");
@@ -887,7 +889,7 @@ export class MilestonePeekModal extends TltModal {
     contentEl.appendChild(list);
 
     const foot = el("div", "tlt-m-foot");
-    const open = el("button", "tlt-btn pri", "打开里程碑 →");
+    const open = el("button", "tlt-btn pri", T("打开里程碑 →"));
     open.onclick = () => { this.close(); this.onOpenMs(); };
     foot.appendChild(open);
     contentEl.appendChild(foot);
@@ -906,28 +908,28 @@ export class AddStaffModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", "添加成员"));
+    contentEl.appendChild(el("div", "tlt-m-title", T("添加成员")));
     contentEl.appendChild(el("div", "tlt-m-meta",
-      `会在 ${this.store.settings.teamFolder}/ 新建一个档案文件，frontmatter 里填岗位与产能。`));
+      T("会在 {d}/ 新建一个档案文件，frontmatter 里填岗位与产能。", { d: this.store.settings.teamFolder })));
     const name = el("input", "tlt-input wide");
-    name.placeholder = "姓名（= 文件名）";
+    name.placeholder = T("姓名（= 文件名）");
     contentEl.appendChild(name);
     const role = el("input", "tlt-input wide");
-    role.placeholder = "岗位，默认「算法工程师」";
+    role.placeholder = T("岗位，默认「算法工程师」");
     contentEl.appendChild(role);
 
     const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", "创建");
+    const ok = el("button", "tlt-btn pri", T("创建"));
     ok.onclick = () => { void (async () => {
       const n = name.value.trim();
       if (!n) return;
       const created = await this.store.addStaff(n);
-      if (!created) { new Notice("同名档案已存在"); return; }
+      if (!created) { new Notice(T("同名档案已存在")); return; }
       this.close();
       void this.onChange();
-      new Notice(`已创建 ${n} 的档案，点卡片可查看/编辑`);
+      new Notice(T("已创建 {n} 的档案，点卡片可查看/编辑", { n }));
     })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
@@ -951,16 +953,16 @@ export class IdeaModal extends TltModal {
     contentEl.addClass("tlt-modal");
     const isNew = !this.idea;
 
-    contentEl.appendChild(el("div", "tlt-idea-kicker", isNew ? "新建随手记" : "随手记"));
+    contentEl.appendChild(el("div", "tlt-idea-kicker", isNew ? T("新建随手记") : T("随手记")));
 
     const title = el("input", "tlt-idea-title");
-    title.placeholder = "一句话记下来";
+    title.placeholder = T("一句话记下来");
     title.value = this.idea?.title || "";
     contentEl.appendChild(title);
 
     // 已选标签（可点 × 去掉）
     let tags: string[] = this.idea ? ideaFilterTags(this.idea) : [];
-    contentEl.appendChild(el("div", "tlt-field-label", "标签"));
+    contentEl.appendChild(el("div", "tlt-field-label", T("标签")));
     const tagWrap = el("div", "tlt-idea-tagwrap");
     const paint = () => {
       tagWrap.empty();
@@ -973,7 +975,7 @@ export class IdeaModal extends TltModal {
         tagWrap.appendChild(chip);
       });
       const add = el("input", "tlt-tagin");
-      add.placeholder = tags.length ? "再加…" : "加标签，回车";
+      add.placeholder = tags.length ? T("再加…") : T("加标签，回车");
       add.onkeydown = (e) => { void (async () => {
         if (e.key !== "Enter") return;
         const v = (e.target as HTMLInputElement).value.trim().replace(/^#/, "");
@@ -990,7 +992,7 @@ export class IdeaModal extends TltModal {
     contentEl.appendChild(tagWrap);
 
     // 标签库：点一下加进上面，✎ 改/删，末尾 + 新建
-    contentEl.appendChild(el("div", "tlt-field-label", "标签库（点一下加入，✎ 修改）"));
+    contentEl.appendChild(el("div", "tlt-field-label", T("标签库（点一下加入，✎ 修改）")));
     const lib = el("div", "tlt-taglib");
     const libTags = () => Array.from(new Set([
       ...this.store.tags,
@@ -1019,7 +1021,7 @@ export class IdeaModal extends TltModal {
       });
       const plus = el("span", "tlt-taglib-i plus", "＋");
       plus.onclick = () => {
-        new PromptModal(this.app, "新建标签", "标签名", async (v) => {
+        new PromptModal(this.app, T("新建标签"), T("标签名"), async (v) => {
           const name = v.trim().replace(/^#/, "");
           if (!name) return;
           await this.store.addTag(name);
@@ -1031,28 +1033,28 @@ export class IdeaModal extends TltModal {
     paintLib();
     contentEl.appendChild(lib);
 
-    contentEl.appendChild(el("div", "tlt-field-label", "为什么做 / 怎么验证"));
+    contentEl.appendChild(el("div", "tlt-field-label", T("为什么做 / 怎么验证")));
     const body = el("textarea", "tlt-textarea tall");
-    body.placeholder = "值得做的理由、可能的验证方式（可以留空）";
+    body.placeholder = T("值得做的理由、可能的验证方式（可以留空）");
     body.value = this.idea?.body || "";
     contentEl.appendChild(body);
 
     const foot = el("div", "tlt-m-foot");
     if (!isNew) {
-      const del = el("button", "tlt-btn danger", "删除");
+      const del = el("button", "tlt-btn danger", T("删除"));
       del.onclick = () => { void (async () => {
         await this.store.deleteIdea(this.idea);
-        this.close(); void this.onChange(); new Notice("已删除想法");
+        this.close(); void this.onChange(); new Notice(T("已删除想法"));
       })(); };
       foot.appendChild(del);
       foot.appendChild(el("span", "tlt-spacer"));
     }
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", isNew ? "收录" : "保存");
+    const ok = el("button", "tlt-btn pri", isNew ? T("收录") : T("保存"));
     ok.onclick = () => { void (async () => {
       const t = title.value.trim();
-      if (!t) { new Notice("先写一句话"); return; }
+      if (!t) { new Notice(T("先写一句话")); return; }
       const bd = body.value.trim();
       if (this.idea) {
         this.idea.title = t; this.idea.tags = tags; this.idea.body = bd;
@@ -1060,7 +1062,7 @@ export class IdeaModal extends TltModal {
       } else {
         await this.store.addIdea({ title: t, tags, body: bd || undefined });
       }
-      this.close(); void this.onChange(); new Notice(isNew ? "已收进想法池" : "已保存");
+      this.close(); void this.onChange(); new Notice(isNew ? T("已收进想法池") : T("已保存"));
     })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
@@ -1119,14 +1121,14 @@ export function buildMsgFields(parent: HTMLElement, init: Partial<MsgDraft>, sto
 
   // 标题：最亮的一个框，先填它
   const title = el("input", "tlt-input wide tlt-input-title");
-  title.placeholder = "标题：一句话说清这条消息";
+  title.placeholder = T("标题：一句话说清这条消息");
   title.value = d.title;
   title.oninput = () => (d.title = title.value);
   parent.appendChild(title);
 
   // 内容紧跟标题
   const body = el("textarea", "tlt-textarea tlt-input-body");
-  body.placeholder = "内容：具体要说什么（可留空）";
+  body.placeholder = T("内容：具体要说什么（可留空）");
   body.value = d.body;
   body.oninput = () => (d.body = body.value);
   parent.appendChild(body);
@@ -1138,37 +1140,37 @@ export function buildMsgFields(parent: HTMLElement, init: Partial<MsgDraft>, sto
     return r;
   };
 
-  const whenRow = rowOf("时间");
+  const whenRow = rowOf(T("时间"));
   const when = el("input", "tlt-input");
   when.type = "date";
   when.value = d.date;
   when.oninput = () => (d.date = when.value);
   whenRow.appendChild(when);
 
-  const whereRow = rowOf("地点");
+  const whereRow = rowOf(T("地点"));
   const where = el("input", "tlt-input");
-  where.placeholder = "会议室 / 线上 / 可留空";
+  where.placeholder = T("会议室 / 线上 / 可留空");
   where.value = d.place;
   where.oninput = () => (d.place = where.value);
   whereRow.appendChild(where);
 
-  const whoRow = rowOf("人物");
+  const whoRow = rowOf(T("人物"));
   const who = el("input", "tlt-input");
-  who.placeholder = "谁在场 / 谁交办，逗号分开";
+  who.placeholder = T("谁在场 / 谁交办，逗号分开");
   who.value = d.who;
   who.oninput = () => (d.who = who.value);
   whoRow.appendChild(who);
 
-  const whyRow = rowOf("缘由");
+  const whyRow = rowOf(T("缘由"));
   const why = el("input", "tlt-input");
-  why.placeholder = "为什么发这条（可留空）";
+  why.placeholder = T("为什么发这条（可留空）");
   why.value = d.why;
   why.oninput = () => (d.why = why.value);
   whyRow.appendChild(why);
 
-  const tagRow = rowOf("标签");
+  const tagRow = rowOf(T("标签"));
   const tags = el("input", "tlt-input");
-  tags.placeholder = "逗号分开，可留空";
+  tags.placeholder = T("逗号分开，可留空");
   tags.value = d.tags;
   tags.oninput = () => (d.tags = tags.value);
   tagRow.appendChild(tags);
@@ -1218,10 +1220,10 @@ export class MsgModal extends TltModal {
       c.append(el("span", "tlt-5w-k", k), el("span", "tlt-5w-v", v));
       w.appendChild(c);
     };
-    cell("时间", m.date);
-    cell("地点", m.place);
-    cell("人物", m.who.join("、"));
-    cell("缘由", m.why);
+    cell(T("时间"), m.date);
+    cell(T("地点"), m.place);
+    cell(T("人物"), m.who.join(T("、")));
+    cell(T("缘由"), m.why);
     if (w.children.length) contentEl.appendChild(w);
 
     if (m.tags.length) {
@@ -1232,26 +1234,26 @@ export class MsgModal extends TltModal {
 
     const foot = el("div", "tlt-m-foot");
     const left = el("div", "tlt-foot-left");
-    if (feed) left.appendChild(el("span", "tlt-srcbadge", feed.personal ? "个人" : feed.name));
-    if (m.star) left.appendChild(el("span", "tlt-srcbadge star", "★ 重要"));
-    if (m.state === "ended") left.appendChild(el("span", "tlt-srcbadge off", "已结束"));
+    if (feed) left.appendChild(el("span", "tlt-srcbadge", feed.personal ? T("个人") : feed.name));
+    if (m.star) left.appendChild(el("span", "tlt-srcbadge star", T("★ 重要")));
+    if (m.state === "ended") left.appendChild(el("span", "tlt-srcbadge off", T("已结束")));
     foot.appendChild(left);
 
     const more = el("button", "tlt-btn tlt-more", "⋯");
-    more.title = "更多";
+    more.title = T("更多");
     const moreItems: { label: string; onClick: () => void | Promise<void> }[] = [];
     if (writable) {
       moreItems.push({
-        label: m.state === "ended" ? "恢复发布" : "结束这条",
+        label: m.state === "ended" ? T("恢复发布") : T("结束这条"),
         onClick: async () => {
           await this.store.setMsgState(m.feed, m, m.state === "ended" ? "live" : "ended");
-          this.close(); void this.onChange(); new Notice("状态已更新");
+          this.close(); void this.onChange(); new Notice(T("状态已更新"));
         },
       });
     }
     if (feed?.personal) {
       moreItems.push({
-        label: "发布为消息源…",
+        label: T("发布为消息源…"),
         onClick: () => {
           this.close();
           if (feed) new PublishPersonalModal(this.app, this.store, feed, m, () => { void this.onChange(); }).open();
@@ -1260,7 +1262,7 @@ export class MsgModal extends TltModal {
     }
 
     if (writable) {
-      const edit = el("button", "tlt-btn", "编辑");
+      const edit = el("button", "tlt-btn", T("编辑"));
       edit.onclick = () => { this.editing = true; this.onOpen(); };
       foot.appendChild(edit);
     }
@@ -1268,32 +1270,32 @@ export class MsgModal extends TltModal {
       more.onclick = () => popMenu(more, moreItems, "right");
       foot.appendChild(more);
     }
-    const toTask = el("button", "tlt-btn pri", "转为任务…");
+    const toTask = el("button", "tlt-btn pri", T("转为任务…"));
     toTask.onclick = () => {
       this.close();
       new QuickTaskModal(this.app, this.store, this.onChange, { title: m.title, due: m.date }).open();
     };
-    const close = el("button", "tlt-btn", "关闭");
+    const close = el("button", "tlt-btn", T("关闭"));
     close.onclick = () => this.close();
     foot.append(toTask, close);
     contentEl.appendChild(foot);
   }
 
   private openEdit(contentEl: HTMLElement, m: Msg, feed?: Feed) {
-    contentEl.appendChild(el("div", "tlt-m-title", "编辑消息"));
+    contentEl.appendChild(el("div", "tlt-m-title", T("编辑消息")));
     const f = buildMsgFields(contentEl, {
       title: m.title, date: m.date, place: m.place,
       who: m.who.join("、"), why: m.why, body: m.body, tags: m.tags.join(", "), kind: m.kind,
     }, this.store);
     const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => { this.editing = false; this.onOpen(); };
-    const save = el("button", "tlt-btn pri", "保存");
+    const save = el("button", "tlt-btn pri", T("保存"));
     save.onclick = () => { void (async () => {
       const v = f.value();
-      if (!v.title) { new Notice("标题不能空"); return; }
+      if (!v.title) { new Notice(T("标题不能空")); return; }
       await this.store.updateMessage(m.feed, m, v);
-      this.close(); void this.onChange(); new Notice("已保存");
+      this.close(); void this.onChange(); new Notice(T("已保存"));
     })(); };
     foot.append(cancel, save);
     contentEl.appendChild(foot);
@@ -1315,28 +1317,28 @@ export class PublishPersonalModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", "发布为消息源"));
-    contentEl.appendChild(el("div", "tlt-m-meta", `把「${this.msg.title}」放进一个新源，别人订阅这个源就能收到。`));
+    contentEl.appendChild(el("div", "tlt-m-title", T("发布为消息源")));
+    contentEl.appendChild(el("div", "tlt-m-meta", T("把「{t}」放进一个新源，别人订阅这个源就能收到。", { t: this.msg.title })));
 
     const idIn = el("input", "tlt-input wide");
-    idIn.placeholder = "源 ID（英文/数字最稳，作为 ?ID=）";
+    idIn.placeholder = T("源 ID（英文/数字最稳，作为 ?ID=）");
     idIn.value = "my-feed";
     contentEl.appendChild(idIn);
 
     const nameIn = el("input", "tlt-input wide");
-    nameIn.placeholder = "源名称（显示用）";
-    nameIn.value = "我的新源";
+    nameIn.placeholder = T("源名称（显示用）");
+    nameIn.value = T("我的新源");
     contentEl.appendChild(nameIn);
-    contentEl.appendChild(el("div", "tlt-hint", "ID 就是订阅地址里的 ?id=，建好后别改。"));
+    contentEl.appendChild(el("div", "tlt-hint", T("ID 就是订阅地址里的 ?id=，建好后别改。")));
 
     const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", "创建并放入");
+    const ok = el("button", "tlt-btn pri", T("创建并放入"));
     ok.onclick = () => { void (async () => {
       const id = idIn.value.trim();
       const name = nameIn.value.trim() || id;
-      if (!id) { new Notice("先写源 ID"); return; }
+      if (!id) { new Notice(T("先写源 ID")); return; }
       // 服务不通就不报"已发布"：先确认发布服务在线
       const hub = this.plugin?.hubState().publish || "";
       if (this.plugin) {
@@ -1344,7 +1346,7 @@ export class PublishPersonalModal extends TltModal {
         if (!(await this.plugin.pingHub("publish"))) return;
       }
       const r = await this.store.createFeed(id, name);
-      if (!r.ok) { new Notice("同名源已存在，换个 ID"); return; }
+      if (!r.ok) { new Notice(T("同名源已存在，换个 ID")); return; }
       await this.store.addMessage(id, {
         title: this.msg.title, date: this.msg.date, kind: this.msg.kind, place: this.msg.place, body: this.msg.body,
       });
@@ -1382,27 +1384,27 @@ export class TagEditModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", "编辑标签"));
-    contentEl.appendChild(el("div", "tlt-m-meta", `改名会同时更新 ${this.store.ideas.filter((i) => (i.tags || []).includes(this.name)).length} 条随手记。`));
+    contentEl.appendChild(el("div", "tlt-m-title", T("编辑标签")));
+    contentEl.appendChild(el("div", "tlt-m-meta", T("改名会同时更新 {n} 条随手记。", { n: this.store.ideas.filter((i) => (i.tags || []).includes(this.name)).length })));
 
     const input = el("input", "tlt-input wide");
     input.value = this.name;
     contentEl.appendChild(input);
 
     const foot = el("div", "tlt-m-foot");
-    const del = el("button", "tlt-btn danger", "删除标签");
+    const del = el("button", "tlt-btn danger", T("删除标签"));
     del.onclick = () => { void (async () => {
       await this.store.deleteTag(this.name);
-      this.close(); void this.onDone(); new Notice(`已删除「${this.name}」`);
+      this.close(); void this.onDone(); new Notice(T("已删除「{n}」", { n: this.name }));
     })(); };
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", "保存");
+    const ok = el("button", "tlt-btn pri", T("保存"));
     ok.onclick = () => { void (async () => {
       const v = input.value.trim().replace(/^#/, "");
-      if (!v) { new Notice("名称不能为空"); return; }
+      if (!v) { new Notice(T("名称不能为空")); return; }
       if (v !== this.name) await this.store.renameTag(this.name, v);
-      this.close(); void this.onDone(); new Notice("已改好");
+      this.close(); void this.onDone(); new Notice(T("已改好"));
     })(); };
     foot.append(del, cancel, ok);
     contentEl.appendChild(foot);
@@ -1427,9 +1429,9 @@ export class PromptModal extends TltModal {
     input.placeholder = this.label;
     contentEl.appendChild(input);
     const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", "取消");
+    const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", "确定");
+    const ok = el("button", "tlt-btn pri", T("确定"));
     ok.onclick = () => {
       const v = input.value.trim();
       this.close();

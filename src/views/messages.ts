@@ -20,7 +20,7 @@ async function remoteHasFeed(hub: string, id: string): Promise<boolean> {
   }
 }
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
-const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+const weekday = (i: number) => [T("日"), T("一"), T("二"), T("三"), T("四"), T("五"), T("六")][i] || "";
 const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
 
 export class MessagesView extends ItemView {
@@ -52,7 +52,7 @@ export class MessagesView extends ItemView {
   }
 
   getViewType() { return VIEW_TYPE_MESSAGES; }
-  getDisplayText() { return "消息中心"; }
+  getDisplayText() { return T("消息中心"); }
   getIcon() { return "rss"; }
 
   async onOpen() { await this.ensureData(); await this.render(); }
@@ -89,7 +89,7 @@ export class MessagesView extends ItemView {
 
     const outer = el("div", "tlt-fm");
     const head = el("div", "tlt-fm-h");
-    head.append(el("b", "", "消息中心"), el("span", "tlt-fm-hint", "个人 · 发布 · 订阅"));
+    head.append(el("b", "", T("消息中心")), el("span", "tlt-fm-hint", T("个人 · 发布 · 订阅")));
     head.appendChild(el("span", "tlt-spacer"));
     const th = el("button", "tlt-btn", this.plugin.isLight() ? "☾" : "☀");
     th.onclick = () => this.plugin.toggleTheme();
@@ -136,16 +136,16 @@ export class MessagesView extends ItemView {
     const mine = this.store.feeds.filter((f) => f.mine && !f.personal);
     const subs = this.store.feeds.filter((f) => !f.mine && !f.personal);
 
-    r.appendChild(el("div", "tlt-fgrp", "个人"));
+    r.appendChild(el("div", "tlt-fgrp", T("个人")));
     personal.forEach((f) => r.appendChild(this.railRow(f)));
-    r.appendChild(el("div", "tlt-fgrp", "我发布的"));
+    r.appendChild(el("div", "tlt-fgrp", T("我发布的")));
     mine.forEach((f) => r.appendChild(this.railRow(f)));
-    r.appendChild(el("div", "tlt-fgrp", "我订阅的"));
+    r.appendChild(el("div", "tlt-fgrp", T("我订阅的")));
     subs.forEach((f) => r.appendChild(this.railRow(f)));
     if (!personal.length && !mine.length && !subs.length) r.appendChild(el("div", "tlt-empty", T("feeds/ 里还没有源")));
 
     const all = el("div", "tlt-fr add");
-    all.append(el("span", "tlt-fr-n", this.selected.size ? `已选 ${this.selected.size} 个 · 清除` : "⌘ 点可多选 · 全部源"));
+    all.append(el("span", "tlt-fr-n", this.selected.size ? T("已选 {n} 个 · 清除", { n: this.selected.size }) : T("⌘ 点可多选 · 全部源")));
     all.onclick = () => { this.selected.clear(); void this.render(); };
     r.appendChild(all);
     return r;
@@ -161,7 +161,7 @@ export class MessagesView extends ItemView {
     const bar = el("div", "tlt-fm-bar");
     const sb = el("div", "tlt-fm-search");
     const si = el("input");
-    si.placeholder = "搜索消息";
+    si.placeholder = T("搜索消息");
     si.value = this.q;
     si.dataset.focuskey = "msgsearch";
     let composing = false;
@@ -179,7 +179,7 @@ export class MessagesView extends ItemView {
     sb.appendChild(si);
     bar.appendChild(sb);
 
-    const add = el("button", "tlt-btn pri lg", "＋ 新建");
+    const add = el("button", "tlt-btn pri lg", T("＋ 新建"));
     add.onclick = () => new ComposeModal(this.app, this.store, () => this.refresh()).open();
     bar.appendChild(add);
     m.appendChild(bar);
@@ -187,9 +187,9 @@ export class MessagesView extends ItemView {
     /* ---- 第二行：日期（范围 + 颗粒 + 回到今天）---- */
     const t1 = el("div", "tlt-fm-tools");
     const dg = el("div", "tlt-tgrp");
-    dg.appendChild(el("span", "tlt-tgrp-l", "时间"));
+    dg.appendChild(el("span", "tlt-tgrp-l", T("时间")));
     const range = el("div", "tlt-seg");
-    ([["all", "全部"], ["today", "今天"], ["7", "近 7 天"], ["30", "近 30 天"]] as const).forEach(([v, t]) => {
+    ([["all", T("全部")], ["today", T("今天")], ["7", T("近 7 天")], ["30", T("近 30 天")]] as const).forEach(([v, t]) => {
       const b = el("button", "tlt-seg-b" + (this.range === v ? " on" : ""), t);
       b.onclick = () => { this.range = v; void this.render(); };
       range.appendChild(b);
@@ -204,11 +204,11 @@ export class MessagesView extends ItemView {
 
     /* ---- 第三行：条数 + 形态 ---- */
     const t2 = el("div", "tlt-fm-tools sub");
-    t2.appendChild(el("span", "tlt-count", `${items.length} 条`));
+    t2.appendChild(el("span", "tlt-count", T("{n} 条", { n: items.length })));
     t2.appendChild(el("span", "tlt-spacer"));
 
-    const MODES = [["card", "卡片"], ["spine", "河流"], ["compact", "紧凑"],
-      ["bands", "按源分带"], ["axis", "可缩放时间轴"], ["heat", "月度热力"], ["net", "人物脉络"]] as const;
+    const MODES = [["card", T("卡片")], ["spine", T("河流")], ["compact", T("紧凑")],
+      ["bands", T("按源分带")], ["axis", T("可缩放时间轴")], ["heat", T("月度热力")], ["net", T("人物脉络")]] as const;
     const cur = MODES.find(([v]) => v === this.mode) ?? MODES[0];
     const viewBtn = el("button", "tlt-btn tlt-viewbtn");
     viewBtn.append(el("span", "tlt-viewbtn-i", "▤"), el("span", "", T(cur[1])), el("span", "tlt-viewbtn-c", "⌄"));
@@ -243,10 +243,10 @@ export class MessagesView extends ItemView {
         const mk = el("div", "tlt-mday" + (isToday ? " today" : ""));
         mk.dataset.day = isToday ? "today" : x.date;
         mk.append(el("span", "tlt-mday-n",
-          this.zoom === "m" ? `${d.getFullYear()} 年 ${d.getMonth() + 1} 月` : `${d.getDate()}`));
-        if (this.zoom !== "m") mk.append(el("span", "tlt-mday-u", `${d.getMonth() + 1} 月`));
-        if (this.zoom !== "m") mk.append(el("span", "tlt-mday-w", `周${WEEK[d.getDay()]}`));
-        if (isToday) mk.append(el("span", "tlt-mday-t", "今天"));
+          this.zoom === "m" ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : `${d.getDate()}`));
+        if (this.zoom !== "m") mk.append(el("span", "tlt-mday-u", `${d.getMonth() + 1}`));
+        if (this.zoom !== "m") mk.append(el("span", "tlt-mday-w", weekday(d.getDay())));
+        if (isToday) mk.append(el("span", "tlt-mday-t", T("今天")));
         list.appendChild(mk);
         last = key;
       }
@@ -268,7 +268,7 @@ export class MessagesView extends ItemView {
       const H = Math.max(120, 54 + lanes.length * 30);
       svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
       setSvgMarkup(svg, this.axisBody(W, H, items));
-      label.textContent = `窗口 ${Math.round(this.tlSpan)} 天 · 滚轮缩放 · 拖动平移 · 双击回到默认（前 3 天后 30 天）`;
+      label.textContent = T("窗口 {n} 天 · 滚轮缩放 · 拖动平移 · 双击回到默认（前 3 天后 30 天）", { n: Math.round(this.tlSpan) });
     };
     redraw();
     box.appendChild(svg);
@@ -349,14 +349,14 @@ export class MessagesView extends ItemView {
       if (px < left - 1 || px > right + 1) continue;
       g += `<line class="tlt-axis-grid" x1="${px.toFixed(1)}" y1="34" x2="${px.toFixed(1)}" y2="${H - 10}"/>`;
       const dt = new Date((baseDay + d) * 864e5);
-      const label = step >= 30 ? `${dt.getMonth() + 1}月` : `${dt.getMonth() + 1}/${dt.getDate()}`;
+      const label = step >= 30 ? `${dt.getMonth() + 1}` : `${dt.getMonth() + 1}/${dt.getDate()}`;
       g += `<text class="tlt-axis-tick" x="${px.toFixed(1)}" y="24" text-anchor="middle">${label}</text>`;
     }
     // 今天
     const tx = x(0);
     if (tx >= left && tx <= right) {
       g += `<line class="tlt-axis-today" x1="${tx.toFixed(1)}" y1="30" x2="${tx.toFixed(1)}" y2="${H - 8}"/>`;
-      g += `<text class="tlt-axis-today-l" x="${(tx + 3).toFixed(1)}" y="40">今天</text>`;
+      g += `<text class="tlt-axis-today-l" x="${(tx + 3).toFixed(1)}" y="40">${T("今天")}</text>`;
     }
     // 泳道
     const lanes = this.axisLanes(items);
@@ -374,7 +374,7 @@ export class MessagesView extends ItemView {
           <title>${escapeXml(`${m.date} ${m.title}`)}</title></g>`;
       });
     });
-    if (!lanes.length) g += `<text class="tlt-axis-empty" x="${left}" y="70">这个窗口里没有消息</text>`;
+    if (!lanes.length) g += `<text class="tlt-axis-empty" x="${left}" y="70">${T("没有消息在这个窗口里")}</text>`;
     return g;
   }
 
@@ -420,13 +420,13 @@ export class MessagesView extends ItemView {
     prev.onclick = () => { this.heatMonth = this.shiftMonth(-1); void this.render(); };
     const next = el("button", "tlt-tlink", "›");
     next.onclick = () => { this.heatMonth = this.shiftMonth(1); void this.render(); };
-    head.append(prev, el("b", "", `${y} 年 ${mo} 月`), next, el("span", "tlt-spacer"),
-      el("span", "tlt-heat-l", "少"), el("span", "tlt-heat-i lv1"), el("span", "tlt-heat-i lv2"),
-      el("span", "tlt-heat-i lv3"), el("span", "tlt-heat-i lv4"), el("span", "tlt-heat-l", "多"));
+    head.append(prev, el("b", "", `${y}-${String(mo).padStart(2, "0")}`), next, el("span", "tlt-spacer"),
+      el("span", "tlt-heat-l", T("少")), el("span", "tlt-heat-i lv1"), el("span", "tlt-heat-i lv2"),
+      el("span", "tlt-heat-i lv3"), el("span", "tlt-heat-i lv4"), el("span", "tlt-heat-l", T("多")));
     box.appendChild(head);
 
     const grid = el("div", "tlt-heat-grid");
-    ["日", "一", "二", "三", "四", "五", "六"].forEach((w) => grid.appendChild(el("div", "tlt-heat-w", w)));
+    [T("日"), T("一"), T("二"), T("三"), T("四"), T("五"), T("六")].forEach((w) => grid.appendChild(el("div", "tlt-heat-w", w)));
     const first = new Date(y, mo - 1, 1);
     const days = new Date(y, mo, 0).getDate();
     for (let i = 0; i < first.getDay(); i++) grid.appendChild(el("div", "tlt-heat-c blank"));
@@ -438,7 +438,7 @@ export class MessagesView extends ItemView {
       const n = count[key] || 0;
       const lv = n === 0 ? 0 : Math.min(4, 1 + Math.floor((n / max) * 3));
       const c = el("div", "tlt-heat-c" + (lv ? ` lv${lv}` : "") + (key === todayISO() ? " today" : "") + (this.heatDay === key ? " on" : ""));
-      c.title = `${key} · ${n} 条`;
+      c.title = T("{k} · {n} 条", { k: key, n });
       c.append(el("span", "tlt-heat-d", String(d)));
       if (n) c.append(el("span", "tlt-heat-n", String(n)));
       c.onclick = () => { this.heatDay = key; void this.render(); };
@@ -448,7 +448,7 @@ export class MessagesView extends ItemView {
 
     if (this.heatDay) {
       const list = el("div", "tlt-heat-day");
-      list.appendChild(el("div", "tlt-count", `${this.heatDay} 的消息`));
+      list.appendChild(el("div", "tlt-count", T("{d} 的消息", { d: this.heatDay })));
       all.filter((x) => x.date === this.heatDay).forEach((x) => {
         const row = el("div", "tlt-crow");
         const dot = el("span", "tlt-nd"); dot.style.background = KIND_COLOR[x.kind];
@@ -466,7 +466,7 @@ export class MessagesView extends ItemView {
   private net(items: Msg[]): HTMLElement {
     const box = el("div", "tlt-net");
     const feeds = this.store.feeds.filter((f) => f.items.length);
-    const owners = Array.from(new Set(feeds.map((f) => f.owner || "我")));
+    const owners = Array.from(new Set(feeds.map((f) => f.owner || T("我"))));
     const W = 640, H = Math.max(240, owners.length * 64);
     const svg = createSvg("svg");
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
@@ -476,12 +476,12 @@ export class MessagesView extends ItemView {
     const fy = (i: number) => 26 + (i * (H - 52)) / Math.max(1, feeds.length - 1);
     let g = "";
     feeds.forEach((f, i) => {
-      const oi = owners.indexOf(f.owner || "我");
+      const oi = owners.indexOf(f.owner || T("我"));
       g += `<path class="tlt-net-e" d="M150 ${oy(oi).toFixed(1)} C 260 ${oy(oi).toFixed(1)}, 300 ${fy(i).toFixed(1)}, 400 ${fy(i).toFixed(1)}"/>`;
     });
     owners.forEach((o, i) => {
-      const n = feeds.filter((f) => (f.owner || "我") === o).reduce((s, f) => s + f.items.length, 0);
-      const label = o === "me" ? "我" : o;
+      const n = feeds.filter((f) => (f.owner || T("我")) === o).reduce((s, f) => s + f.items.length, 0);
+      const label = o === "me" ? T("我") : o;
       g += `<g class="tlt-net-g"><circle class="tlt-net-o" cx="130" cy="${oy(i).toFixed(1)}" r="${(11 + Math.min(9, n)).toFixed(1)}"/>
         <text class="tlt-net-t" x="130" y="${(oy(i) + 30).toFixed(1)}" text-anchor="middle">${escapeXml(label.slice(0, 6))}</text>
         <text class="tlt-net-n" x="130" y="${(oy(i) + 3).toFixed(1)}" text-anchor="middle">${n}</text></g>`;
@@ -504,7 +504,7 @@ export class MessagesView extends ItemView {
       void this.render();
     });
     box.appendChild(svg);
-    box.appendChild(el("div", "tlt-hint", "圆＝人（数字是他们发的消息数），胶囊＝消息源，粗细不代表什么。点源可以只看它。"));
+    box.appendChild(el("div", "tlt-hint", T("圆＝人（数字是他们发的消息数），胶囊＝消息源，粗细不代表什么。点源可以只看它。")));
     return box;
   }
 
@@ -550,7 +550,7 @@ export class MessagesView extends ItemView {
       if (x.star) nh.appendChild(el("span", "tlt-sk", "★"));
       body.appendChild(nh);
       body.appendChild(el("div", "tlt-nm2",
-        [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join("、") : "", x.state === "ended" ? "已结束" : ""]
+        [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(T("、")) : "", x.state === "ended" ? T("已结束") : ""]
           .filter(Boolean).join("  ·  ")));
       if (x.body) body.appendChild(el("div", "tlt-nb", x.body));
       row.appendChild(body);
@@ -565,7 +565,7 @@ export class MessagesView extends ItemView {
     top.append(kd, el("span", "tlt-nm", x.title));
     if (x.star) top.appendChild(el("span", "tlt-sk", "★"));
     card.appendChild(top);
-    const bits = [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join("、") : "", x.state === "ended" ? "已结束" : ""]
+    const bits = [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(T("、")) : "", x.state === "ended" ? T("已结束") : ""]
       .filter(Boolean);
     if (bits.length) card.appendChild(el("div", "tlt-nm2", bits.join("  ·  ")));
     if (x.body) card.appendChild(el("div", "tlt-nb", x.body));
@@ -618,7 +618,7 @@ export class MessagesView extends ItemView {
         const tw = el("div", "tlt-d-titlewrap");
         const tEl = el("div", "tlt-d-title", f.name);
         const pen = el("button", "tlt-rename", "✎");
-        pen.title = "改源名称";
+        pen.title = T("改源名称");
         pen.onclick = () => {
           const inp = el("input", "tlt-input");
           inp.value = f.name;
@@ -633,7 +633,7 @@ export class MessagesView extends ItemView {
             const v = inp.value.trim();
             if (v && v !== f.name) {
               await this.store.renameFeed(f, v);
-              new Notice(`已改名为「${v}」`);
+              new Notice(T("已改名为「{n}」", { n: v }));
             }
             await this.refresh();
           })(); };
@@ -646,28 +646,28 @@ export class MessagesView extends ItemView {
         tw.append(tEl, pen);
         s.appendChild(tw);
         s.appendChild(el("div", "tlt-d-meta",
-          `${f.personal ? "个人源" : f.mine ? "我发布的源" : "我订阅的源"} · ${f.items.length} 条`));
+          T("{k} · {n} 条", { k: f.personal ? T("个人源") : f.mine ? T("我发布的源") : T("我订阅的源"), n: f.items.length })));
 
         const act = el("div", "tlt-d-act");
         if (f.personal) {
-          s.appendChild(el("div", "tlt-d-body", "新消息默认进这里，只有自己看。点开某条草稿可以「发布为消息源」。"));
+          s.appendChild(el("div", "tlt-d-body", T("新消息默认进这里，只有自己看。点开某条草稿可以「发布为消息源」。")));
           const n = el("button", "tlt-btn pri", T("新建消息到这个源"));
           n.onclick = () => new ComposeModal(this.app, this.store, () => this.refresh(), f.id).open();
           act.appendChild(n);
           const pub = el("button", "tlt-btn", T("发布消息源…"));
-          pub.title = "把这里的草稿变成一个别人能订阅的源";
+          pub.title = T("把这里的草稿变成一个别人能订阅的源");
           pub.onclick = () => new PublishFeedModal(this.app, this.store, this.plugin, f, () => this.refresh()).open();
           act.appendChild(pub);
         } else if (f.mine) {
           const st = this.plugin.hubState();
           const pid = (this.cfg.feedIds || {})[f.id] || f.id;
-          s.appendChild(el("div", "tlt-d-body", `订阅地址：${st.publish}/feed?id=${encodeURIComponent(pid)}`));
+          s.appendChild(el("div", "tlt-d-body", T("订阅地址：{u}", { u: `${st.publish}/feed?id=${encodeURIComponent(pid)}` })));
           const push = el("button", "tlt-btn pri", T("手动推送"));
           push.onclick = () => { void (async () => {
             try {
               const r = await this.store.publishFeed(f, st.publish, pid);
-              new Notice(`已推送 ${r.count} 条`);
-            } catch (e) { new Notice("推送失败：" + errMsg(e)); }
+              new Notice(T("已推送 {n} 条", { n: r.count }));
+            } catch (e) { new Notice(T("推送失败：") + errMsg(e)); }
           })(); };
           const unpub = el("button", "tlt-btn danger", T("取消发布"));
           unpub.onclick = () => { void (async () => {
@@ -675,7 +675,7 @@ export class MessagesView extends ItemView {
             const back = f.personal ? 0 : await this.store.demoteToPersonal(f, "个人");
             this.selected.delete(f.id);
             await this.refresh();
-            if (back < 0) new Notice("并回个人失败，源文件已保留，稍后再试");
+            if (back < 0) new Notice(T("并回个人失败，源文件已保留，稍后再试"));
             else if (!back) new Notice(T("已取消发布，这个源原样回到「个人」"));
             else new Notice(T("已取消发布，{n} 条并回「个人」（原来那个个人源里已有内容）", { n: back }));
           })(); };
@@ -689,26 +689,26 @@ export class MessagesView extends ItemView {
             this.selected.delete(f.id);
             const gone = await this.store.trashFeedFile(f);
             await this.refresh();
-            new Notice(gone ? `已取消订阅「${f.name}」，本地文件已进回收站` : `已取消订阅「${f.name}」`);
+            new Notice(gone ? T("已取消订阅「{n}」，本地文件已进回收站", { n: f.name }) : T("已取消订阅「{n}」", { n: f.name }));
           })(); };
           act.appendChild(un);
         }
         s.appendChild(act);
-        s.appendChild(el("div", "tlt-hint", "左栏可多选源来过滤时间线；这里只管理当前这一个源。"));
+        s.appendChild(el("div", "tlt-hint", T("左栏可多选源来过滤时间线；这里只管理当前这一个源。")));
         return s;
       }
     }
 
     if (ids.length > 1) {
-      s.appendChild(el("div", "tlt-d-title", `已选 ${ids.length} 个源`));
-      s.appendChild(el("div", "tlt-d-meta", "要管理某个源，只选它一个。"));
+      s.appendChild(el("div", "tlt-d-title", T("已选 {n} 个源", { n: ids.length })));
+      s.appendChild(el("div", "tlt-d-meta", T("要管理某个源，只选它一个。")));
       const list = el("div", "tlt-src-list");
       ids.forEach((id) => {
         const f = this.store.feeds.find((x) => x.id === id);
         if (!f) return;
         const row = el("div", "tlt-src-row");
         row.append(el("span", "tlt-src-name", f.name),
-          el("span", "tlt-src-kind", f.personal ? "个人" : f.mine ? "我发布" : "订阅"));
+          el("span", "tlt-src-kind", f.personal ? T("个人") : f.mine ? T("我发布") : T("订阅")));
         list.appendChild(row);
       });
       s.appendChild(list);
@@ -721,32 +721,32 @@ export class MessagesView extends ItemView {
   private overviewSide(s: HTMLElement): HTMLElement {
     const unread = this.msgs().filter((x) => !x.read_).length;
     const star = this.msgs().filter((x) => x.star).length;
-    s.appendChild(el("div", "tlt-d-title", "消息源管理"));
+    s.appendChild(el("div", "tlt-d-title", T("消息源管理")));
     const stats = el("div", "tlt-d-stats");
-    [[String(unread), "未读"], [String(star), "重要"], [String(this.store.feeds.length), "源"]].forEach(([v, l]) => {
+    [[String(unread), T("未读")], [String(star), T("重要")], [String(this.store.feeds.length), T("源")]].forEach(([v, l]) => {
       const c = el("div", "tlt-d-stat");
       c.append(el("b", "", v), el("span", "", l));
       stats.appendChild(c);
     });
     s.appendChild(stats);
     s.appendChild(this.hubPanel());
-    s.appendChild(el("div", "tlt-hint", "点左栏某个源，这里换成它的管理面板（可多选筛选时间线）。"));
+    s.appendChild(el("div", "tlt-hint", T("点左栏某个源，这里换成它的管理面板（可多选筛选时间线）。")));
     return s;
   }
 
   private hubPanel(): HTMLElement {
     const box = el("div", "tlt-hub-side");
     const st = this.plugin.hubState();
-    box.appendChild(el("div", "tlt-fgrp", "服务"));
+    box.appendChild(el("div", "tlt-fgrp", T("服务")));
     const row = (label: string, value: string) => {
       const d = el("div", "tlt-hub-row");
       d.append(el("span", "tlt-hub-l", label), el("code", "", value));
       return d;
     };
     box.appendChild(row(T("发布"), st.publish));
-    box.appendChild(row("拉取", st.sync));
+    box.appendChild(row(T("拉取"), st.sync));
     box.appendChild(el("div", "tlt-hub-note",
-      `自动同步：${st.syncMin ? `每 ${st.syncMin} 分钟` : "关闭"} · 自动推送：${st.pushMin ? `每 ${st.pushMin} 分钟` : "关闭"}（在设置里改）`));
+      T("自动同步：{a} · 自动推送：{b}（在设置里改）", { a: st.syncMin ? T("每 {n} 分钟", { n: st.syncMin }) : T("off"), b: st.pushMin ? T("每 {n} 分钟", { n: st.pushMin }) : T("off") })));
 
     const btns = el("div", "tlt-hub-btns");
     const push = el("button", "tlt-btn", T("推送我的源"));
@@ -756,30 +756,30 @@ export class MessagesView extends ItemView {
       try {
         const r = await this.store.pullFromHub(st.sync);
         const stamp = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-        this.plugin.setHubState({ lastSync: stamp, lastResult: `新增 ${r.added} 条`, lastError: "" });
+        this.plugin.setHubState({ lastSync: stamp, lastResult: T("新增 {n} 条", { n: r.added }), lastError: "" });
         await this.refresh();
-        new Notice(`同步完成：新增 ${r.added} 条`);
-      } catch (e) { new Notice("同步失败：" + errMsg(e)); }
+        new Notice(T("同步完成：新增 {n} 条", { n: r.added }));
+      } catch (e) { new Notice(T("同步失败：") + errMsg(e)); }
     })(); };
     btns.append(push, sync);
     box.appendChild(btns);
 
     const input = el("input", "tlt-input");
-    input.placeholder = "订阅地址（可粘贴 @URL:…）";
+    input.placeholder = T("订阅地址（可粘贴 @URL:…）");
     box.appendChild(input);
     const sub = el("button", "tlt-btn", T("订阅这个源"));
     sub.onclick = () => { void (async () => {
       const url = cleanFeedUrl(input.value);
-      if (!url) { new Notice("先填订阅地址"); return; }
+      if (!url) { new Notice(T("先填订阅地址")); return; }
       try {
         const r = await this.store.subscribeRemote(st.sync, url);
-        if (r.reason === "self") { new Notice("这是你自己发布的源，不需要订阅"); return; }
-        if (r.existed) { new Notice("已经订阅过这个源"); input.value = ""; return; }
+        if (r.reason === "self") { new Notice(T("这是你自己发布的源，不需要订阅")); return; }
+        if (r.existed) { new Notice(T("已经订阅过这个源")); input.value = ""; return; }
         input.value = "";
         const p = await this.store.pullFromHub(st.sync);
         await this.refresh();
-        new Notice(`已订阅并同步 ${p.added} 条`);
-      } catch (e) { new Notice("订阅失败：" + errMsg(e)); }
+        new Notice(T("已订阅并同步 {n} 条", { n: p.added }));
+      } catch (e) { new Notice(T("订阅失败：") + errMsg(e)); }
     })(); };
     box.appendChild(sub);
     return box;
@@ -799,22 +799,22 @@ class PublishFeedModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", "发布消息源"));
+    contentEl.appendChild(el("div", "tlt-m-title", T("发布消息源")));
     contentEl.appendChild(el("div", "tlt-m-meta",
-      `把「${this.from.name}」里的草稿变成一个别人能订阅的源；发布后它会出现在「我发布的」里。`));
+      T("把「{n}」里的草稿变成一个别人能订阅的源；发布后它会出现在「我发布的」里。", { n: this.from.name })));
 
     // 源名称不在这里改：用右栏里已经定好的名字（发布/取消发布都不变）
-    contentEl.appendChild(el("div", "tlt-m-meta", `源名称：${this.from.name}`));
+    contentEl.appendChild(el("div", "tlt-m-meta", T("源名称：{n}", { n: this.from.name })));
 
     const descRow = el("div", "tlt-row");
-    descRow.appendChild(el("span", "tlt-row-l", "说明"));
+    descRow.appendChild(el("span", "tlt-row-l", T("说明")));
     const descIn = el("input", "tlt-input");
-    descIn.placeholder = "这个源发什么（可留空）";
+    descIn.placeholder = T("这个源发什么（可留空）");
     descRow.appendChild(descIn);
 
     contentEl.append(descRow);
     contentEl.appendChild(el("div", "tlt-hint",
-      "名称取自这个源本身（要改在右栏 ✎ 改，发布/取消发布都不会变）。订阅地址由插件自动生成，不用自己起 ID。"));
+      T("名称取自这个源本身（要改在右栏 ✎ 改，发布/取消发布都不会变）。订阅地址由插件自动生成，不用自己起 ID。")));
 
     const foot = el("div", "tlt-m-foot");
     const cancel = el("button", "tlt-btn", T("取消"));
@@ -830,7 +830,7 @@ class PublishFeedModal extends TltModal {
         const r = await this.store.publishSource(this.from, {
           name, desc: descIn.value.trim(),
         });
-        if (!r.ok) { new Notice("发布失败：名称空着"); return; }
+        if (!r.ok) { new Notice(T("发布失败：名称空着")); return; }
         await this.store.load();
         const feed = this.store.feeds.find((f) => f.id === r.id || f.file === r.path);
         if (!feed) throw new Error(T("发布后没读回这个源"));
@@ -865,13 +865,13 @@ export class ComposeModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", "新建消息"));
-    contentEl.appendChild(el("div", "tlt-m-meta", "只有标题必填；时间地点人物这些留着更好找，也可以空着。"));
+    contentEl.appendChild(el("div", "tlt-m-title", T("新建消息")));
+    contentEl.appendChild(el("div", "tlt-m-meta", T("只有标题必填；时间地点人物这些留着更好找，也可以空着。")));
 
     const f = buildMsgFields(contentEl, { date: todayISO() }, this.store);
 
     const srcRow = el("div", "tlt-row");
-    srcRow.appendChild(el("span", "tlt-row-l", "消息源"));
+    srcRow.appendChild(el("span", "tlt-row-l", T("消息源")));
     const src = el("select", "tlt-input");
     const options: Feed[] = [
       ...this.store.feeds.filter((x) => x.personal),
@@ -880,7 +880,7 @@ export class ComposeModal extends TltModal {
     options.forEach((x) => {
       const o = createEl("option");
       o.value = x.id;
-      o.textContent = `${x.name}（${x.personal ? "个人" : "已发布"}）`;
+      o.textContent = `${x.name} (${x.personal ? T("个人") : T("已发布")})`;
       src.appendChild(o);
     });
     if (this.presetFeed) src.value = this.presetFeed;
@@ -893,10 +893,10 @@ export class ComposeModal extends TltModal {
     const ok = el("button", "tlt-btn pri", T("创建"));
     ok.onclick = () => { void (async () => {
       const v = f.value();
-      if (!v.title) { new Notice("先写标题"); return; }
-      if (!src.value) { new Notice("先选一个消息源"); return; }
+      if (!v.title) { new Notice(T("先写标题")); return; }
+      if (!src.value) { new Notice(T("先选一个消息源")); return; }
       await this.store.addMessage(src.value, v);
-      this.close(); void this.onDone(); new Notice("已创建消息");
+      this.close(); void this.onDone(); new Notice(T("已创建消息"));
     })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
@@ -918,8 +918,8 @@ class PublishModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", "推送到发布服务"));
-    contentEl.appendChild(el("div", "tlt-m-meta", "下面的 ID 就是别人订阅地址里的 ?id=。"));
+    contentEl.appendChild(el("div", "tlt-m-title", T("推送到发布服务")));
+    contentEl.appendChild(el("div", "tlt-m-meta", T("下面的 ID 就是别人订阅地址里的 ?id=。")));
 
     const rows: { feed: Feed; input: HTMLInputElement }[] = [];
     this.store.feeds.filter((f) => f.mine && !f.personal).forEach((f) => {
@@ -928,17 +928,17 @@ class PublishModal extends TltModal {
       const box = el("div", "tlt-row-v");
       const input = el("input", "tlt-input");
       input.value = (this.store.settings.feedIds || {})[f.id] || f.id;
-      box.append(input, el("div", "tlt-hint", `${f.items.length} 条`));
+      box.append(input, el("div", "tlt-hint", T("{n} 条", { n: f.items.length })));
       r.appendChild(box);
       contentEl.appendChild(r);
       rows.push({ feed: f, input });
     });
-    if (!rows.length) contentEl.appendChild(el("div", "tlt-hint", "没有可发布的源"));
+    if (!rows.length) contentEl.appendChild(el("div", "tlt-hint", T("没有可发布的源")));
 
     const foot = el("div", "tlt-m-foot");
     const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", "保存并推送");
+    const ok = el("button", "tlt-btn pri", T("保存并推送"));
     ok.onclick = () => { void (async () => {
       const ids: Record<string, string> = {};
       rows.forEach(({ feed, input }) => { ids[feed.id] = input.value.trim() || feed.id; });
@@ -950,8 +950,8 @@ class PublishModal extends TltModal {
           const r = await this.store.publishFeed(feed, this.plugin.hubState().publish, input.value.trim() || feed.id);
           total += r.count || 0;
         }
-        new Notice(`已推送 ${rows.length} 个源（${total} 条）`);
-      } catch (e) { new Notice("推送失败：" + errMsg(e)); }
+        new Notice(T("已推送 {f} 个源（{n} 条）", { f: rows.length, n: total }));
+      } catch (e) { new Notice(T("推送失败：") + errMsg(e)); }
       this.close(); void this.onDone();
     })(); };
     foot.append(cancel, ok);
