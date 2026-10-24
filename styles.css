@@ -138,7 +138,7 @@ body.tlt-light {
 .tlt-proj:hover { background: var(--tlt-surface2); }
 .tlt-proj.on { background: var(--tlt-surface3); border-color: rgba(91, 108, 255, .35); }
 .tlt-prow { display: flex; align-items: center; gap: 7px; }
-.tlt-sw { width: 6px; height: 6px; border-radius: 2px; background: #5B6CFF; flex: none; }
+.tlt-sw { width: 6px; height: 6px; border-radius: 2px; background: var(--tlt-sw, #5B6CFF); flex: none; }
 .tlt-pname { flex: 1; min-width: 0; font-size: 12px; color: var(--tlt-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tlt-ppct { font-size: 9.5px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; }
 .tlt-pbar { height: 3px; border-radius: 2px; background: var(--tlt-line4); margin-top: 7px; overflow: hidden; }
@@ -604,6 +604,7 @@ body.theme-light .tlt-root .tlt-blk.plan { background: rgba(75, 90, 224, .09); }
 .tlt-spoke { stroke: var(--tlt-line4); stroke-width: 1; }
 .tlt-rlab { font-size: 7.5px; fill: var(--tlt-ink5); }
 .tlt-plab { font-size: 8px; fill: var(--tlt-ink4); }
+.tlt-wedge { pointer-events: none; }
 .tlt-node { cursor: pointer; }
 .tlt-node:hover { stroke: var(--tlt-ink); stroke-width: 1.4; }
 .tlt-plink { stroke: var(--tlt-acc); stroke-width: 1; fill: none; opacity: .18; }

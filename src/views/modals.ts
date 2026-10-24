@@ -1,7 +1,8 @@
 import { App, Modal, Notice, TFile } from "obsidian";
+import type TLTPlugin from "../main";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, addDays, todayISO, minToHHMM, saturation, ideaFilterTags } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, addDays, todayISO, minToHHMM, saturation, ideaFilterTags, errMsg } from "../data";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, cls?: string, text?: string
@@ -1270,11 +1271,12 @@ export class MsgModal extends TltModal {
 
 export class PublishPersonalModal extends TltModal {
   store: Store;
+  plugin?: TLTPlugin;
   from: Feed;
   msg: Msg;
   onDone: () => void | Promise<void>;
-  constructor(app: App, store: Store, from: Feed, msg: Msg, onDone: () => void | Promise<void>) {
-    super(app); this.store = store; this.from = from; this.msg = msg; this.onDone = onDone;
+  constructor(app: App, store: Store, from: Feed, msg: Msg, onDone: () => void | Promise<void>, plugin?: TLTPlugin) {
+    super(app); this.store = store; this.from = from; this.msg = msg; this.onDone = onDone; this.plugin = plugin;
   }
   onOpen() {
     const { contentEl } = this;
@@ -1301,14 +1303,31 @@ export class PublishPersonalModal extends TltModal {
       const id = idIn.value.trim();
       const name = nameIn.value.trim() || id;
       if (!id) { new Notice("先写源 ID"); return; }
+      // 服务不通就不报"已发布"：先确认发布服务在线
+      const hub = this.plugin?.hubState().publish || "";
+      if (this.plugin) {
+        if (!hub) { new Notice(T("还没填发布服务地址（设置 → 消息服务）")); return; }
+        if (!(await this.plugin.pingHub("publish"))) return;
+      }
       const r = await this.store.createFeed(id, name);
       if (!r.ok) { new Notice("同名源已存在，换个 ID"); return; }
       await this.store.addMessage(id, {
         title: this.msg.title, date: this.msg.date, kind: this.msg.kind, place: this.msg.place, body: this.msg.body,
       });
       await this.store.setMsgState(this.from.id, this.msg, "ended");
+      let pushed = 0;
+      let pushErr = "";
+      if (this.plugin && hub) {
+        await this.store.load();
+        const feed = this.store.feeds.find((f) => f.id === id);
+        try {
+          if (feed) pushed = (await this.store.publishFeed(feed, hub, id)).count ?? 0;
+        } catch (e) { pushErr = errMsg(e); }
+      }
       this.close(); void this.onDone();
-      new Notice(`已发布到「${name}」· 去消息中心右栏推送它`);
+      new Notice(pushErr
+        ? T("源已建好，但推送失败：{msg}（可在右栏「手动推送」重试）", { msg: pushErr })
+        : T("已发布并推送「{name}」· {n} 条", { name, n: pushed }), 8000);
     })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);

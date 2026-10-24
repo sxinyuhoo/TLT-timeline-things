@@ -19,6 +19,11 @@ export const EN: Record<string, string> = {
   "发布": "Publish",
   "确定": "OK",
   "未知错误": "Unknown error",
+  "还没填发布服务地址（设置 → 消息服务）": "No publish service URL yet (Settings → Message service)",
+  "发布后没读回这个源": "The feed could not be read back after publishing",
+  "已发布并推送「{name}」· {n} 条": "Published and pushed \"{name}\" · {n} message(s)",
+  "源已建好，但推送失败：{msg}（可在右栏「手动推送」重试）": "Feed created, but the push failed: {msg} (retry with Push now in the right panel)",
+
   "任务：未完成": "Task: open",
   "任务：已完成": "Task: done",
   "同一个人": "Same person",

@@ -643,7 +643,7 @@ export class MessagesView extends ItemView {
           act.appendChild(n);
           const pub = el("button", "tlt-btn", T("发布消息源…"));
           pub.title = "把这里的草稿变成一个别人能订阅的源";
-          pub.onclick = () => new PublishFeedModal(this.app, this.store, f, () => this.refresh()).open();
+          pub.onclick = () => new PublishFeedModal(this.app, this.store, this.plugin, f, () => this.refresh()).open();
           act.appendChild(pub);
         } else if (f.mine) {
           const st = this.plugin.hubState();
@@ -776,10 +776,11 @@ export class MessagesView extends ItemView {
 
 class PublishFeedModal extends TltModal {
   store: Store;
+  plugin: TLTPlugin;
   from: Feed;
   onDone: () => void | Promise<void>;
-  constructor(app: App, store: Store, from: Feed, onDone: () => void | Promise<void>) {
-    super(app); this.store = store; this.from = from; this.onDone = onDone;
+  constructor(app: App, store: Store, plugin: TLTPlugin, from: Feed, onDone: () => void | Promise<void>) {
+    super(app); this.store = store; this.plugin = plugin; this.from = from; this.onDone = onDone;
   }
   onOpen() {
     const { contentEl } = this;
@@ -813,15 +814,24 @@ class PublishFeedModal extends TltModal {
     const ok = el("button", "tlt-btn pri", T("发布"));
     ok.onclick = () => { void (async () => {
       const name = this.from.name;
+      const hub = this.plugin.hubState().publish;
+      if (!hub) { new Notice(T("还没填发布服务地址（设置 → 消息服务）")); return; }
+      // 先确认服务在线：不通就不发布，别报"已发布"其实谁也没收到
+      if (!(await this.plugin.pingHub("publish"))) return;
       try {
         const r = await this.store.publishSource(this.from, {
           name, desc: descIn.value.trim(), cadence: cadIn.value.trim(),
         });
         if (!r.ok) { new Notice("发布失败：名称空着"); return; }
+        await this.store.load();
+        const feed = this.store.feeds.find((f) => f.id === r.id || f.file === r.path);
+        if (!feed) throw new Error(T("发布后没读回这个源"));
+        const pushed = await this.store.publishFeed(feed, hub, r.id);
         this.close(); void this.onDone();
-        new Notice(`已发布「${name}」· 订阅地址在右栏里`);
+        new Notice(T("已发布并推送「{name}」· {n} 条", { name, n: pushed.count ?? 0 }), 6000);
       } catch (e) {
-        new Notice("发布失败：" + errMsg(e));
+        this.close(); void this.onDone();
+        new Notice(T("源已建好，但推送失败：{msg}（可在右栏「手动推送」重试）", { msg: errMsg(e) }), 8000);
       }
     })(); };
     foot.append(cancel, ok);

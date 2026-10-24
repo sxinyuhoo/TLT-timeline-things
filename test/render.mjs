@@ -44,6 +44,7 @@ EP.empty = function () { while (this.firstChild) this.removeChild(this.firstChil
 EP.addClass = function (...c) { c.forEach((x) => this.classList.add(x)); };
 EP.removeClass = function (...c) { c.forEach((x) => this.classList.remove(x)); };
 EP.toggleClass = function (c, on) { this.classList.toggle(c, on); };
+EP.setCssProps = function (obj) { Object.entries(obj || {}).forEach(([k, v]) => this.style.setProperty(k, String(v))); };
 EP.createEl = function (tag, o = {}) {
   const e = document.createElement(tag);
   if (o.text) e.textContent = o.text;
@@ -942,6 +943,52 @@ await t("发布消息源：不再单独给名称框，用源自身的名字", as
   const inputs = [...document.querySelectorAll(".modal input")];
   assert.equal(inputs.length, 2, `弹窗里应只剩 说明/节奏 两个输入框，实际 ${inputs.length}`);
   assert.ok((document.querySelector(".modal")?.textContent || "").includes("源名称"), "应显示源名称");
+});
+
+await t("星图：每个项目一块扇形，长项目名不截成 8 个字", async () => {
+  files["TLT/tasks/能力平台-数据底座-SBDS几何路网.md"] = "# 能力平台-数据底座-SBDS几何路网\n\n## 构建\n\n- [ ] 采集道路线形 📅 2026-10-30 [owner:: [[张三]]]\n";
+  await store.load();
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const wedges = [...document.querySelectorAll(".tlt-wedge")].map((e) => e.dataset.proj || "");
+  assert.ok(wedges.length > 0, "没有扇形底");
+  assert.ok(wedges.includes("能力平台-数据底座-SBDS几何路网"), `扇形应带项目名，实际：${wedges.join(" / ")}`);
+  const labels = [...document.querySelectorAll(".tlt-plab")].map((e) => e.textContent || "");
+  const long = labels.find((x) => x.startsWith("能力平台"));
+  assert.ok(long && long.length > 8, `长项目名不该只剩 8 个字，实际：${long}`);
+  // 完整名字留在 tooltip 里
+  const title = [...document.querySelectorAll(".tlt-plab title")].map((e) => e.textContent);
+  assert.ok(title.includes("能力平台-数据底座-SBDS几何路网"), "缺完整名字的 tooltip");
+});
+
+await t("发布消息源：服务不通时不许报发布成功", async () => {
+  document.body.empty();
+  const view = mount(MessagesView);
+  await view.onOpen();
+  // 模拟"根本没配发布服务"
+  view.plugin.hubState = () => ({ publish: "", sync: "", lastSync: "", lastResult: "", lastError: "" });
+  const before = view.store.feeds.length;
+  const row = [...document.querySelectorAll(".tlt-fr")].find((x) => !x.classList.contains("add"));
+  row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  [...document.querySelectorAll("button")].find((b) => b.textContent.includes("发布消息源")).click();
+  await new Promise((r) => window.setTimeout(r, 40));
+  const n0 = (globalThis.__notices || []).length;
+  [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "发布").click();
+  await new Promise((r) => window.setTimeout(r, 80));
+  const said = (globalThis.__notices || []).slice(n0).join(" | ");
+  assert.ok(/还没填发布服务地址/.test(said), "应提示服务地址没填，实际：" + said);
+  assert.equal(view.store.feeds.length, before, "服务不通时不该真的发布");
+
+  // 配了地址但连不上：同样不许发布
+  view.plugin.hubState = () => ({ publish: "http://127.0.0.1:8787", sync: "", lastSync: "", lastResult: "", lastError: "" });
+  view.plugin.pingHub = async () => false;
+  [...document.querySelectorAll("button")].find((b) => b.textContent.includes("发布消息源"))?.click();
+  await new Promise((r) => window.setTimeout(r, 40));
+  [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "发布")?.click();
+  await new Promise((r) => window.setTimeout(r, 80));
+  assert.equal(view.store.feeds.length, before, "ping 不通时也不该发布");
 });
 
 await t("切到人员：卡片 + 饱和度 45%", async () => {

@@ -18,6 +18,9 @@ const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", r
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
 
+/** 项目配色：星图扇形与侧栏色块共用，颜色一致才好认 */
+const PROJ_COLORS = ["#5B6CFF", "#F0C24B", "#27C1A3", "#B57BFF", "#F2994A", "#FF7A9C", "#5FD6B4", "#7C8BA1"];
+
 export class WorkbenchView extends ItemView {
   plugin: TLTPlugin;
   get store(): Store { return this.plugin.store; }
@@ -138,7 +141,9 @@ export class WorkbenchView extends ItemView {
       const card = el("div", "tlt-proj" + (this.proj === p ? " on" : ""));
       card.dataset.proj = p;
       const row = el("div", "tlt-prow");
-      row.append(el("span", "tlt-sw"), el("span", "tlt-pname", p), el("span", "tlt-ppct", pct + "%"));
+      const sw = el("span", "tlt-sw");
+      sw.setCssProps({ "--tlt-sw": this.projColor(p) });
+      row.append(sw, el("span", "tlt-pname", p), el("span", "tlt-ppct", pct + "%"));
       const bar = el("div", "tlt-pbar");
       const fill = el("i"); fill.style.width = pct + "%"; bar.appendChild(fill);
       const meta = el("div", "tlt-pmeta", `${list.filter((t) => !t.done).length} 项未完成 · ${list.filter((t) => t.milestone).length} 个里程碑任务`);
@@ -234,6 +239,13 @@ export class WorkbenchView extends ItemView {
   }
 
   /* ---------- 日历 ---------- */
+
+  /** 项目色：与侧栏色块、星图扇形保持一致 */
+  projColor(name: string): string {
+    const list = this.store.projects();
+    const i = list.indexOf(name);
+    return PROJ_COLORS[(i < 0 ? 0 : i) % PROJ_COLORS.length];
+  }
 
   private tasksForDay(k: string) {
     return this.store.tasks
@@ -499,6 +511,15 @@ export class WorkbenchView extends ItemView {
     tasks.forEach((t) => { if (t.due) (byP[t.project] = byP[t.project] || []).push(t); });
 
     let body = "";
+    // 每个项目一块扇形底（颜色与侧栏色块一致），这样"哪块属于哪个项目"一眼可见
+    projects.forEach((p, i) => {
+      const a0 = ((-90 + i * span) * Math.PI) / 180;
+      const a1 = ((-90 + (i + 1) * span) * Math.PI) / 180;
+      const rr = R + 10;
+      const x0 = cx + Math.cos(a0) * rr, y0 = cy + Math.sin(a0) * rr;
+      const x1 = cx + Math.cos(a1) * rr, y1 = cy + Math.sin(a1) * rr;
+      body += `<path class="tlt-wedge" data-proj="${escapeXml(p)}" d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${x0.toFixed(1)} ${y0.toFixed(1)} A${rr.toFixed(1)} ${rr.toFixed(1)} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)} Z" fill="${this.projColor(p)}" opacity=".1"/>`;
+    });
     [0, 7, 14, 21].forEach((d) => {
       const r = r0 + (d / 21) * (R - r0);
       body += `<circle class="tlt-ring" cx="${cx}" cy="${cy}" r="${r.toFixed(1)}"/>`;
@@ -507,9 +528,12 @@ export class WorkbenchView extends ItemView {
     projects.forEach((p, i) => {
       const a = ((-90 + i * span) * Math.PI) / 180;
       body += `<line class="tlt-spoke" x1="${cx}" y1="${cy}" x2="${(cx + Math.cos(a) * (R + 8)).toFixed(1)}" y2="${(cy + Math.sin(a) * (R + 8)).toFixed(1)}"/>`;
-      const lx = cx + Math.cos(a) * (R + 18), ly = cy + Math.sin(a) * (R + 18);
-      const anchor = Math.abs(Math.cos(a)) < 0.3 ? "middle" : Math.cos(a) > 0 ? "start" : "end";
-      body += `<text class="tlt-plab" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="${anchor}">${escapeXml(p.slice(0, 8))}</text>`;
+      // 标签放扇形正中（不是分界线），名字尽量给全，过长才截断；完整名字留在 tooltip 里
+      const am = ((-90 + (i + 0.5) * span) * Math.PI) / 180;
+      const lx = cx + Math.cos(am) * (R + 20), ly = cy + Math.sin(am) * (R + 20);
+      const anchor = Math.abs(Math.cos(am)) < 0.3 ? "middle" : Math.cos(am) > 0 ? "start" : "end";
+      const label = Array.from(p).length > 14 ? Array.from(p).slice(0, 13).join("") + "…" : p;
+      body += `<text class="tlt-plab" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="${anchor}" fill="${this.projColor(p)}">${escapeXml(label)}<title>${escapeXml(p)}</title></text>`;
     });
 
     projects.forEach((p, i) => {
