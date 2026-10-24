@@ -427,39 +427,77 @@ desc: 我发布出去的动态
     });
     s.appliedRoot = s.root;
     await this.saveSettings();
-    const res = await this.relocate(snapshot);         // 先搬
-    if (!res.blocked) await this.store.ensureVault();   // 再补建
+    const res = await this.relocate(snapshot, async () => {   // 取消更新：整次操作回滚
+      Object.assign(this.settings, snapshot);
+      await this.saveSettings();
+      new Notice(t("已取消更新，设置与目录都保持原样"));
+    });
+    if (!res.blocked) {
+      await this.store.ensureVault();                   // 再补建
+      if (res.movedFiles) await this.notifyMove(snapshot, res.movedFiles);
+    }
     return { ...res, kept, moved };
   }
 
-  private async relocate(old: Settings): Promise<{ movedFiles: number; blocked: number }> {
+  /**
+   * 把旧位置的数据搬到新位置。
+   * 只有在"目标已有同名文件"时才弹窗，且弹窗只有两个出口：确认搬运 / 取消更新。
+   */
+  private async relocate(old: Settings, onCancel?: () => void | Promise<void>): Promise<{ movedFiles: number; blocked: number }> {
     const moves = this.planMove(old);
     if (!moves.length) return { movedFiles: 0, blocked: 0 };
     const blocked = moves.filter((m) => this.app.vault.getAbstractFileByPath(m.to));
     if (blocked.length) {
-      new MoveDataModal(this.app, moves, async () => {
-        await this.doMove(moves);
+      new MoveDataModal(this.app, moves, blocked.length, async () => {
+        const st = await this.doMove(moves);
         await this.store.ensureVault();
-      }).open();
+        await this.notifyMove(old, st.moved);
+        this.refreshAll();
+      }, onCancel).open();
       return { movedFiles: 0, blocked: blocked.length };
     }
-    const n = await this.doMove(moves);
-    return { movedFiles: n, blocked: 0 };
+    const st = await this.doMove(moves);
+    return { movedFiles: st.moved, blocked: 0 };
   }
 
-  /** 真正搬运：走 fileManager.renameFile（双链不断），已存在的目标一律跳过 */
-  private async doMove(moves: { from: string; to: string }[]): Promise<number> {
-    let n = 0;
+  /** 旧数据目录的路径（去掉 /tasks 尾巴） */
+  private oldDataDir(old: TLTSettings): string {
+    return old.tasksFolder.replace(/\/tasks$/, "").replace(/\/+$/, "");
+  }
+
+  /** 旧数据目录里还剩几个 md（搬完之后调用） */
+  private countIn(dir: string): number {
+    if (!dir) return 0;
+    return this.app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(`${dir}/`)).length;
+  }
+
+  /** 搬运结果提示：搬了几个 + 旧目录是保留还是已清空，都写在通知里 */
+  async notifyMove(old: TLTSettings, moved: number) {
+    const dir = this.oldDataDir(old);
+    const left = this.countIn(dir);
+    const bits: string[] = [];
+    if (moved) bits.push(t("已搬 {n} 个文件到新目录", { n: moved }));
+    if (!bits.length) return;
+    bits.push(left === 0
+      ? t("旧目录 {dir} 已清空，空文件夹保留（需要的话自行删除）", { dir })
+      : t("旧目录 {dir} 仍有 {n} 个文件（同名未覆盖）", { dir, n: left }));
+    new Notice(bits.join(" · "), 8000);
+  }
+
+
+  private async doMove(moves: { from: string; to: string }[]): Promise<{ moved: number; skipped: number }> {
+    let moved = 0, skipped = 0;
     for (const m of moves) {
       const f = this.app.vault.getAbstractFileByPath(m.from);
-      if (!f || this.app.vault.getAbstractFileByPath(m.to)) continue;
+      if (!f) continue;
+      if (this.app.vault.getAbstractFileByPath(m.to)) { skipped++; continue; }   // 同名不覆盖
       await this.ensureParent(m.to);
       await this.app.fileManager.renameFile(f, m.to);
-      n++;
+      moved++;
     }
     await this.store.load();
     this.refreshAll();
-    return n;
+    return { moved, skipped };
   }
 
   /**
@@ -603,7 +641,7 @@ export class TLTSettingTab extends PluginSettingTab {
     if (r.kept) bits.push(t("{n} 项手工设置保持不变", { n: r.kept }));
     if (r.movedFiles) bits.push(t("已搬 {n} 个文件到 {dir}", { n: r.movedFiles, dir: dataDir }));
     bits.push(t("目录已就位"));
-    new Notice(bits.join(" · "));
+    new Notice(bits.join(" · "));   // 旧目录的状态由 notifyMove 单独提示
     await this.plugin.store.load();
     this.plugin.refreshAll();
     this.rerender();

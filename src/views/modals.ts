@@ -53,19 +53,26 @@ export class TltModal extends Modal {
  */
 export class MoveDataModal extends TltModal {
   private moves: { from: string; to: string }[];
-  private onMove: () => void | Promise<void>;
+  private blocked: number;
+  private onConfirm: () => void | Promise<void>;
+  private onCancel?: () => void | Promise<void>;
 
-  constructor(app: App, moves: { from: string; to: string }[], onMove: () => void | Promise<void>) {
+  constructor(
+    app: App, moves: { from: string; to: string }[], blocked: number,
+    onConfirm: () => void | Promise<void>, onCancel?: () => void | Promise<void>,
+  ) {
     super(app);
     this.moves = moves;
-    this.onMove = onMove;
+    this.blocked = blocked;
+    this.onConfirm = onConfirm;
+    this.onCancel = onCancel;
   }
 
   onOpen() {
     const { contentEl } = this;
-    contentEl.appendChild(el("div", "tlt-m-title", `旧目录里还有 ${this.moves.length} 个文件`));
+    contentEl.appendChild(el("div", "tlt-m-title", `目标位置已有 ${this.blocked} 个同名文件`));
     contentEl.appendChild(el("div", "tlt-hint",
-      "路径已经指向新目录，但文件还在原来的位置。要一起搬过去吗？搬运用 Obsidian 自己的改名，双链不会断。"));
+      "这些同名文件不会被覆盖，会留在旧目录里。其余文件按「更新」的默认行为搬过去——搬运用 Obsidian 自己的改名，双链不会断。"));
     const list = el("div", "tlt-moves");
     this.moves.slice(0, 6).forEach((m) => {
       list.appendChild(el("div", "tlt-hint", `${m.from} → ${m.to}`));
@@ -74,13 +81,11 @@ export class MoveDataModal extends TltModal {
     contentEl.appendChild(list);
 
     const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", T("取消"));
-    cancel.onclick = () => this.close();
-    const keep = el("button", "tlt-btn", "只改路径");
-    keep.onclick = () => this.close();
-    const move = el("button", "tlt-btn pri", "搬过去");
-    move.onclick = () => { void (async () => { this.close(); await this.onMove(); })(); };
-    foot.append(cancel, keep, move);
+    const cancel = el("button", "tlt-btn", T("取消更新"));
+    cancel.onclick = () => { void (async () => { this.close(); await this.onCancel?.(); })(); };
+    const ok = el("button", "tlt-btn pri", T("确认搬运"));
+    ok.onclick = () => { void (async () => { this.close(); await this.onConfirm(); })(); };
+    foot.append(cancel, ok);
     contentEl.appendChild(foot);
   }
 

@@ -703,6 +703,43 @@ await t("改根目录默认把数据整棵搬过去（不再两边各留一份�
   added.forEach((p) => { delete files[p]; });
 });
 
+await t("搬运通知里要写清旧目录是清空还是保留", async () => {
+  const inst = makePlugin();
+  createdFolderSet.add("工作");
+  const said = [];
+  const realPush = globalThis.__notices.push.bind(globalThis.__notices);
+  globalThis.__notices.push = (m) => { said.push(m); return realPush(m); };
+  inst.settings.root = "工作";
+  await inst.applyNow();
+  globalThis.__notices.push = realPush;
+  const text = said.join(" | ");
+  assert.ok(/已搬 \d+ 个文件到新目录/.test(text), "没报告搬了几个：" + text);
+  assert.ok(/旧目录 .*已清空/.test(text), "没写清旧目录状态：" + text);
+});
+
+await t("搬不动时只给「确认搬运 / 取消更新」，取消要回滚设置", async () => {
+  document.body.empty();
+  files["工作/TLT/tasks/示例项目.md"] = "- [ ] 占位";        // 目标已有同名文件 → 冲突
+  const inst = makePlugin();
+  createdFolderSet.add("工作");
+  const before = { root: inst.settings.root, appliedRoot: inst.settings.appliedRoot, tasksFolder: inst.settings.tasksFolder };
+  inst.settings.root = "工作";
+  const r = await inst.applyNow();
+  assert.ok(r.blocked > 0, "应识别出同名冲突");
+  const modal = document.querySelector(".modal");
+  assert.ok(modal, "应该弹窗");
+  const btns = [...modal.querySelectorAll("button")].map((b) => b.textContent);
+  assert.deepEqual(btns, ["取消更新", "确认搬运"], "按钮应该是「取消更新 / 确认搬运」，实际：" + btns.join(" / "));
+  // 点「取消更新」→ 设置回滚
+  modal.querySelectorAll("button")[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r2) => window.setTimeout(r2, 30));
+  assert.equal(inst.settings.tasksFolder, before.tasksFolder, "取消后派生路径应回滚");
+  assert.equal(inst.settings.appliedRoot, before.appliedRoot, "取消后 appliedRoot 应回滚");
+  assert.equal(inst.settings.root, "工作", "用户输入的目标根目录保留（只是没生效）");
+  assert.equal(files["TLT/tasks/示例项目.md"] !== undefined, true, "取消后旧位置的文件还在");
+  delete files["工作/TLT/tasks/示例项目.md"];
+});
+
 await t("冷启动：文件已存在时 createSafe 不算失败", async () => {
   const inst = makePlugin();
   const realCreate = app.vault.create;
