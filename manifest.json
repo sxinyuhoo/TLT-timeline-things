@@ -1,7 +1,7 @@
 {
   "id": "tlt-timeline-things",
   "name": "TLT - Timeline Things",
-  "version": "0.4.25",
+  "version": "0.4.26",
   "minAppVersion": "1.8.7",
   "description": "Timeline-first task and message workbench · 以时间线为中心的任务与消息工作台",
   "author": "sxinyuhoo",

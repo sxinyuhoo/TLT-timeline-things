@@ -19,6 +19,13 @@ export const EN: Record<string, string> = {
   "发布": "Publish",
   "确定": "OK",
   "未知错误": "Unknown error",
+  "任务：未完成": "Task: open",
+  "任务：已完成": "Task: done",
+  "同一个人": "Same person",
+  "半径＝时间，一圈 7 天": "Radius = time, one ring = 7 days",
+  "内圈是今天；扇区＝项目；滚轮缩放、拖动平移": "Inner ring is today; sectors = projects; scroll to zoom, drag to pan",
+  "源名称：{name}": "Feed name: {name}",
+
   "TLT 加载出错：{msg}": "TLT failed to load: {msg}",
   "关闭": "Off",
   "全部": "All",

@@ -360,7 +360,9 @@ body.tlt-light {
 .tlt-dot { width: 6px; height: 6px; border-radius: 2px; flex: none; }
 
 /* ---- 人员 ---- */
-.tlt-staffgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.tlt-staffgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+/* 侧栏也开着、面板很窄时退回一列 */
+@media (max-width: 720px) { .tlt-staffgrid { grid-template-columns: 1fr; } }
 .tlt-scard {
   border: 1px solid var(--tlt-line); border-radius: 11px; padding: 12px 13px;
   background: var(--tlt-surface); cursor: pointer; transition: background-color .14s ease, border-color .14s ease, color .14s ease, box-shadow .14s ease;
@@ -606,7 +608,17 @@ body.theme-light .tlt-root .tlt-blk.plan { background: rgba(75, 90, 224, .09); }
 .tlt-node:hover { stroke: var(--tlt-ink); stroke-width: 1.4; }
 .tlt-plink { stroke: var(--tlt-acc); stroke-width: 1; fill: none; opacity: .18; }
 .tlt-ms-dia { fill: var(--tlt-bg2); stroke: var(--tlt-acc); stroke-width: 1.2; }
-.tlt-star-legend { font-size: 8px; color: var(--tlt-ink5); line-height: 1.7; padding: 2px 2px 0; }
+.tlt-star-box { display: flex; align-items: flex-start; gap: 12px; }
+.tlt-star-wrap { flex: 1; min-width: 0; }
+.tlt-star-legend { flex: none; width: 116px; display: flex; flex-direction: column; gap: 5px; padding-top: 4px; }
+.tlt-lg { display: flex; align-items: center; gap: 6px; font-size: 8.5px; color: var(--tlt-ink4); line-height: 1.35; }
+.tlt-lg i { flex: none; display: inline-block; }
+.tlt-lg .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tlt-acc); opacity: .9; }
+.tlt-lg .dot.done { background: var(--tlt-ink4); opacity: .5; }
+.tlt-lg .dia { width: 7px; height: 7px; background: var(--tlt-bg2); border: 1.2px solid var(--tlt-acc); transform: rotate(45deg); }
+.tlt-lg .line { width: 12px; height: 0; border-top: 1px solid var(--tlt-acc); opacity: .5; }
+.tlt-lg .ring { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--tlt-line3); }
+.tlt-lg-sec { font-size: 8px; letter-spacing: .08em; color: var(--tlt-ink5); margin-top: 2px; }
 
 /* ---- 想法实时预览 ---- */
 .tlt-idea-prev { display: flex; gap: 5px; flex-wrap: wrap; padding: 6px 2px 10px; min-height: 22px; font-size: 9.5px; color: var(--tlt-ink5); }

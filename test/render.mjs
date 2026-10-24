@@ -65,6 +65,7 @@ await esbuild.build({
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
       export { TaskModal } from "./src/views/modals";
+      export { MessagesView as MsgViewForPublish } from "./src/views/messages";
       export { setLanguage, t as tr } from "./src/i18n";
     `,
     resolveDir: process.cwd(),
@@ -899,6 +900,48 @@ await t("里程碑视图：开展中放上面、已完成放下面", async () =>
   assert.ok(groups.length >= 1, "没有分组标题");
   assert.equal(groups[0], "开展中", `第一组应是开展中，实际：${groups.join(" / ")}`);
   if (groups.length > 1) assert.equal(groups[1], "已完成", `第二组应是已完成，实际：${groups.join(" / ")}`);
+});
+
+await t("人员视图：一行两个 + 星图图例带样张（并说明灰点=已完成）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "staff";
+  await view.render();
+  // 人员：网格是两列
+  const grid = document.querySelector(".tlt-staffgrid");
+  assert.ok(grid, "没有人员网格");
+  // jsdom 不做样式计算：直接核对样式表里的规则
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-staffgrid \{[^}]*repeat\(2,/.test(css), "人员网格不是两列");
+  assert.ok(/@media \(max-width: 720px\) \{ \.tlt-staffgrid \{ grid-template-columns: 1fr/.test(css), "窄屏应退回一列");
+
+  // 星图在日历页的「节奏」里：切回去再看图例
+  view.tab = "today";
+  await view.render();
+  const legend = [...document.querySelectorAll(".tlt-star-legend .tlt-lg")].map((e) => e.textContent);
+  assert.ok(legend.some((x) => x.includes("已完成")), `图例应说明灰点，实际：${legend.join(" | ")}`);
+  ["dot", "dot done", "dia", "line"].forEach((cls) => {
+    assert.ok(document.querySelector(`.tlt-star-legend i.${cls.split(" ")[0]}${cls.includes("done") ? ".done" : ""}`), `图例缺样张 ${cls}`);
+  });
+  assert.ok(document.querySelector(".tlt-star-wrap svg"), "星图 svg 结构变了");
+});
+
+await t("发布消息源：不再单独给名称框，用源自身的名字", async () => {
+  document.body.empty();
+  const view = mount(MessagesView);
+  await view.onOpen();
+  const row = [...document.querySelectorAll(".tlt-fr")].find((x) => !x.classList.contains("add"));
+  assert.ok(row, "左栏没有源行");
+  row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  const btn = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("发布消息源"));
+  assert.ok(btn, "右栏没有发布入口");
+  btn.click();
+  await new Promise((r) => window.setTimeout(r, 40));
+  const inputs = [...document.querySelectorAll(".modal input")];
+  assert.equal(inputs.length, 2, `弹窗里应只剩 说明/节奏 两个输入框，实际 ${inputs.length}`);
+  assert.ok((document.querySelector(".modal")?.textContent || "").includes("源名称"), "应显示源名称");
 });
 
 await t("切到人员：卡片 + 饱和度 45%", async () => {

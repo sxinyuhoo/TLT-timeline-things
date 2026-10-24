@@ -433,14 +433,29 @@ export class WorkbenchView extends ItemView {
   /** 极坐标时间线：半径=时间，扇区=项目，连线=同一个人 */
   private starMap(): HTMLElement {
     const box = el("div", "tlt-star-box");
+    const wrap = el("div", "tlt-star-wrap");
     const svg = createSvg("svg");
     svg.setAttribute("class", "tlt-star");
-    svg.setAttribute("viewBox", "0 0 560 210");
-    const redraw = () => { setSvgMarkup(svg, this.starBody(560, 210)); };
+    svg.setAttribute("viewBox", "0 0 560 200");
+    const redraw = () => { setSvgMarkup(svg, this.starBody(560, 200)); };
     redraw();
-    box.appendChild(svg);
-    box.appendChild(el("div", "tlt-star-legend",
-      "半径=时间（内圈今天，每圈 7 天） · 扇区=项目 · 圆点=任务 · 菱形=里程碑 · 细线=同一个人 · 滚轮缩放，拖动平移"));
+    wrap.appendChild(svg);
+    box.appendChild(wrap);
+    // 图例：带样张，摆到右侧把横向留白用起来
+    const legend = el("div", "tlt-star-legend");
+    const item = (mark: string, text: string) => {
+      const r = el("div", "tlt-lg");
+      const i = el("i", mark);
+      r.append(i, el("span", "", text));
+      legend.appendChild(r);
+    };
+    item("dot", T("任务：未完成"));
+    item("dot done", T("任务：已完成"));
+    item("dia", T("里程碑"));
+    item("line", T("同一个人"));
+    item("ring", T("半径＝时间，一圈 7 天"));
+    legend.appendChild(el("div", "tlt-lg-sec", T("内圈是今天；扇区＝项目；滚轮缩放、拖动平移")));
+    box.appendChild(legend);
 
     box.addEventListener("wheel", (e) => {
       e.preventDefault();

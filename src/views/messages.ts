@@ -788,13 +788,8 @@ class PublishFeedModal extends TltModal {
     contentEl.appendChild(el("div", "tlt-m-meta",
       `把「${this.from.name}」里的草稿变成一个别人能订阅的源；发布后它会出现在「我发布的」里。`));
 
-    const nameIn = el("input", "tlt-input wide tlt-input-title");
-    nameIn.placeholder = "源名称（别人看到的名字）";
-    nameIn.value = (this.store.settings.feedNames || {})[this.from.id] || this.from.name;
-    nameIn.oninput = () => {
-      this.store.settings.feedNames = { ...(this.store.settings.feedNames || {}), [this.from.id]: nameIn.value.trim() };
-    };
-    contentEl.appendChild(nameIn);
+    // 源名称不在这里改：用右栏里已经定好的名字（发布/取消发布都不变）
+    contentEl.appendChild(el("div", "tlt-m-meta", `源名称：${this.from.name}`));
 
     const descRow = el("div", "tlt-row");
     descRow.appendChild(el("span", "tlt-row-l", "说明"));
@@ -810,15 +805,14 @@ class PublishFeedModal extends TltModal {
 
     contentEl.append(descRow, cadRow);
     contentEl.appendChild(el("div", "tlt-hint",
-      "名称会记住，下次发布还是它；建好之后也能在右栏 ✎ 改。订阅地址由插件自动生成，不用自己起 ID。"));
+      "名称取自这个源本身（要改在右栏 ✎ 改，发布/取消发布都不会变）。订阅地址由插件自动生成，不用自己起 ID。"));
 
     const foot = el("div", "tlt-m-foot");
     const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
     const ok = el("button", "tlt-btn pri", T("发布"));
     ok.onclick = () => { void (async () => {
-      const name = nameIn.value.trim();
-      if (!name) { new Notice("先写源名称"); return; }
+      const name = this.from.name;
       try {
         const r = await this.store.publishSource(this.from, {
           name, desc: descIn.value.trim(), cadence: cadIn.value.trim(),
@@ -832,7 +826,7 @@ class PublishFeedModal extends TltModal {
     })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
-    window.setTimeout(() => nameIn.focus(), 50);
+    window.setTimeout(() => descIn.focus(), 50);
   }
   onClose() { this.contentEl.empty(); }
 }

@@ -21,6 +21,8 @@ g.Node = dom.window.Node;
 dom.window.Node.prototype.instanceOf = function (ctor) { return this instanceof ctor; };
 
 g.createSvg = (tag) => dom.window.document.createElementNS("http://www.w3.org/2000/svg", tag);
+g.createDiv = (o = {}) => g.createEl("div", o);
+g.createSpan = (o = {}) => g.createEl("span", o);
 
 /** Obsidian 的全局 createEl（测试环境补一个） */
 g.createEl = (tag, o = {}) => {
@@ -166,6 +168,7 @@ const store = new Store(app, { tasksFolder: "TLT/tasks", teamFolder: "TLT/crew",
 await store.load();
 
 const plugin = {
+  manifest: { id: "tlt-timeline-things", dir: "tlt-timeline-things", version: "preview" },
   settings: {
     defaultPeriod: "m", tasksFolder: "TLT/tasks", teamFolder: "TLT/crew", feedsFolder: "TLT/feeds",
     logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", tagsFile: "TLT/tags.md",
