@@ -65,7 +65,7 @@ await esbuild.build({
       export { TLTSettingTab, TLTPlugin } from "./src/main";
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
-      export { TaskModal } from "./src/views/modals";
+      export { TaskModal, QuickTaskModal } from "./src/views/modals";
       export { MessagesView as MsgViewForPublish } from "./src/views/messages";
       export { setLanguage, t as tr } from "./src/i18n";
     `,
@@ -80,7 +80,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 
 /* ---------- 3) 假 vault ---------- */
@@ -376,11 +376,15 @@ await t("任务详情：负责人只显示当前，能展开调整", async () =>
   const m = [...document.querySelectorAll(".tlt-modal")].pop();
   const shown = [...m.querySelectorAll(".tlt-owner-chip")].map((x) => x.textContent.replace("×", ""));
   assert.deepEqual(shown, task.owners, `应只显示当前负责人，实际 ${shown}`);
-  const pool = m.querySelector(".tlt-ownerpick");
-  assert.ok(pool.classList.contains("tlt-hidden"), "候选一开始应该收着");
-  [...m.querySelectorAll("button")].find((b) => b.textContent.includes("调整")).click();
-  await new Promise((r) => setTimeout(r, 10));
-  assert.ok(!m.querySelector(".tlt-ownerpick").classList.contains("tlt-hidden"), "没展开候选");
+  // 负责人：紧凑框选（不是平铺）→ 点「选择…」才展开勾选面板
+  const pop = m.querySelector(".tlt-pickpop");
+  assert.ok(pop, "没有框选面板");
+  assert.ok(pop.classList.contains("tlt-hidden"), "候选一开始应该收着");
+  assert.equal(m.querySelectorAll(".tlt-pickrow").length, 0, "没展开前不该平铺人员");
+  [...m.querySelectorAll("button")].find((b) => b.textContent.includes("选择")).click();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(!m.querySelector(".tlt-pickpop").classList.contains("tlt-hidden"), "没展开候选");
+  assert.ok(m.querySelectorAll(".tlt-pickrow").length >= 1, "展开后应列出人员");
 });
 
 await t("里程碑里能点开任务、能勾完成", async () => {
@@ -888,11 +892,14 @@ await t("任务详情：字段与新建对齐（可直接改标题/项目/里程
   assert.ok(task, "夹具里没有任务");
   new TaskModal(app, view.store, task, () => {}).open();
   const labels = [...document.querySelectorAll(".modal .tlt-row-l")].map((e) => e.textContent);
-  ["项目", "里程碑", "标签", "时间", "工作量", "占比", "优先级", "负责人"].forEach((want) => {
+  ["项目", "里程碑", "标签", "时间", "工作量", "优先级", "负责人"].forEach((want) => {
     assert.ok(labels.includes(want), `详情里缺「${want}」，实际：${labels.join(" / ")}`);
   });
   // 开始与截止在同一行；标题下不再有重复的小字
   assert.equal(document.querySelectorAll(".modal .tlt-dline input[type=date]").length, 2, "开始/截止应在同一行");
+  assert.equal(document.querySelectorAll(".modal .tlt-seg").length, 2, "详情里只该有 工作量/优先级 两个分段（占比已去掉）");
+  const detailBtns = [...document.querySelectorAll(".modal .tlt-quick button")].map((b) => b.textContent);
+  ["今天", "明天", "三天后", "一周后"].forEach((x) => assert.ok(!detailBtns.includes(x), `详情不该再有快捷日「${x}」`));
   assert.equal(document.querySelectorAll(".modal .tlt-m-meta").length, 0, "标题下不该再有重复的项目/里程碑小字");
   assert.ok(document.querySelector(".modal .tlt-input.wide")?.value, "标题应可编辑且带当前值");
   const opts = [...document.querySelectorAll(".modal select option")].map((o) => o.value);
@@ -1033,6 +1040,26 @@ await t("发布个人源：从「个人」挪到「我发布的」（只留一�
   assert.ok(back, "取消发布后没回到「个人」");
   assert.ok(!view.store.feeds.some((f) => f.name === "对外动态"), "「我发布的」里不该还在");
   assert.equal(back.items.length, n, `消息数应保持 ${n}，实际 ${back.items.length}`);
+});
+
+await t("新建任务：开始/截止同一行，负责人是框选而不是平铺", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const Quick = (await import("./bundle.mjs?" + Date.now())).QuickTaskModal;
+  new Quick(app, view.store, () => {}).open();
+  const m = document.querySelector(".modal");
+  assert.equal(m.querySelectorAll(".tlt-dline input[type=date]").length, 2, "开始/截止应在同一行");
+  assert.equal(m.querySelectorAll(".tlt-pickrow").length, 0, "负责人不该一上来就平铺所有人");
+  assert.ok(m.querySelector(".tlt-pickpop"), "负责人应有框选面板");
+  [...m.querySelectorAll("button")].find((b) => b.textContent.includes("选择")).click();
+  await new Promise((r) => window.setTimeout(r, 20));
+  const rows = [...m.querySelectorAll(".tlt-pickrow")];
+  assert.ok(rows.length >= 1, "框选面板里应列出人员");
+  // 点一个名字 → 变成已选 chip
+  rows[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.ok(m.querySelectorAll(".tlt-owner-chip").length === 1, "选了之后应出现已选 chip");
 });
 
 await t("切到人员：卡片 + 饱和度 45%", async () => {

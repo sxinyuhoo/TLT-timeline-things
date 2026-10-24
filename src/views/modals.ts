@@ -2,7 +2,7 @@ import { App, Modal, Notice, TFile } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, addDays, todayISO, minToHHMM, saturation, ideaFilterTags, errMsg } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, saturation, ideaFilterTags, errMsg } from "../data";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, cls?: string, text?: string
@@ -210,50 +210,79 @@ function tagPicker(store: Store, parent: HTMLElement, draft: { tags: string[] })
   tagRow.appendChild(tagWrap);
 }
 
-/** 负责人行（默认只显示当前，可展开调整） */
-function ownerPicker(store: Store, parent: HTMLElement, draft: { owners: string[] }) {
-  const owners = row(parent, T("负责人"));
-  const box = el("div", "tlt-ownerbox");
-  const cur = el("div", "tlt-quick");
-  const pool = el("div", "tlt-quick tlt-ownerpick");
-  pool.addClass("tlt-hidden");
-  let picking = false;
+/**
+ * 负责人选择：一个「已选 chip + 选择…」的紧凑控件，点开是带搜索的勾选面板。
+ * 不再把全体人员平铺在表单里（人多时会撑满整个弹窗）。
+ */
+function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[] }) {
+  const wrap = el("div", "tlt-ownerbox");
+  const line = el("div", "tlt-quick");
+  const pop = el("div", "tlt-pickpop tlt-hidden");
+
   const paint = () => {
-    cur.empty();
-    const names = draft.owners;
-    if (!names.length) cur.appendChild(el("span", "tlt-owner-none", T("未指派")));
-    names.forEach((n) => {
+    line.empty();
+    if (!draft.owners.length) line.appendChild(el("span", "tlt-owner-none", T("未指派")));
+    draft.owners.forEach((n) => {
       const st = store.staff.find((x) => x.name === n);
       const chip = el("span", "tlt-chip on tlt-owner-chip");
       chip.append(el("span", "", n));
       if (st) chip.title = `${st.role} · ${T("产能")} ${st.capacity}%`;
-      if (picking) {
-        const x = el("i", "", "×");
-        x.onclick = () => { draft.owners = draft.owners.filter((y) => y !== n); paint(); };
-        chip.appendChild(x);
-      }
-      cur.appendChild(chip);
+      const x = el("i", "", "×");
+      x.onclick = (ev) => { ev.stopPropagation(); draft.owners = draft.owners.filter((y) => y !== n); paint(); };
+      chip.appendChild(x);
+      line.appendChild(chip);
     });
-    const toggle = el("button", "tlt-btn tiny", picking ? T("完成") : names.length ? T("调整…") : T("指派…"));
-    toggle.onclick = () => { picking = !picking; paint(); };
-    cur.appendChild(toggle);
-
-    pool.empty();
-    if (!picking) { pool.addClass("tlt-hidden"); return; }
-    pool.removeClass("tlt-hidden");
-    const rest = store.staff.filter((x) => !draft.owners.includes(x.name));
-    if (!rest.length) pool.appendChild(el("span", "tlt-owner-none", T("都指派过了")));
-    rest.forEach((st2) => {
-      const b = el("button", "tlt-chip", st2.name);
-      b.title = `${st2.role} · ${T("产能")} ${st2.capacity}%`;
-      b.onclick = () => { draft.owners = [...draft.owners, st2.name]; paint(); };
-      pool.appendChild(b);
-    });
+    const btn = el("button", "tlt-btn tiny", draft.owners.length ? T("选择…") : T("选择负责人…"));
+    btn.onclick = () => { openPanel(); };
+    line.appendChild(btn);
   };
+
+  const openPanel = () => {
+    pop.empty();
+    const search = el("input", "tlt-input small");
+    search.placeholder = T("搜名字");
+    const list = el("div", "tlt-picklist");
+    const draw = () => {
+      list.empty();
+      const q = search.value.trim();
+      const rows = store.staff.filter((x) => !q || x.name.includes(q) || (x.role || "").includes(q));
+      if (!rows.length) list.appendChild(el("div", "tlt-hint", T("没有匹配的人")));
+      rows.forEach((st) => {
+        const on = draft.owners.includes(st.name);
+        const r = el("div", "tlt-pickrow" + (on ? " on" : ""));
+        r.append(el("span", "tlt-pickck" + (on ? " on" : "")), el("span", "tlt-pickname", st.name),
+          el("span", "tlt-pickrole", st.role || ""));
+        r.onclick = () => {
+          draft.owners = on ? draft.owners.filter((y) => y !== st.name) : [...draft.owners, st.name];
+          paint();
+          draw();
+        };
+        list.appendChild(r);
+      });
+    };
+    search.oninput = draw;
+    draw();
+    pop.append(search, list);
+    pop.removeClass("tlt-hidden");
+    window.setTimeout(() => search.focus(), 20);
+  };
+
+  // 点外面收起
+  const onDoc = (ev: MouseEvent) => {
+    if (pop.classList.contains("tlt-hidden")) return;
+    const t = ev.target as Node;
+    if (!pop.contains(t) && !line.contains(t)) {
+      pop.addClass("tlt-hidden");
+    }
+  };
+  window.setTimeout(() => document.addEventListener("click", onDoc), 0);
+
   paint();
-  box.append(cur, pool);
-  owners.appendChild(box);
+  wrap.append(line, pop);
+  parent.appendChild(wrap);
 }
+
+
 
 export class TaskModal extends TltModal {
   store: Store;
@@ -311,13 +340,7 @@ export class TaskModal extends TltModal {
     dIn.onchange = () => { this.draft.due = dIn.value || undefined; };
     dline.append(start, arrow, dIn);
     dates.appendChild(dline);
-    const quick = el("div", "tlt-quick");
-    [[T("今天"), 0], [T("明天"), 1], [T("三天后"), 3], [T("一周后"), 7]].forEach(([lbl, n]) => {
-      const b = el("button", "tlt-chip", String(lbl));
-      b.onclick = () => { this.draft.due = addDays(todayISO(), Number(n)); dIn.value = this.draft.due; };
-      quick.appendChild(b);
-    });
-    dates.appendChild(quick);
+
 
     // 工作量（人天）：与新建一致
     const estRow = row(contentEl, T("工作量"));
@@ -336,20 +359,11 @@ export class TaskModal extends TltModal {
     };
     estRow.appendChild(estInput);
 
-    const wl = row(contentEl, T("占比"));
-    seg<number>(wl, [10, 20, 30, 50, 100].map((v) => ({ v, t: v + "%" })), this.draft.wl || 10, (v) => (this.draft.wl = v));
-    const per = el("div", "tlt-quick");
-    (["w", "m", "q"] as Period[]).forEach((p) => {
-      const b = el("button", "tlt-chip" + (this.draft.pw === p ? " on" : ""), { w: T("本周"), m: T("本月"), q: T("本季度") }[p]);
-      b.onclick = () => { this.draft.pw = p; per.querySelectorAll(".tlt-chip").forEach((x) => x.classList.remove("on")); b.classList.add("on"); };
-      per.appendChild(b);
-    });
-    wl.appendChild(per);
-
     const pri = row(contentEl, T("优先级"));
     seg<number>(pri, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri || 1, (v) => (this.draft.pri = v as Pri));
 
-    ownerPicker(this.store, contentEl, this.draft);
+    const whoRowD = row(contentEl, T("负责人"));
+    ownerSelect(this.store, whoRowD, this.draft);
 
     const foot = el("div", "tlt-m-foot");
     const save = el("button", "tlt-btn pri", T("保存"));
@@ -579,56 +593,42 @@ export class QuickTaskModal extends TltModal {
     paintTags();
     tagRow.appendChild(tagWrap);
 
-    // 开始 / 截止
-    const startRow = row(contentEl, "开始");
-    const start = el("input", "tlt-input");
-    start.type = "date"; start.value = this.draft.start;
+    // 开始 / 截止：同一行
+    const dateRow = row(contentEl, T("时间"));
+    const dline = el("div", "tlt-dline");
+    const start = el("input", "tlt-input date");
+    start.type = "date"; start.value = this.draft.start; start.title = T("开始");
     start.onchange = () => (this.draft.start = start.value);
-    startRow.appendChild(start);
-
-    const dueRow = row(contentEl, "截止");
-    const due = el("input", "tlt-input");
-    due.type = "date"; due.value = this.draft.due;
+    const due = el("input", "tlt-input date");
+    due.type = "date"; due.value = this.draft.due; due.title = T("截止");
     due.onchange = () => (this.draft.due = due.value);
-    dueRow.appendChild(due);
-    const quick = el("div", "tlt-quick");
-    [["今天", 0], ["明天", 1], ["三天后", 3], ["一周后", 7]].forEach(([lbl, n]) => {
-      const b = el("button", "tlt-chip", String(lbl));
-      b.onclick = () => { this.draft.due = addDays(todayISO(), Number(n)); due.value = this.draft.due; };
-      quick.appendChild(b);
-    });
-    dueRow.appendChild(quick);
+    dline.append(start, el("span", "tlt-darrow", "→"), due);
+    dateRow.appendChild(dline);
 
     // 人天
     const estRow = row(contentEl, "工作量");
     seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + " 天" })), this.draft.est, (v) => {
       this.draft.est = v; estInput.value = String(v);
     });
-    const estInput = el("input", "tlt-input small");
-    estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0"; estInput.value = String(this.draft.est);
-    estInput.oninput = () => { this.draft.est = Number(estInput.value) || 0; };
+    const estInput = el("input", "tlt-input small tlt-est-custom");
+    estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0";
+    estInput.value = [0.5, 1, 2, 3, 5].includes(this.draft.est) ? "" : String(this.draft.est);
+    estInput.placeholder = T("自定义");
+    estInput.onchange = () => {
+      const v = Number(estInput.value);
+      this.draft.est = Number.isFinite(v) && v > 0 ? v : 1;
+      estRow.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
+    };
     estRow.appendChild(estInput);
 
     // 优先级
     const priRow = row(contentEl, "优先级");
     seg<Pri>(priRow, [{ v: 0, t: "低" }, { v: 1, t: "普通" }, { v: 2, t: "高" }, { v: 3, t: "紧急" }], this.draft.pri, (v) => (this.draft.pri = v));
 
-    // 负责人
-    const whoRow = row(contentEl, "负责人");
-    const whoWrap = el("div", "tlt-people");
-    if (!this.store.staff.length) whoWrap.appendChild(el("div", "tlt-hint", "还没有人员档案（人员页可以新建）"));
-    this.store.staff.forEach((st) => {
-      const sat = saturation(this.store.tasks, st.name, "m", { capacity: st.capacity, days: st.days });
-      const b = el("button", "tlt-chip" + (this.draft.owners.includes(st.name) ? " on" : ""), `${st.name} · ${sat.pct}%`);
-      b.title = `${st.role || ""} · 本月已排 ${sat.sum} / ${sat.avail} 人天`;
-      b.onclick = () => {
-        const a = this.draft.owners;
-        this.draft.owners = a.includes(st.name) ? a.filter((x: string) => x !== st.name) : [...a, st.name];
-        b.classList.toggle("on");
-      };
-      whoWrap.appendChild(b);
-    });
-    whoRow.appendChild(whoWrap);
+    // 负责人：一个紧凑的框选控件（点开是带搜索的勾选列表）
+    const whoRow = row(contentEl, T("负责人"));
+    if (!this.store.staff.length) whoRow.appendChild(el("div", "tlt-hint", T("还没有人员档案（人员页可以新建）")));
+    else ownerSelect(this.store, whoRow, this.draft);
 
     const foot = el("div", "tlt-m-foot");
     const cancel = el("button", "tlt-btn", "取消");
