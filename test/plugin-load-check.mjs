@@ -120,7 +120,7 @@ try {
 try {
   const cmds = inst.commands || inst._commands || [];
   const ids = (cmds).map((c) => c.id).filter(Boolean);
-  const want = ["quick-menu", "new-task", "new-project", "new-milestone", "archive-task", "archive-project", "delete-task"];
+  const want = ["quick-menu", "new-task", "new-idea", "new-message", "new-project", "new-milestone", "archive-task", "archive-project", "delete-task"];
   const missing = want.filter((x) => !ids.includes(x));
   if (missing.length) { console.error("命令缺失 ✗ →", missing.join(", "), "实际：", ids.join(", ")); process.exitCode = 1; }
   else console.log(`命令注册 ✓  ${ids.length} 个（含快捷命令 ${want.length} 个）`);
