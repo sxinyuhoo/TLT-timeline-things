@@ -243,13 +243,13 @@ await t2("切语言：命令名 / 视图页签 / 设置页一起刷新", async (
   const { app, store } = await makeStore();
   const plugin = new TLTPlugin(app, { id: "tlt-timeline-things", version: "0.7.1" });
   plugin.app = app; plugin.store = store; plugin.settings = store.settings;
-  const calls = { header: 0, openTab: 0, render: 0 };
+  const calls = { header: 0, update: 0, renderTab: 0, render: 0 };
   const leaves = [
     { view: { render: async () => { calls.render++; } }, updateHeader: () => { calls.header++; } },
     { view: { render: async () => { calls.render++; } }, updateHeader: () => { calls.header++; } },
   ];
   app.workspace.getLeavesOfType = () => leaves;
-  app.setting = { activeTab: { id: "tlt-timeline-things" }, openTabById: () => { calls.openTab++; } };
+  plugin.settingTab = { update: () => { calls.update++; }, renderTab: () => { calls.renderTab++; }, containerEl: document.createElement("div") };
   plugin.cmdNames = [{ cmd: { name: "Open workbench" }, name: () => t("打开工作台") }];
 
   setLanguage("zh");
@@ -258,8 +258,73 @@ await t2("切语言：命令名 / 视图页签 / 设置页一起刷新", async (
 
   assert.equal(plugin.cmdNames[0].cmd.name, "打开工作台", "命令名没跟着换");
   assert.ok(calls.header >= 2, "视图页签标题应刷新（getDisplayText 是缓存的）");
-  assert.equal(calls.openTab, 1, "设置页应整页重建，否则刚改的那一项还是旧语言");
+  assert.equal(calls.update, 1, "设置页要先刷定义");
+  assert.equal(calls.renderTab, 1, "再重建 DOM——只 update() 时刚改的那一项还是旧语言");
   assert.ok(calls.render >= 2, "两个视图应重渲染");
+});
+
+/**
+ * 按 Obsidian 1.14 的真实语义模拟声明式设置：
+ *   update()      → 重新执行 getSettingDefinitions()（只刷数据）
+ *   renderTab()   → 用 settingItems 重建 DOM（不重新取定义）
+ * 所以只调其中一个都不够，必须 update() 后再 renderTab()。
+ */
+function fakeDeclarativeTab(tab, active) {
+  tab.containerEl = document.createElement("div");
+  document.body.appendChild(tab.containerEl);
+  const paint = () => {
+    tab.containerEl.innerHTML = "";
+    const walk = (items) => items.forEach((it) => {
+      if (!it) return;
+      if (it.type === "group") {
+        const h = document.createElement("div");
+        h.className = "setting-item-heading";
+        h.textContent = it.heading || "";
+        tab.containerEl.appendChild(h);
+        walk(it.items || []);
+        return;
+      }
+      const row = document.createElement("div");
+      row.className = "setting-item";
+      const n = document.createElement("div");
+      n.className = "setting-item-name";
+      n.textContent = it.name || "";
+      const d = document.createElement("div");
+      d.className = "setting-item-description";
+      d.textContent = it.desc || "";
+      row.append(n, d);
+      tab.containerEl.appendChild(row);
+    });
+    walk(tab.settingItems);
+  };
+  tab.update = () => { tab.settingItems = tab.getSettingDefinitions(); paint(); };
+  tab.renderTab = () => paint();
+  tab.settingItems = tab.getSettingDefinitions();
+  paint();
+  return tab;
+}
+
+await t2("设置页：切语言后整页跟着变（按 Obsidian 的 update→renderTab 语义）", async () => {
+  setLanguage("zh");
+  const { app, store } = await makeStore();
+  const plugin = new TLTPlugin(app, { id: "tlt-timeline-things", version: "0.7.2" });
+  plugin.app = app; plugin.store = store; plugin.settings = store.settings;
+  plugin.refreshAll = () => {};
+  const tab = fakeDeclarativeTab(new TLTSettingTab(app, plugin), true);
+  plugin.settingTab = tab;
+
+  const names = () => [...tab.containerEl.querySelectorAll(".setting-item-name")].map((n) => n.textContent);
+  assert.ok(names().includes("界面语言"), `中文时应有「界面语言」，实际：${names().slice(0, 5).join(" / ")}`);
+
+  setLanguage("en");
+  plugin.relabel();
+  const after = names();
+  assert.ok(after.includes("Interface language"), `切英文后应有 Interface language，实际：${after.slice(0, 5).join(" / ")}`);
+  assert.ok(!after.some((x) => /[\u4e00-\u9fff]/.test(x)), `设置页还有中文：${after.filter((x) => /[\u4e00-\u9fff]/.test(x)).slice(0, 3).join(" / ")}`);
+
+  setLanguage("zh");
+  plugin.relabel();
+  assert.ok(names().includes("界面语言"), "切回中文后应回到中文");
 });
 
 console.log(out2.join("\n"));

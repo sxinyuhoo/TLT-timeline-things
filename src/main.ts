@@ -77,17 +77,22 @@ export class TLTPlugin extends Plugin {
 
     this.refreshAll();
 
-    // 设置页整页重建：声明式设置会沿用"刚改的那一项"的旧标签，
-    // 只调 update() 时语言项自己还是旧语言，所以把这一页重开一次。
-    const st = (this.app as unknown as {
-      setting?: { openTabById?: (id: string) => void; activeTab?: { id?: string } };
-    }).setting;
-    if (st && st.activeTab?.id === this.manifest.id && typeof st.openTabById === "function") {
-      st.openTabById(this.manifest.id);
+    // 设置页：声明式设置的行是"渲染时快照"——update() 只重算数据，renderTab() 才重建 DOM。
+    // 只调 update() 时刚改的那一项仍是旧语言；只 renderTab() 时用的又是旧数据。
+    // 两个都调（先刷数据、再重建 DOM），顺手保住滚动位置。
+    const tab = this.settingTab as unknown as {
+      update?: () => void;
+      renderTab?: () => void;
+      rerender?: () => void;
+      containerEl?: HTMLElement;
+    } | undefined;
+    if (tab && typeof tab.update === "function" && typeof tab.renderTab === "function") {
+      tab.update();
+      const keep = tab.containerEl?.scrollTop ?? 0;
+      tab.renderTab();
+      if (tab.containerEl) tab.containerEl.scrollTop = keep;
     } else {
-      // 没有 setting 容器（或不是当前页）：退回刷新一次，再补一次防框架异步重绘
-      this.settingTab?.rerender();
-      window.setTimeout(() => this.settingTab?.rerender(), 60);
+      tab?.rerender?.();
     }
   }
 
