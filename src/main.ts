@@ -86,29 +86,6 @@ export class TLTPlugin extends Plugin {
   }
 
   /** 自检：把版本、数据量、目录、上次加载错误写进插件目录，出问题时一看就知道 */
-  async selfCheck() {
-    const s = this.settings;
-    const file = (this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`) + "/tlt-check.log";
-    let lastError = "（无）";
-    try { if (await this.app.vault.adapter.exists(file)) lastError = (await this.app.vault.adapter.read(file)).trim(); } catch { /* 读不到就算了 */ }
-    const msg = Number(this.store.feeds.reduce((n, f) => n + f.items.length, 0));
-    const report = [
-      `TLT v${this.manifest.version} · Obsidian ${(this.app as unknown as { appVersion?: string }).appVersion ?? "?"}`,
-      `时间 ${new Date().toISOString()}`,
-      `根目录 ${s.root || "（库根目录）"}`,
-      `任务目录 ${s.tasksFolder} · 人员目录 ${s.teamFolder} · 消息源目录 ${s.feedsFolder} · 记录目录 ${s.logsFolder}`,
-      `数据：任务 ${this.store.tasks.length} · 人员 ${this.store.staff.length} · 源 ${this.store.feeds.length} · 消息 ${msg} · 记录 ${this.store.logs.length} · 随手记 ${this.store.ideas.length} · 标签 ${this.store.tags.length}`,
-      `主题 ${s.theme} · 语言 ${s.language} · 自动同步 ${s.autoSyncMin} 分 / 自动推送 ${s.autoPushMin} 分`,
-      `上次加载错误：${lastError}`,
-    ].join("\n");
-    try {
-      const dir = this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`;
-      if (!(await this.app.vault.adapter.exists(dir))) await this.app.vault.adapter.mkdir(dir);
-      await this.app.vault.adapter.write(file, report + "\n");
-    } catch (e) { console.error("TLT: 自检写入失败", e); }
-    new Notice(`TLT v${this.manifest.version} 自检：任务 ${this.store.tasks.length} · 人员 ${this.store.staff.length} · 源 ${this.store.feeds.length} · 消息 ${msg}（报告见插件目录 tlt-check.log）`, 8000);
-  }
-
   /** 加载出错时把原因写进插件目录，方便事后排查（用户只看到一句「加载失败」时尤其有用） */
   private async dumpLoadError(detail: string) {
     try {
@@ -151,7 +128,6 @@ export class TLTPlugin extends Plugin {
     this.addCommand({ id: "archive-project", name: t("归档项目"), callback: () => { void archiveProjectFlow(this.app, this.store, refresh); } });
     this.addCommand({ id: "delete-task", name: t("删除任务"), callback: () => { void deleteTaskFlow(this.app, this.store, refresh); } });
     this.addCommand({ id: "toggle-theme", name: "切换明暗", callback: () => this.toggleTheme() });
-    this.addCommand({ id: "self-check", name: "自检（写一份诊断报告）", callback: () => { void this.selfCheck(); } });
     this.addCommand({ id: "hub-publish", name: "推送到发布服务", callback: () => { void this.publishAll(); } });
     this.addCommand({ id: "hub-sync", name: "从拉取服务同步", callback: () => { void this.syncAll(); } });
 

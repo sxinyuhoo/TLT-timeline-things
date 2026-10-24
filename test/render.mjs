@@ -1116,13 +1116,17 @@ await t("已归档项目：侧栏有分组，能展开、能还原回开展中",
   const head = [...document.querySelectorAll(".tlt-shead-arch")].find((h) => h.textContent.includes("已归档"));
   assert.ok(head, "侧栏应有「已归档」分组");
   assert.ok(head.textContent.includes("1"), `分组应带项目数：${head.textContent}`);
-  assert.equal(document.querySelectorAll(".tlt-proj.arch").length, 0, "默认收起");
-  // 展开
-  view.showArchived = true;
-  await view.render();
+  const box = document.querySelector(".tlt-archlist");
+  assert.ok(box && box.classList.contains("tlt-hidden"), "默认收起（列表隐藏）");
+  // 点标题就地展开（不整页重渲染，侧栏不跳回顶部）
+  head.click();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(!document.querySelector(".tlt-archlist").classList.contains("tlt-hidden"), "点标题后应展开");
   const arch = [...document.querySelectorAll(".tlt-proj.arch")];
   assert.equal(arch.length, 1, "展开后应看到已归档项目");
   assert.ok(arch[0].textContent.includes("示例工具"), "应显示项目名");
+  // 就地展开：同样的 DOM 节点还在（没有整页重建）
+  assert.equal(document.querySelector(".tlt-shead-arch"), head, "展开不该重建侧栏（否则会跳回顶部）");
   // 还原
   arch[0].dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true }));
   await new Promise((r) => setTimeout(r, 20));

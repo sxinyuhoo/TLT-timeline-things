@@ -87,6 +87,7 @@ export class WorkbenchView extends ItemView {
   async render() {
     const root = this.contentEl;
     const prevScroll = root.querySelector<HTMLElement>(".tlt-work")?.scrollTop || 0;
+    const prevSide = root.querySelector<HTMLElement>(".tlt-side-scroll")?.scrollTop || 0;
     // 输入框在 render 里会被重建，先记下焦点与光标位置，建完再还回去
     const ae = document.activeElement;
     const focusKey = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey
@@ -104,6 +105,8 @@ export class WorkbenchView extends ItemView {
     this.bindInputs(app);
     const work = app.querySelector<HTMLElement>(".tlt-work");
     if (work) work.scrollTop = prevScroll;
+    const side = app.querySelector<HTMLElement>(".tlt-side-scroll");
+    if (side) side.scrollTop = prevSide;
 
     if (focusKey) {
       const again = root.querySelector<HTMLInputElement>(`[data-focuskey="${focusKey.key}"]`);
@@ -170,9 +173,15 @@ export class WorkbenchView extends ItemView {
       const head = el("div", "tlt-shead tlt-shead-arch");
       const caret = el("span", "tlt-caret", this.showArchived ? "▾" : "▸");
       head.append(caret, el("span", "", `${T("已归档")} · ${archived.length}`));
-      head.dataset.archtoggle = "1";
-      scroll.appendChild(head);
-      if (this.showArchived) {
+      const listBox = el("div", "tlt-archlist");
+      if (!this.showArchived) listBox.addClass("tlt-hidden");
+      head.onclick = () => {
+        this.showArchived = !this.showArchived;
+        listBox.toggleClass("tlt-hidden", !this.showArchived);
+        caret.setText(this.showArchived ? "▾" : "▸");
+      };
+      scroll.append(head, listBox);
+      {
         archived.forEach((f) => {
           const card = el("div", "tlt-proj arch");
           card.dataset.archproj = f.path;
@@ -189,7 +198,7 @@ export class WorkbenchView extends ItemView {
             if ((ev.target as HTMLElement).closest(".tlt-pmore")) return;
             this.openProjectFile(f);
           });
-          scroll.appendChild(card);
+          listBox.appendChild(card);
         });
       }
     }
@@ -1093,7 +1102,6 @@ export class WorkbenchView extends ItemView {
     const proj = pick("[data-proj]");
     if (proj) { const name = proj.dataset.proj ?? ""; this.proj = this.proj === name ? null : name; await this.render(); return; }
     if (pick("[data-projclear]")) { this.proj = null; await this.render(); return; }
-    if (pick("[data-archtoggle]")) { this.showArchived = !this.showArchived; await this.render(); return; }
 
     if (pick("[data-theme]")) { this.plugin.toggleTheme(); return; }
 
