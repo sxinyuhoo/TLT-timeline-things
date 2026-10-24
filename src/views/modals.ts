@@ -291,44 +291,49 @@ export class TaskModal extends TltModal {
     title.value = this.draft.title;
     title.oninput = () => { this.draft.title = title.value; };
     contentEl.appendChild(title);
-    contentEl.appendChild(el("div", "tlt-m-meta",
-      `${t.project}${t.milestone ? " · " + t.milestone : ""} · ${t.done ? T("已完成") : T("进行中")}`));
 
     projectPicker(this.app, this.store, contentEl, { project: t.project, milestone: t.milestone }, this.draft);
     tagPicker(this.store, contentEl, this.draft);
 
-    const startRow = row(contentEl, T("开始"));
-    const start = el("input", "tlt-input");
+    // 开始 / 截止 并成一行：两个日期输入 + 截止的快捷按钮
+    const dates = row(contentEl, T("时间"));
+    const dline = el("div", "tlt-dline");
+    const start = el("input", "tlt-input date");
     start.type = "date";
     start.value = this.draft.start || "";
+    start.title = T("开始");
     start.onchange = () => { this.draft.start = start.value || undefined; };
-    startRow.appendChild(start);
-
-    const due = row(contentEl, T("截止"));
-    const dIn = el("input", "tlt-input");
+    const arrow = el("span", "tlt-darrow", "→");
+    const dIn = el("input", "tlt-input date");
     dIn.type = "date";
     dIn.value = this.draft.due || "";
+    dIn.title = T("截止");
     dIn.onchange = () => { this.draft.due = dIn.value || undefined; };
-    due.appendChild(dIn);
+    dline.append(start, arrow, dIn);
+    dates.appendChild(dline);
     const quick = el("div", "tlt-quick");
     [[T("今天"), 0], [T("明天"), 1], [T("三天后"), 3], [T("一周后"), 7]].forEach(([lbl, n]) => {
       const b = el("button", "tlt-chip", String(lbl));
       b.onclick = () => { this.draft.due = addDays(todayISO(), Number(n)); dIn.value = this.draft.due; };
       quick.appendChild(b);
     });
-    due.appendChild(quick);
+    dates.appendChild(quick);
 
     // 工作量（人天）：与新建一致
     const estRow = row(contentEl, T("工作量"));
-    const estInput = el("input", "tlt-input small");
-    estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0";
-    estInput.value = this.draft.est !== undefined ? String(this.draft.est) : "";
-    estInput.placeholder = T("人天");
-    estInput.onchange = () => { const v = Number(estInput.value); this.draft.est = Number.isFinite(v) && v > 0 ? v : undefined; };
-    seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + " 天" })), this.draft.est || 1, (v) => {
+    const estSeg = seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + " 天" })), this.draft.est || 1, (v) => {
       this.draft.est = v;
-      estInput.value = String(v);
     });
+    // 常用档之外的值：一个小的「自定义」入口，平时不占地方
+    const estInput = el("input", "tlt-input small tlt-est-custom");
+    estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0";
+    estInput.value = this.draft.est !== undefined && ![0.5, 1, 2, 3, 5].includes(this.draft.est) ? String(this.draft.est) : "";
+    estInput.placeholder = T("自定义");
+    estInput.onchange = () => {
+      const v = Number(estInput.value);
+      this.draft.est = Number.isFinite(v) && v > 0 ? v : undefined;
+      estSeg.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
+    };
     estRow.appendChild(estInput);
 
     const wl = row(contentEl, T("占比"));

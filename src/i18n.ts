@@ -19,6 +19,8 @@ export const EN: Record<string, string> = {
   "发布": "Publish",
   "确定": "OK",
   "未知错误": "Unknown error",
+  "截止": "Due",
+  "自定义": "Custom",
   "已发布并推送「{name}」· {n} 条 · 服务端已确认": "Published and pushed \"{name}\" · {n} message(s) · confirmed by the service",
   "已推送，但服务端没查到「{id}」，请检查服务地址：{hub}": "Pushed, but the service does not list \"{id}\" — check the service URL: {hub}",
   "已取消发布，源已回到「个人」": "Unpublished — the feed is back under Personal",

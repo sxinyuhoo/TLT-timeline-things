@@ -888,9 +888,12 @@ await t("任务详情：字段与新建对齐（可直接改标题/项目/里程
   assert.ok(task, "夹具里没有任务");
   new TaskModal(app, view.store, task, () => {}).open();
   const labels = [...document.querySelectorAll(".modal .tlt-row-l")].map((e) => e.textContent);
-  ["项目", "里程碑", "标签", "开始", "截止", "工作量", "占比", "优先级", "负责人"].forEach((want) => {
+  ["项目", "里程碑", "标签", "时间", "工作量", "占比", "优先级", "负责人"].forEach((want) => {
     assert.ok(labels.includes(want), `详情里缺「${want}」，实际：${labels.join(" / ")}`);
   });
+  // 开始与截止在同一行；标题下不再有重复的小字
+  assert.equal(document.querySelectorAll(".modal .tlt-dline input[type=date]").length, 2, "开始/截止应在同一行");
+  assert.equal(document.querySelectorAll(".modal .tlt-m-meta").length, 0, "标题下不该再有重复的项目/里程碑小字");
   assert.ok(document.querySelector(".modal .tlt-input.wide")?.value, "标题应可编辑且带当前值");
   const opts = [...document.querySelectorAll(".modal select option")].map((o) => o.value);
   assert.ok(opts.includes("示例项目") && opts.includes("__new__"), "项目应有候选也能新建");

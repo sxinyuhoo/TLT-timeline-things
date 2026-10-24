@@ -1275,3 +1275,16 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   text-transform: uppercase; color: var(--tlt-ink4);
 }
 .tlt-ms-group .tlt-mgc { color: var(--tlt-ink5); }
+
+/* ---- 弹窗排版：紧凑一点、成组对齐 ---- */
+.tlt-host .tlt-row { margin-bottom: 9px; }
+.tlt-host .tlt-row-l { padding-top: 7px; }
+.tlt-host .tlt-modal > .tlt-input.wide { margin-bottom: 12px; }
+/* 开始 → 截止 同一行 */
+.tlt-dline { display: flex; align-items: center; gap: 6px; }
+.tlt-dline .tlt-input.date { flex: 1; min-width: 0; }
+.tlt-darrow { color: var(--tlt-ink5); font-size: 11px; flex: none; }
+/* 工作量：按钮组自己撑满，自定义输入只占一小段 */
+.tlt-est-custom { width: 76px; flex: none; margin-top: 6px; }
+.tlt-host .tlt-quick { gap: 5px; }
+.tlt-host .tlt-m-foot { margin-top: 14px; }
