@@ -676,7 +676,8 @@ export class MessagesView extends ItemView {
             this.selected.delete(f.id);
             await this.refresh();
             if (back < 0) new Notice("并回个人失败，源文件已保留，稍后再试");
-            else new Notice(back ? `已取消发布，${back} 条回到「个人」` : "已取消发布，源已回到「个人」");
+            else if (!back) new Notice(T("已取消发布，这个源原样回到「个人」"));
+            else new Notice(T("已取消发布，{n} 条并回「个人」（原来那个个人源里已有内容）", { n: back }));
           })(); };
           act.append(push, unpub);
         } else {

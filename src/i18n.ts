@@ -19,6 +19,9 @@ export const EN: Record<string, string> = {
   "发布": "Publish",
   "确定": "OK",
   "未知错误": "Unknown error",
+  "已取消发布，这个源原样回到「个人」": "Unpublished — the feed itself is back under Personal",
+  "已取消发布，{n} 条并回「个人」（原来那个个人源里已有内容）": "Unpublished — {n} message(s) merged into Personal (it already had content)",
+
   "截止": "Due",
   "自定义": "Custom",
   "已发布并推送「{name}」· {n} 条 · 服务端已确认": "Published and pushed \"{name}\" · {n} message(s) · confirmed by the service",

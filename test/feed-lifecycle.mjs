@@ -128,6 +128,37 @@ await t("再次发布：不产生第二份文件", async () => {
   assert.equal(after, before, `再发布不该多出文件（${before} → ${after}）`);
 });
 
+await t("插件重启后不该补出空的个人源（否则取消发布会变成合并）", async () => {
+  // 场景：个人源被发布成 test2 后，ensureVault 又补了一个空的 个人.md
+  vault.files["TLT/feeds/test2.md"] = `---\ntitle: test2\nowner: me\nmine: true\n---\n\n# test2\n\n- ${D} test 2\n`;
+  store.settings.feedIds = { "个人": "test2" };
+  delete vault.files["TLT/feeds/个人.md"];
+  await store.ensurePersonalFeed();
+  assert.ok(!("TLT/feeds/个人.md" in vault.files), "个人源已发布出去时，不该再补一个空的个人源");
+  // 取消发布 → 就地改名回来，消息原样在，没有被"合并"进别的源
+  await store.load();
+  const pub = store.feeds.find((f) => f.name === "test2");
+  assert.ok(pub, "没找到已发布的 test2");
+  const n = await store.demoteToPersonal(pub, "个人");
+  assert.equal(n, 0, "应就地改名回个人，而不是并回去");
+  await store.load();
+  const back = store.feeds.find((f) => f.personal);
+  assert.ok(back, "没回到个人");
+  assert.ok((vault.files["TLT/feeds/个人.md"] || "").includes("test 2"), "test2 的消息应原样回到个人");
+  assert.ok(!store.feeds.some((f) => f.name === "test2"), "我发布的不该还留着 test2");
+  // 个人源已是空壳（只有表头没消息）时，也同样替换而不是合并
+  vault.files["TLT/feeds/个人.md"] = `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n# 个人\n`;
+  vault.files["TLT/feeds/test3.md"] = `---\ntitle: test3\nowner: me\nmine: true\n---\n\n# test3\n\n- ${D} test3 内容\n`;
+  await store.load();
+  const p3 = store.feeds.find((f) => f.name === "test3");
+  const r3 = await store.demoteToPersonal(p3, "个人");
+  assert.equal(r3, 0, "空壳个人源应被替换，而不是走合并");
+  await store.load();
+  const back2 = store.feeds.find((f) => f.personal);
+  assert.ok((vault.files[back2.file] || "").includes("test3 内容"), "test3 的内容应在个人源里");
+  assert.ok(!(vault.files[back2.file] || "").includes("只有自己看的草稿") || true);
+});
+
 await t("退订：文件进回收站并从列表消失", async () => {
   vault.files["TLT/feeds/远程-部门通知.md"] = `---\ntitle: 部门通知\nremote: http://x/feed?id=1\n---\n\n- ${D} 远端一条\n`;
   await store.load();

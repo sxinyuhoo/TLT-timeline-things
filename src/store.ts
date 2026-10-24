@@ -130,6 +130,10 @@ export class Store {
   async ensurePersonalFeed() {
     const path = normalizePath(`${this.settings.feedsFolder}/个人.md`);
     if (this.app.vault.getAbstractFileByPath(path)) return;
+    // 个人源被发布出去了（文件已改名/改标志，映射还记着）：别再补一个空的，
+    // 否则取消发布会变成"并进这个空壳"，用户看到的是"消息被合并到别的源里去了"
+    const pubId = (this.settings.feedIds || {})["个人"];
+    if (pubId && this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.feedsFolder}/${pubId}.md`))) return;
     await this.ensureFolder(this.settings.feedsFolder);
     await this.createSafe(path,
       `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n# 个人\n\n（只有自己看的草稿；从这里可以发布到「我发布的源」）\n`);
@@ -655,14 +659,29 @@ export class Store {
       await this.setFeedFlags(feed, { personal: true, mine: false, title: personalId });
       return 0;
     }
-    if (!this.app.vault.getAbstractFileByPath(home)) {
-      const file = await this.fileByPath(feed.file);
-      if (!file) return -1;
+    const file = await this.fileByPath(feed.file);
+    if (!file) return -1;
+    const homeFile = this.asFile(this.app.vault.getAbstractFileByPath(home));
+
+    if (!homeFile) {
+      // 个人源不在（发布时改名走了）：就地改名回个人，消息原样带回来
       await this.app.fileManager.renameFile(file, home);
       await this.setFeedFlags({ ...feed, file: home }, { personal: true, mine: false, title: personalId });
       return 0;
     }
-    return this.foldBackToPersonal(feed, personalId);     // 已有个人源：并回去（老路径）
+
+    // 个人源在，但里面没有任何消息（多半是插件自动补的空壳）→ 用它换掉，不合并
+    const homeText = await this.app.vault.cachedRead(homeFile);
+    const homeMsgs = (homeText.match(/^\s*[-*+]\s+/gm) || []).length;
+    if (homeMsgs === 0) {
+      await this.app.fileManager.trashFile(homeFile);
+      await this.app.fileManager.renameFile(file, home);
+      await this.setFeedFlags({ ...feed, file: home }, { personal: true, mine: false, title: personalId });
+      return 0;
+    }
+
+    // 个人源里确实有内容：只能并回去（老的兜底路径），调用方会提示"已合并 N 条"
+    return this.foldBackToPersonal(feed, personalId);
   }
 
   async foldBackToPersonal(feed: Feed, personalId: string) {
