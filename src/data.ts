@@ -44,7 +44,12 @@ export interface Staff {
 export interface Msg {
   id: string; feed: string; date: string; title: string; kind: "ask" | "event" | "risk" | "note";
   place: string; who: string[]; pin: string; star: boolean;
-  state: "live" | "ended"; until: string; body: string;
+  state: "live" | "ended";
+  /** 截止时间（可空 = 长期有效） */
+  until: string;
+  /** 结束发布时间：点「结束这条」时自动补，恢复时去掉 */
+  ended: string;
+  body: string;
   /** 5W 里剩下的两个：为什么（缘由/背景）与主题标签 */
   why: string; tags: string[];
   /** 已读只在本次会话内，不写回文件 */
@@ -260,6 +265,7 @@ export function parseMsgLine(line: string, feedId: string, bodyLines: string[]):
     star: f["star"] === "true",
     state: (f["state"] as Msg["state"]) || "live",
     until: f["until"] || "",
+    ended: f["ended"] || "",
     body: bodyLines.join("\n").replace(/^\s*>\s?/gm, "").trim(),
     why: f["why"] || "",
     tags: (f["tags"] || "").split(/[,，]/).map((x) => x.trim()).filter(Boolean),
@@ -273,6 +279,7 @@ export function newMsgLine(m: Partial<Msg> & { title: string }): string {
   if (m.pin) s += ` [pin:: ${m.pin}]`;
   if (m.star) s += ` [star:: true]`;
   if (m.until) s += ` [until:: ${m.until}]`;
+  if (m.ended) s += ` [ended:: ${m.ended}]`;
   if (m.who && m.who.length) s += ` [who:: ${m.who.map((o) => `[[${o}]]`).join(", ")}]`;
   if (m.why) s += ` [why:: ${m.why}]`;
   if (m.tags && m.tags.length) s += ` [tags:: ${m.tags.join(", ")}]`;

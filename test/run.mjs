@@ -196,4 +196,17 @@ t("日期工具", () => {
   assert.equal(b.end, "2026-02-28");
 });
 
+t("消息：截止时间可空、结束时间可写可读", () => {
+  const line = d.newMsgLine({ title: "季度复盘", date: "2026-10-20", until: "2026-11-01", state: "ended", ended: "2026-10-24" });
+  assert.ok(line.includes("[until:: 2026-11-01]"), "应写入截止时间：" + line);
+  assert.ok(line.includes("[ended:: 2026-10-24]"), "应写入结束发布时间：" + line);
+  const back = d.parseMsgLine(line, "个人", []);
+  assert.equal(back.until, "2026-11-01", "截止时间要能读回");
+  assert.equal(back.ended, "2026-10-24", "结束时间要能读回");
+  assert.equal(back.state, "ended", "状态要能读回");
+  const open = d.newMsgLine({ title: "长期有效的事", date: "2026-10-20" });
+  assert.ok(!open.includes("[until::"), "没设截止就不该写这个字段：" + open);
+  assert.ok(!open.includes("[ended::"), "没结束就不该写结束时间：" + open);
+});
+
 console.log(`\n${pass} 项通过${process.exitCode ? "，有失败" : "，全部通过"}`);

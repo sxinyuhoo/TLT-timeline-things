@@ -550,7 +550,8 @@ export class WorkbenchView extends ItemView {
     const r0 = 30 * this.starZoom, R = 76 * this.starZoom;
     const FROM = -3, TO = 21;
     const tasks = this.store.tasks.filter((t) => t.due);
-    const projects = Array.from(new Set(tasks.map((t) => t.project))).slice(0, 8);
+    // 全部项目都画：扇形数 = 项目数（之前只取前 8 个，项目多了会悄悄少画）
+    const projects = Array.from(new Set(tasks.map((t) => t.project)));
     const span = 360 / Math.max(1, projects.length);
     const at = (d: string) => {
       const diff = Math.round((D(d).getTime() - D(todayISO()).getTime()) / 864e5);
@@ -583,7 +584,9 @@ export class WorkbenchView extends ItemView {
       const am = ((-90 + (i + 0.5) * span) * Math.PI) / 180;
       const lx = cx + Math.cos(am) * (R + 20), ly = cy + Math.sin(am) * (R + 20);
       const anchor = Math.abs(Math.cos(am)) < 0.3 ? "middle" : Math.cos(am) > 0 ? "start" : "end";
-      const label = Array.from(p).length > 14 ? Array.from(p).slice(0, 13).join("") + "…" : p;
+      // 项目多的时候标签短一点，免得互相压住；完整名字在 tooltip 里
+      const maxLen = projects.length > 12 ? 8 : 14;
+      const label = Array.from(p).length > maxLen ? Array.from(p).slice(0, maxLen - 1).join("") + "…" : p;
       body += `<text class="tlt-plab" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="${anchor}" fill="${this.projColor(p)}">${escapeXml(label)}<title>${escapeXml(p)}</title></text>`;
     });
 

@@ -227,6 +227,8 @@ await t2("弹窗（英文）：按钮与说明无中文", async () => {
     ["任务速览", () => new TaskPeekModal(app, store, task, () => {}).open()],
     ["输入框", () => new PromptModal(app, "New project", "Name", () => {}).open()],
   ];
+  const liveEnded = store.feeds.flatMap((f) => f.items).find((x) => x.state === "ended");
+  cases.push(["消息详情（结束态）", () => new MsgModal(app, store, liveEnded, () => {}).open()]);
   for (const [label, open] of cases) {
     document.body.innerHTML = "";
     try { open(); } catch (e) { throw new Error(`${label}：打开就抛错 ${e.message}`); }
@@ -259,13 +261,13 @@ await t2("切语言：命令名 / 视图页签 / 设置页一起刷新", async (
   const leaves = [mkLeaf(), mkLeaf()];
   app.workspace.getLeavesOfType = () => leaves;
   plugin.settingTab = { update: () => { calls.update++; }, renderTab: () => { calls.renderTab++; }, containerEl: document.createElement("div") };
-  plugin.cmdNames = [{ cmd: { name: "Open workbench" }, name: () => t("打开工作台") }];
+  plugin.cmdNames = [{ cmd: { name: "Open workbench" }, full: () => `TLT - Timeline Things: ${t("打开工作台")}` }];
 
   setLanguage("zh");
   plugin.relabel();
   await new Promise((r) => setTimeout(r, 20));
 
-  assert.equal(plugin.cmdNames[0].cmd.name, "打开工作台", "命令名没跟着换");
+  assert.ok(plugin.cmdNames[0].cmd.name.includes("打开工作台"), `命令名没跟着换：${plugin.cmdNames[0].cmd.name}`);
   assert.ok(calls.header >= 2, "视图页签标题应刷新（getDisplayText 是缓存的）");
   assert.ok(calls.update >= 1, "设置页要先刷定义");
   assert.ok(calls.renderTab >= 1, "再重建 DOM——只 update() 时刚改的那一项还是旧语言");

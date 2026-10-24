@@ -940,7 +940,13 @@ export class Store {
         if (!/^\s*[-*+]\s+/.test(lines[i])) continue;
         if (!lines[i].includes(msg.title)) continue;
         if (msg.date && !lines[i].includes(msg.date)) continue;
-        lines[i] = state === "live" ? setTaskField(lines[i], "state", null) : setTaskField(lines[i], "state", "ended");
+        if (state === "ended") {
+          lines[i] = setTaskField(lines[i], "state", "ended");
+          lines[i] = setTaskField(lines[i], "ended", todayISO());     // 结束发布时间自动补
+        } else {
+          lines[i] = setTaskField(lines[i], "state", null);
+          lines[i] = setTaskField(lines[i], "ended", null);           // 恢复：结束时间去掉
+        }
         break;
       }
       return lines.join("\n");

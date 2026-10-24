@@ -1108,15 +1108,18 @@ export function popMenu(
 
 /** 消息的 5W 表单（新建与编辑共用）：时间/地点/人物/缘由/内容/标签 */
 export interface MsgDraft {
+  /** date = 创建时间（自动填今天） */
   title: string; date: string; place: string; who: string; why: string;
   body: string; tags: string; kind: Msg["kind"];
+  /** 截止时间：留空表示没有固定截止，长期有效 */
+  until: string;
 }
 
 export function buildMsgFields(parent: HTMLElement, init: Partial<MsgDraft>, store: Store) {
   const d: MsgDraft = {
     title: init.title || "", date: init.date || todayISO(), place: init.place || "",
     who: init.who || "", why: init.why || "", body: init.body || "",
-    tags: init.tags || "", kind: "note",
+    tags: init.tags || "", kind: "note", until: init.until || "",
   };
 
   // 标题：最亮的一个框，先填它
@@ -1140,12 +1143,22 @@ export function buildMsgFields(parent: HTMLElement, init: Partial<MsgDraft>, sto
     return r;
   };
 
-  const whenRow = rowOf(T("时间"));
+  const whenRow = rowOf(T("创建时间"));
   const when = el("input", "tlt-input");
   when.type = "date";
   when.value = d.date;
   when.oninput = () => (d.date = when.value);
   whenRow.appendChild(when);
+
+  const untilRow = rowOf(T("截止时间"));
+  const until = el("input", "tlt-input tlt-input-until");
+  until.type = "date";
+  until.value = d.until;
+  until.oninput = () => (d.until = until.value);
+  const clearUntil = el("button", "tlt-btn tiny", T("清除"));
+  clearUntil.title = T("留空 = 没有固定截止，长期有效");
+  clearUntil.onclick = () => { until.value = ""; d.until = ""; };
+  untilRow.append(until, clearUntil, el("span", "tlt-hint", T("留空 = 长期有效")));
 
   const whereRow = rowOf(T("地点"));
   const where = el("input", "tlt-input");
@@ -1220,7 +1233,9 @@ export class MsgModal extends TltModal {
       c.append(el("span", "tlt-5w-k", k), el("span", "tlt-5w-v", v));
       w.appendChild(c);
     };
-    cell(T("时间"), m.date);
+    cell(T("创建时间"), m.date);
+    cell(T("截止时间"), m.until || T("长期有效"));
+    if (m.ended) cell(T("结束发布时间"), m.ended);
     cell(T("地点"), m.place);
     cell(T("人物"), m.who.join(T("、")));
     cell(T("缘由"), m.why);
@@ -1239,36 +1254,31 @@ export class MsgModal extends TltModal {
     if (m.state === "ended") left.appendChild(el("span", "tlt-srcbadge off", T("已结束")));
     foot.appendChild(left);
 
-    const more = el("button", "tlt-btn tlt-more", "⋯");
-    more.title = T("更多");
-    const moreItems: { label: string; onClick: () => void | Promise<void> }[] = [];
-    if (writable) {
-      moreItems.push({
-        label: m.state === "ended" ? T("恢复发布") : T("结束这条"),
-        onClick: async () => {
-          await this.store.setMsgState(m.feed, m, m.state === "ended" ? "live" : "ended");
-          this.close(); void this.onChange(); new Notice(T("状态已更新"));
-        },
-      });
-    }
-    if (feed?.personal) {
-      moreItems.push({
-        label: T("发布为消息源…"),
-        onClick: () => {
-          this.close();
-          if (feed) new PublishPersonalModal(this.app, this.store, feed, m, () => { void this.onChange(); }).open();
-        },
-      });
-    }
-
+    // 动作全部平铺，不再藏进「⋯」：编辑 / 结束(恢复) / 发布为消息源 / 转为任务
     if (writable) {
       const edit = el("button", "tlt-btn", T("编辑"));
       edit.onclick = () => { this.editing = true; this.onOpen(); };
       foot.appendChild(edit);
+
+      const stateBtn = el("button", "tlt-btn", m.state === "ended" ? T("恢复发布") : T("结束这条"));
+      stateBtn.title = m.state === "ended"
+        ? T("恢复后结束发布时间会被去掉")
+        : T("结束后会自动补上结束发布时间");
+      stateBtn.onclick = () => { void (async () => {
+        await this.store.setMsgState(m.feed, m, m.state === "ended" ? "live" : "ended");
+        this.close(); void this.onChange();
+        new Notice(m.state === "ended" ? T("已恢复发布，结束时间已去掉") : T("已结束，已记下结束发布时间"));
+      })(); };
+      foot.appendChild(stateBtn);
     }
-    if (moreItems.length) {
-      more.onclick = () => popMenu(more, moreItems, "right");
-      foot.appendChild(more);
+    if (feed?.personal) {
+      const pub = el("button", "tlt-btn", T("发布为消息源…"));
+      pub.title = T("把这条消息单独发布成一个别人能订阅的源");
+      pub.onclick = () => {
+        this.close();
+        if (feed) new PublishPersonalModal(this.app, this.store, feed, m, () => { void this.onChange(); }).open();
+      };
+      foot.appendChild(pub);
     }
     const toTask = el("button", "tlt-btn pri", T("转为任务…"));
     toTask.onclick = () => {
@@ -1284,7 +1294,7 @@ export class MsgModal extends TltModal {
   private openEdit(contentEl: HTMLElement, m: Msg, feed?: Feed) {
     contentEl.appendChild(el("div", "tlt-m-title", T("编辑消息")));
     const f = buildMsgFields(contentEl, {
-      title: m.title, date: m.date, place: m.place,
+      title: m.title, date: m.date, until: m.until, place: m.place,
       who: m.who.join("、"), why: m.why, body: m.body, tags: m.tags.join(", "), kind: m.kind,
     }, this.store);
     const foot = el("div", "tlt-m-foot");

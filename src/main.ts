@@ -53,18 +53,27 @@ export class TLTPlugin extends Plugin {
   store: Store;
   private hub = { publish: "", sync: "", lastSync: "", lastResult: "", lastError: "" };
   /** 已注册的命令 + 取名字的函数：切语言时原地改名，不用重载插件 */
-  private cmdNames: { cmd: { name: string }; name: () => string }[] = [];
+  private cmdNames: { cmd: { name: string }; full: () => string }[] = [];
   private settingTab?: TLTSettingTab;
 
-  private cmd(entry: { id: string; name: string; callback: () => void }) {
-    const c = this.addCommand(entry);
-    this.cmdNames.push({ cmd: c, name: () => entry.name });
-    return c;
+  /**
+   * 注册命令。注意：Obsidian 的 addCommand 会就地改写传入对象的 name（加上插件名前缀），
+   * 所以这里必须把「文案 key」单独记住、切换语言时用 t(key) 重新求值，
+   * 不能读 entry.name —— 那样只会把注册那一刻的语言再写一遍。
+   */
+  private cmd(id: string, key: string, callback: () => void) {
+    const prefix = () => this.manifest.name || this.manifest.id || "TLT";
+    const full = () => `${prefix()}: ${t(key)}`;
+    const entry = { id, name: t(key), callback };
+    const c = this.addCommand(entry) as unknown as { name: string } | undefined;
+    const target = c && typeof c === "object" && "name" in c ? c : entry;
+    this.cmdNames.push({ cmd: target, full });
+    return target;
   }
 
   /** 切语言后：命令名、设置页、两个视图一起换 */
   relabel() {
-    this.cmdNames.forEach((x) => { x.cmd.name = x.name(); });
+    this.cmdNames.forEach((x) => { x.cmd.name = x.full(); });
 
     // 视图页签的标题来自 getDisplayText()，Obsidian 只在建标签时读一次；
     // 不显式刷新，切完语言页签还挂着旧语言的名字。
@@ -175,21 +184,21 @@ export class TLTPlugin extends Plugin {
 
     this.addRibbonIcon("activity", T("时间线工作台"), () => { void this.activateWorkbench(); });
 
-    this.cmd({ id: "open-workbench", name: t("打开工作台"), callback: () => { void this.activateWorkbench(); } });
-    this.cmd({ id: "open-messages", name: t("打开消息中心（独立页）"), callback: () => { void this.activateMessages(); } });
+    this.cmd("open-workbench", "打开工作台", () => { void this.activateWorkbench(); });
+    this.cmd("open-messages", "打开消息中心（独立页）", () => { void this.activateMessages(); });
     const refresh = () => this.refreshAll();
     // —— 快捷命令（原生，不依赖 QuickAdd）——
-    this.cmd({ id: "quick-menu", name: t("快捷命令…"), callback: () => quickMenuFlow(this.app, this.store, refresh, { workbench: () => this.activateWorkbench(), messages: () => this.activateMessages() }) });
-    this.cmd({ id: "new-task", name: t("登记任务"), callback: () => taskRegisterFlow(this.app, this.store, refresh) });
-    this.cmd({ id: "new-idea", name: t("随手记"), callback: () => quickIdeaFlow(this.app, this.store, refresh) });
-    this.cmd({ id: "new-message", name: t("新建消息"), callback: () => newMessageFlow(this.app, this.store, refresh) });
-    this.cmd({ id: "new-project", name: t("新建项目"), callback: () => newProjectFlow(this.app, this.store, refresh) });
-    this.cmd({ id: "new-milestone", name: t("新建里程碑"), callback: () => { void newMilestoneFlow(this.app, this.store, refresh); } });
-    this.cmd({ id: "archive-project", name: t("归档项目"), callback: () => { void archiveProjectFlow(this.app, this.store, refresh); } });
-    this.cmd({ id: "delete-task", name: t("删除任务"), callback: () => { void deleteTaskFlow(this.app, this.store, refresh); } });
-    this.cmd({ id: "toggle-theme", name: t("切换明暗"), callback: () => this.toggleTheme() });
-    this.cmd({ id: "hub-publish", name: t("推送到发布服务"), callback: () => { void this.publishAll(); } });
-    this.cmd({ id: "hub-sync", name: t("从拉取服务同步"), callback: () => { void this.syncAll(); } });
+    this.cmd("quick-menu", "快捷命令…", () => quickMenuFlow(this.app, this.store, refresh, { workbench: () => this.activateWorkbench(), messages: () => this.activateMessages() }));
+    this.cmd("new-task", "登记任务", () => taskRegisterFlow(this.app, this.store, refresh));
+    this.cmd("new-idea", "随手记", () => quickIdeaFlow(this.app, this.store, refresh));
+    this.cmd("new-message", "新建消息", () => newMessageFlow(this.app, this.store, refresh));
+    this.cmd("new-project", "新建项目", () => newProjectFlow(this.app, this.store, refresh));
+    this.cmd("new-milestone", "新建里程碑", () => { void newMilestoneFlow(this.app, this.store, refresh); });
+    this.cmd("archive-project", "归档项目", () => { void archiveProjectFlow(this.app, this.store, refresh); });
+    this.cmd("delete-task", "删除任务", () => { void deleteTaskFlow(this.app, this.store, refresh); });
+    this.cmd("toggle-theme", "切换明暗", () => this.toggleTheme());
+    this.cmd("hub-publish", "推送到发布服务", () => { void this.publishAll(); });
+    this.cmd("hub-sync", "从拉取服务同步", () => { void this.syncAll(); });
 
     this.settingTab = new TLTSettingTab(this.app, this);
     this.addSettingTab(this.settingTab);

@@ -1379,12 +1379,11 @@ await t("个人消息：弹框里有「发布为消息源」", async () => {
   card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   const btns = [...document.querySelectorAll(".tlt-modal button")].map((b) => b.textContent);
   assert.ok(btns.some((t) => t.includes("转为任务")), "没有转为任务");
-  // 发布入口收进「⋯」菜单
-  const more = document.querySelector(".tlt-modal .tlt-more");
-  assert.ok(more, "没有更多菜单");
-  more.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await new Promise((r) => setTimeout(r, 10));
-  assert.ok([...document.querySelectorAll(".tlt-menu-i")].some((b) => b.textContent.includes("发布为消息源")), "菜单里没有发布");
+  // 动作已展平：不再有「⋯」菜单，发布入口就在按钮行里
+  assert.ok(!document.querySelector(".tlt-modal .tlt-more"), "不该再有多菜单");
+  assert.ok(btns.some((x) => x.includes("发布为消息源")), `按钮行里应有发布为消息源，实际：${btns.join(" / ")}`);
+  assert.ok(btns.some((x) => x.includes("结束这条")), "按钮行里应有结束这条");
+  assert.ok(btns.some((x) => x.includes("编辑")), "按钮行里应有编辑");
 });
 
 await t("消息弹框：转为任务打开新建表单并预填", async () => {

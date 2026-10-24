@@ -550,7 +550,7 @@ export class MessagesView extends ItemView {
       if (x.star) nh.appendChild(el("span", "tlt-sk", "★"));
       body.appendChild(nh);
       body.appendChild(el("div", "tlt-nm2",
-        [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(T("、")) : "", x.state === "ended" ? T("已结束") : ""]
+        [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(T("、")) : "", x.until ? T("截止 {d}", { d: x.until }) : "", x.state === "ended" ? T("已结束") : ""]
           .filter(Boolean).join("  ·  ")));
       if (x.body) body.appendChild(el("div", "tlt-nb", x.body));
       row.appendChild(body);
@@ -565,7 +565,7 @@ export class MessagesView extends ItemView {
     top.append(kd, el("span", "tlt-nm", x.title));
     if (x.star) top.appendChild(el("span", "tlt-sk", "★"));
     card.appendChild(top);
-    const bits = [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(T("、")) : "", x.state === "ended" ? T("已结束") : ""]
+    const bits = [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(T("、")) : "", x.until ? T("截止 {d}", { d: x.until }) : "", x.state === "ended" ? T("已结束") : ""]
       .filter(Boolean);
     if (bits.length) card.appendChild(el("div", "tlt-nm2", bits.join("  ·  ")));
     if (x.body) card.appendChild(el("div", "tlt-nb", x.body));

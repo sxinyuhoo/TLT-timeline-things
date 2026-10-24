@@ -141,5 +141,23 @@ try {
   process.exitCode = 1;
 }
 
+/* 切语言：走设置页真正走的那条路（setControlValue），断言命令名跟着换 */
+try {
+  const cmds = inst.commands || [];
+  const zh = process.env.TLT_LANG !== "en";
+  const target = zh ? "en" : "zh";
+  const before = cmds.map((c) => c.name).join("|");
+  await inst.settingTab.setControlValue("language", target);   // 与用户下拉切换等价
+  await new Promise((r) => w.setTimeout(r, 80));
+  const after = cmds.map((c) => c.name);
+  console.log(`切语言 ${zh ? "zh→en" : "en→zh"} 后命令名：` + after.slice(0, 4).join(" / "));
+  const wrong = after.filter((n) => (target === "en" ? /[\u4e00-\u9fff]/.test(n) : !/[\u4e00-\u9fff]/.test(n)));
+  if (wrong.length) { console.error("切语言后命令名不对 ✗ →", wrong.join(", ")); process.exitCode = 1; }
+  if (before === after.join("|")) { console.error("切语言后命令名没变 ✗"); process.exitCode = 1; }
+} catch (e) {
+  console.error("切语言检查抛错 ✗ →", e && e.message ? e.message : e);
+  process.exitCode = 1;
+}
+
 /* 完事就退出：onload 里注册的定时器会把进程挂住 */
 process.exit(process.exitCode ?? 0);

@@ -246,7 +246,7 @@ await t("插件注册了八个快捷命令 + 一个总入口", async () => {
   const src = readFileSync(join(root, "src/main.ts"), "utf8");
   for (const id of ["quick-menu", "new-task", "new-idea", "new-message", "new-project",
     "new-milestone", "archive-project", "delete-task"]) {
-    assert.ok(src.includes(`id: "${id}"`), `缺少命令 ${id}`);
+    assert.ok(src.includes(`this.cmd("${id}"`), `缺少命令 ${id}`);
   }
 });
 
