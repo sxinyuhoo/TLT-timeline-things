@@ -1345,3 +1345,15 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-pmore:hover { background: var(--tlt-surface3); color: var(--tlt-ink); }
 .tlt-menu-i.danger { color: #E5534B; }
 .tlt-menu-i.danger:hover { background: rgba(229, 83, 75, .12); }
+
+/* ---- 侧栏：已归档分组 ---- */
+.tlt-shead-arch {
+  display: flex; align-items: center; gap: 5px; cursor: pointer;
+  margin-top: 10px; color: var(--tlt-ink4);
+}
+.tlt-shead-arch:hover { color: var(--tlt-ink2); }
+.tlt-caret { font-size: 8px; width: 8px; }
+.tlt-proj.arch { opacity: .72; }
+.tlt-proj.arch:hover { opacity: 1; }
+.tlt-proj.arch .tlt-pname { color: var(--tlt-ink3); }
+.tlt-sw.arch { background: var(--tlt-ink5) !important; }

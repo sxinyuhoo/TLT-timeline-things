@@ -172,31 +172,6 @@ await t("删除任务：两级选择 + 确认后行被移除", async () => {
   assert.ok(text.includes("要留下的任务"), "不该误删别的任务");
 });
 
-/* ---------------- ④ 归档任务 ---------------- */
-await t("归档任务：行从项目里消失，出现在 archive/项目.md", async () => {
-  const { app, store, refresh } = await NEW();
-  fps.files["TLT/tasks/艾普西隆.md"] = `# 艾普西隆
-
-## 一期
-
-- [x] 已完成的活 🛫 ${D} 📅 ${D}
-- [ ] 还在做的活 🛫 ${D} 📅 ${D}
-`;
-  await store.load();
-  void mod.archiveTaskFlow(app, store, refresh);   // 不 await：流程要等我们点弹窗
-  await flush(30);
-  await clickRow("艾普西隆");
-  await clickRow("已完成的活");
-  clickText(document.querySelector(".modal"), "归档");
-  await flush(80);
-  assert.ok(!fps.files["TLT/tasks/艾普西隆.md"].includes("已完成的活"), "项目里不该再留这条");
-  assert.ok(fps.files["TLT/tasks/艾普西隆.md"].includes("还在做的活"), "别的任务不动");
-  const arch = fps.files["TLT/archive/艾普西隆.md"];
-  assert.ok(arch, `应生成归档文件，实际有：${Object.keys(fps.files).join(", ")}`);
-  assert.ok(arch.includes("已完成的活"), "归档文件里应有这条");
-  assert.ok(arch.includes("## 一期"), "归档文件应保留里程碑分组");
-});
-
 /* ---------------- ⑤ 归档项目 ---------------- */
 await t("归档项目：文件搬进 archive/，原位置消失", async () => {
   const { app, store, refresh } = await NEW();
@@ -265,12 +240,12 @@ await t("选择器：打字过滤 + ↑↓ + 回车选中", async () => {
 });
 
 /* ---------------- ⑦ 命令都注册上了 ---------------- */
-await t("插件注册了九个快捷命令 + 一个总入口", async () => {
+await t("插件注册了八个快捷命令 + 一个总入口", async () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   assert.ok(manifest.version.startsWith("0.5"), `版本应是 0.5.x，实际 ${manifest.version}`);
   const src = readFileSync(join(root, "src/main.ts"), "utf8");
   for (const id of ["quick-menu", "new-task", "new-idea", "new-message", "new-project",
-    "new-milestone", "archive-task", "archive-project", "delete-task"]) {
+    "new-milestone", "archive-project", "delete-task"]) {
     assert.ok(src.includes(`id: "${id}"`), `缺少命令 ${id}`);
   }
 });
@@ -280,7 +255,7 @@ await t("总入口列出全部动作（含随手记 / 新建消息）", async ()
   mod.quickMenuFlow(app, store, refresh, { workbench: () => {}, messages: () => {} });
   await flush(30);
   const labels = [...document.querySelectorAll(".tlt-pickrow")].map((r) => r.querySelector(".tlt-pickname")?.textContent || "");
-  for (const want of ["登记任务", "随手记", "新建消息", "新建项目", "新建里程碑", "归档任务", "归档项目", "删除任务"]) {
+  for (const want of ["登记任务", "随手记", "新建消息", "新建项目", "新建里程碑", "归档项目", "删除任务"]) {
     assert.ok(labels.some((l) => l.includes(want)), `总入口缺「${want}」，实际：${labels.join(" / ")}`);
   }
 });

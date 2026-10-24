@@ -7,7 +7,7 @@ import {
   hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, ideaTags, ideaFilterTags,
 } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, PromptModal, popMenu, el } from "./modals";
-import { confirmArchiveProject, confirmArchiveTask, confirmDeleteTask } from "../archive";
+import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
@@ -39,6 +39,7 @@ export class WorkbenchView extends ItemView {
   private expanded = new Set<string>();
   private rhythmView: "bars" | "star" = "star";
   private taskDim: TaskDim = "m";
+  private showArchived = false;
   private taskTag: string | null = null;
   private starZoom = 1;
   private scrollToMin: number | null = null;
@@ -162,6 +163,36 @@ export class WorkbenchView extends ItemView {
       scroll.appendChild(card);
     });
     if (!projects.length) scroll.appendChild(el("div", "tlt-empty", T("{dir} 里还没有任务文件", { dir: this.cfg.tasksFolder })));
+
+    // 已归档：和里程碑视图一样分组，默认收起
+    const archived = this.store.archivedProjects();
+    if (archived.length) {
+      const head = el("div", "tlt-shead tlt-shead-arch");
+      const caret = el("span", "tlt-caret", this.showArchived ? "▾" : "▸");
+      head.append(caret, el("span", "", `${T("已归档")} · ${archived.length}`));
+      head.dataset.archtoggle = "1";
+      scroll.appendChild(head);
+      if (this.showArchived) {
+        archived.forEach((f) => {
+          const card = el("div", "tlt-proj arch");
+          card.dataset.archproj = f.path;
+          const row = el("div", "tlt-prow");
+          row.append(el("span", "tlt-sw arch"), el("span", "tlt-pname", f.basename));
+          const more = el("button", "tlt-pmore", "⋯");
+          more.title = T("还原 / 打开文件");
+          more.onclick = (ev) => { ev.stopPropagation(); this.archivedMenu(more, f); };
+          row.appendChild(more);
+          const meta = el("div", "tlt-pmeta", `${this.cfg.tasksFolder.replace(/\/tasks$/, "")}/archive`);
+          card.append(row, meta);
+          card.addEventListener("contextmenu", (ev) => { ev.preventDefault(); this.archivedMenu(card, f, { x: ev.clientX, y: ev.clientY }); });
+          card.addEventListener("click", (ev) => {
+            if ((ev.target as HTMLElement).closest(".tlt-pmore")) return;
+            this.openProjectFile(f);
+          });
+          scroll.appendChild(card);
+        });
+      }
+    }
 
     const seg = el("div", "tlt-seg tlt-period");
     (["w", "m", "q"] as Period[]).forEach((p) => {
@@ -674,6 +705,20 @@ export class WorkbenchView extends ItemView {
     ], "right", at);
   }
 
+  /** 已归档项目：还原 / 打开文件 */
+  private archivedMenu(anchor: HTMLElement, f: TFile, at?: { x: number; y: number }) {
+    popMenu(anchor, [
+      { label: T("还原到开展中"), onClick: () => confirmRestoreProject(this.app, this.store, f, () => this.render()) },
+      { label: T("打开项目文件"), onClick: () => this.openProjectFile(f) },
+    ], "right", at);
+  }
+
+  private openProjectFile(f: TFile) {
+    const leaf = this.app.workspace.getLeaf(true) as unknown as { openFile?: (x: TFile) => Promise<void> };
+    if (leaf && typeof leaf.openFile === "function") void leaf.openFile(f);
+    else new Notice(T("当前窗口不支持打开文件"));
+  }
+
   private promptMilestone(p: string) {
     new PromptModal(this.app, T("新建里程碑"), T("里程碑名（项目文件里的 ## 小节）"), async (name) => {
       const ok = await this.store.addMilestone(p, name);
@@ -684,14 +729,12 @@ export class WorkbenchView extends ItemView {
     }).open();
   }
 
-  /** 任务菜单：详情 / 归档 / 删除 */
+  /** 任务菜单：详情 / 删除（任务不做归档，归档是项目级的） */
   private taskMenu(t: Task, at?: { x: number; y: number }, anchor?: HTMLElement) {
     const file = this.app.vault.getAbstractFileByPath(t.file);
     if (!(file instanceof TFile)) return;
-    const open = this.store.tasks.filter((x) => x.file === t.file && !x.done).length;
     popMenu(anchor ?? this.contentEl, [
       { label: T("打开详情"), onClick: () => new TaskModal(this.app, this.store, t, () => this.render()).open() },
-      { label: T("归档任务"), onClick: () => confirmArchiveTask(this.app, this.store, { file, line: t.line, title: t.title, milestone: t.milestone, done: t.done }, () => this.render(), open) },
       { label: T("删除任务"), danger: true, onClick: () => confirmDeleteTask(this.app, this.store, { file, line: t.line, title: t.title, milestone: t.milestone, done: t.done }, () => this.render()) },
     ], "right", at);
   }
@@ -1050,6 +1093,7 @@ export class WorkbenchView extends ItemView {
     const proj = pick("[data-proj]");
     if (proj) { const name = proj.dataset.proj ?? ""; this.proj = this.proj === name ? null : name; await this.render(); return; }
     if (pick("[data-projclear]")) { this.proj = null; await this.render(); return; }
+    if (pick("[data-archtoggle]")) { this.showArchived = !this.showArchived; await this.render(); return; }
 
     if (pick("[data-theme]")) { this.plugin.toggleTheme(); return; }
 

@@ -110,7 +110,6 @@ Search `TLT` in the command palette (⌘P); bind your own hotkeys.
 | 新建消息 (New message) | Write a message into your personal or published source |
 | 新建项目 (New project) | Create a project file (`##` sections are milestones) |
 | 新建里程碑 (New milestone) | Add a `##` section to an existing project |
-| 归档任务 (Archive a task) | Take one task out of a project, keep a record in that project's archive file |
 | 归档项目 (Archive a project) | Move the whole project file into `TLT/archive/`, off the workbench |
 | 删除任务 (Delete a task) | Pick project → pick task → confirm (filter as you type, or search across projects) |
 
@@ -127,16 +126,18 @@ Every list filters as you type, ↑↓ to move, Enter to confirm, Esc to cancel.
 
 ## Archiving from the workbench
 
-- **Right-click a task row**: open / archive / delete
-- **Right-click a project card** (or the `⋯` that appears on hover): new milestone / archive project / open file
+- **Right-click a project card** (or the `⋯` on hover): new milestone / archive project / open file
+- **"已归档 · N" in the sidebar** (collapsed by default): archived projects; click to open the file, right-click for "restore to active"
+- **Right-click a task row**: open / delete (tasks are not archived — see below)
 
-Both ask first and say which file it goes to and how many tasks are still open.
+Archive and restore both ask first and spell out the move.
 
 ## How archiving works
 
-- **Archive a task**: the line (plus its indented steps) leaves the project and is filed under its milestone in `TLT/archive/<project>.md`. The project stays clean; the record stays in the vault and links still resolve.
-- **Archive a project**: the whole `TLT/tasks/<project>.md` moves to `TLT/archive/`. It disappears from the workbench; the file and its content are untouched.
-- Neither action deletes anything — move files back by hand if you like. To really remove something, use "Delete a task" or delete the file yourself.
+- Archiving is **project-level only**: the whole `TLT/tasks/<project>.md` moves to `TLT/archive/`, off the workbench; content and links are untouched.
+- **Restorable**: right-click an archived project → "restore to active"; the file moves back to `TLT/tasks/` (number suffix if a name clash, never overwrite).
+- Tasks are not archived. A task's lifecycle is done / deleted — moving single lines to another file would break the "one project, one file" rule and split progress stats.
+- Nothing is deleted; to really remove something use "Delete a task" or delete the file yourself.
 
 ## Privacy and network
 

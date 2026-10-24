@@ -18,22 +18,6 @@ export interface TaskRef {
 
 type Refresh = () => void | Promise<void>;
 
-export function confirmArchiveTask(
-  app: App, store: Store, t: TaskRef, refresh: Refresh, openUndone = 0,
-) {
-  const body = `${t.title}\n\n${T("归档到")}：${store.archiveDir()}/${t.file.basename}.md\n\n` +
-    (t.done
-      ? T("这条任务已完成，会从项目里摘掉、在归档文件里留一条。")
-      : T("这条任务还没完成（这个项目里还有 {n} 条未完成）。仍然要归档吗？", { n: openUndone }));
-  new ConfirmModal(app, { title: T("归档任务"), body, ok: T("归档") }, async (ok) => {
-    if (!ok) return;
-    const done = await store.archiveTask(t.file, t.line, t.milestone || "");
-    await store.load();
-    await refresh();
-    new Notice(done ? T("已归档：{n}", { n: t.title }) : T("任务行内容已变化，归档中止（请重试）"), 4000);
-  }).open();
-}
-
 export function confirmDeleteTask(app: App, store: Store, t: TaskRef, refresh: Refresh) {
   const body = `${t.title}\n\n${T("来源")}：${t.file.path}${t.milestone ? " · " + t.milestone : ""}\n\n` +
     T("这一行会从文档里移除，不可撤销（可从回收站/文件历史恢复）。");
@@ -43,6 +27,22 @@ export function confirmDeleteTask(app: App, store: Store, t: TaskRef, refresh: R
     await store.load();
     await refresh();
     new Notice(done ? T("已删除：{n}", { n: t.title }) : T("任务行内容已变化，删除中止（请重试）"), 4000);
+  }).open();
+}
+
+export function confirmRestoreProject(app: App, store: Store, file: TFile, refresh: Refresh) {
+  new ConfirmModal(app, {
+    title: T("还原项目"),
+    body: `${file.basename}\n\n${store.archiveDir()}/${file.name} → ${store.settings.tasksFolder}/\n\n` +
+      T("还原后它会重新出现在左侧「开展中」和工作台里。"),
+    ok: T("还原"),
+    danger: false,
+  }, async (ok) => {
+    if (!ok) return;
+    const to = await store.restoreProject(file);
+    await store.load();
+    await refresh();
+    new Notice(to ? T("已还原：{n} → {p}", { n: file.basename, p: to }) : T("还原失败，文件可能已被移动"), 4000);
   }).open();
 }
 

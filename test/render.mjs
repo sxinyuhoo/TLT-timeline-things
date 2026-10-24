@@ -1070,7 +1070,7 @@ await t("新建任务：开始/截止同一行，负责人是框选而不是平�
   assert.ok(m.querySelectorAll(".tlt-owner-chip").length === 1, "选了之后应出现已选 chip");
 });
 
-await t("任务行右键：菜单里有归档 / 删除，归档真的落到 archive/", async () => {
+await t("任务行右键：菜单里有详情 / 删除（任务不归档）", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
   await view.onOpen();
@@ -1081,19 +1081,8 @@ await t("任务行右键：菜单里有归档 / 删除，归档真的落到 arch
   row.dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true, clientX: 120, clientY: 200 }));
   await new Promise((r) => setTimeout(r, 20));
   const menu = [...document.querySelectorAll(".tlt-menu-i")].map((b) => b.textContent);
-  assert.ok(menu.includes("归档任务"), `右键菜单应有归档任务，实际：${menu.join(" / ")}`);
   assert.ok(menu.includes("删除任务"), "右键菜单应有删除任务");
-  [...document.querySelectorAll(".tlt-menu-i")].find((b) => b.textContent === "归档任务").click();
-  await new Promise((r) => setTimeout(r, 40));
-  const sure = document.querySelector(".modal .tlt-confirm-body");
-  assert.ok(sure, "归档前应确认");
-  const ok = [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "归档");
-  ok.click();
-  await new Promise((r) => setTimeout(r, 80));
-  assert.ok(!(files["TLT/tasks/示例项目.md"] || "").includes("示例任务：报告定稿"), "任务应从项目里摘走");
-  const arch = files["TLT/archive/示例项目.md"] || "";
-  assert.ok(arch.includes("示例任务：报告定稿"), `应写进 archive/示例项目.md：${arch}`);
-  assert.ok(arch.includes("## V0.7.4 月报"), "归档文件应保留里程碑分组");
+  assert.ok(!menu.includes("归档任务"), "任务不归档，菜单里不该再有归档任务");
 });
 
 await t("项目卡右键：菜单里有归档项目，确认后文件搬进 archive/", async () => {
@@ -1114,6 +1103,37 @@ await t("项目卡右键：菜单里有归档项目，确认后文件搬进 arch
   await new Promise((r) => setTimeout(r, 80));
   assert.ok(!files["TLT/tasks/示例项目.md"], "原位置应没了");
   assert.ok(files["TLT/archive/示例项目.md"], "应搬到 archive/");
+});
+
+await t("已归档项目：侧栏有分组，能展开、能还原回开展中", async () => {
+  // 先归档一个项目，再看侧栏
+  files["TLT/archive/示例工具.md"] = files["TLT/tasks/示例工具.md"];
+  delete files["TLT/tasks/示例工具.md"];
+  await store.load();
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const head = [...document.querySelectorAll(".tlt-shead-arch")].find((h) => h.textContent.includes("已归档"));
+  assert.ok(head, "侧栏应有「已归档」分组");
+  assert.ok(head.textContent.includes("1"), `分组应带项目数：${head.textContent}`);
+  assert.equal(document.querySelectorAll(".tlt-proj.arch").length, 0, "默认收起");
+  // 展开
+  view.showArchived = true;
+  await view.render();
+  const arch = [...document.querySelectorAll(".tlt-proj.arch")];
+  assert.equal(arch.length, 1, "展开后应看到已归档项目");
+  assert.ok(arch[0].textContent.includes("示例工具"), "应显示项目名");
+  // 还原
+  arch[0].dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 20));
+  const items = [...document.querySelectorAll(".tlt-menu-i")].map((b) => b.textContent);
+  assert.ok(items.includes("还原到开展中"), `应有还原，实际：${items.join(" / ")}`);
+  [...document.querySelectorAll(".tlt-menu-i")].find((b) => b.textContent === "还原到开展中").click();
+  await new Promise((r) => setTimeout(r, 40));
+  [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "还原").click();
+  await new Promise((r) => setTimeout(r, 100));
+  assert.ok(files["TLT/tasks/示例工具.md"], "应还原回任务目录");
+  assert.ok(!files["TLT/archive/示例工具.md"], "归档区不该还有它");
 });
 
 await t("切到人员：卡片 + 饱和度 45%", async () => {

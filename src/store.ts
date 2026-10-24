@@ -289,21 +289,6 @@ export class Store {
     return out;
   }
 
-  /** 把一条任务行插到指定里程碑下（里程碑不存在就新建一个 ## 小节） */
-  private insertUnderMilestone(lines: string[], milestone: string, entry: string): string[] {
-    if (!milestone) { lines.push(entry); return lines; }
-    const esc = milestone.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const h = lines.findIndex((l) => new RegExp(`^##\\s+${esc}\\s*$`).test(l));
-    if (h < 0) { lines.push("", `## ${milestone}`, "", entry); return lines; }
-    let anchor = h + 1;
-    for (let i = h + 1; i < lines.length; i++) {
-      if (/^#{1,2}\s/.test(lines[i])) break;
-      if (/^\s*[-*+]\s+\[.\]/.test(lines[i])) anchor = i + 1;
-    }
-    lines.splice(anchor, 0, entry);
-    return lines;
-  }
-
   /** 把项目文件移进归档目录（文件还在库里，只是不再出现在工作台） */
   async archiveProject(file: TFile): Promise<boolean> {
     await this.ensureFolder(this.archiveDir());
@@ -318,37 +303,23 @@ export class Store {
     return true;
   }
 
-  /** 任务归档：从项目里摘掉那一行（含缩进步骤），在原项目的归档文件里留下一条 */
-  async archiveTask(file: TFile, line: number, milestone: string): Promise<boolean> {
-    let entry = "";
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split(/\r?\n/);
-      let start = line;
-      if (!/^\s*[-*+]\s+\[[ xX]\]/.test(lines[start] || "")) {
-        start = lines.findIndex((l) => /^\s*[-*+]\s+\[[ xX]\]/.test(l));
-        if (start < 0) return data;
-      }
-      let end = start + 1;
-      while (end < lines.length && /^\s{2,}[-*+]\s+\[[ xX]\]/.test(lines[end])) end++;
-      entry = lines.slice(start, end).join("\n");
-      const kept = lines.slice(0, start).concat(lines.slice(end));
-      // 收尾：如果这一节只剩空行，压掉多余空行
-      return kept.join("\n").replace(/\n{3,}/g, "\n\n");
-    });
-    if (!entry) return false;
-    await this.ensureFolder(this.archiveDir());
-    const path = normalizePath(`${this.archiveDir()}/${file.basename}.md`);
-    let af = this.asFile(this.app.vault.getAbstractFileByPath(path));
-    if (!af) {
-      await this.createSafe(path, `# ${file.basename}（已归档）\n\n## ${milestone || "未分区"}\n\n${entry}\n`);
-      return true;
+  /** 归档区里的项目文件（已归档项目） */
+  archivedProjects(): TFile[] {
+    return this.filesIn(this.archiveDir()).slice().sort((a, b) => a.basename.localeCompare(b.basename));
+  }
+
+  /** 把归档的项目搬回任务目录（同名已存在时加序号，不覆盖） */
+  async restoreProject(file: TFile): Promise<string | null> {
+    await this.ensureFolder(this.settings.tasksFolder);
+    const dir = this.settings.tasksFolder;
+    let target = normalizePath(`${dir}/${file.name}`);
+    let n = 2;
+    while (this.app.vault.getAbstractFileByPath(target)) {
+      target = normalizePath(`${dir}/${file.basename}-${n}.md`);
+      n++;
     }
-    await this.app.vault.process(af, (data) => {
-      const lines = data.split(/\r?\n/);
-      this.insertUnderMilestone(lines, milestone || "未分区", entry);
-      return lines.join("\n");
-    });
-    return true;
+    await this.app.fileManager.renameFile(file, target);
+    return target;
   }
 
   /** 新建项目文件 */
