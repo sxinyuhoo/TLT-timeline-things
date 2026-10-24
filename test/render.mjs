@@ -1140,6 +1140,24 @@ await t("已归档项目：侧栏有分组，能展开、能还原回开展中",
   assert.ok(!files["TLT/archive/示例工具.md"], "归档区不该还有它");
 });
 
+await t("星图：项目全部画出来（不再只画前 8 个），标签用更大的字", async () => {
+  // 造 11 个项目
+  for (let i = 1; i <= 11; i++) {
+    files[`TLT/tasks/P${i}.md`] = `# P${i}\n\n## 一期\n\n- [ ] 任务 ${i} 📅 ${D} [wl:: 10]\n`;
+  }
+  await store.load();
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const wedges = [...document.querySelectorAll(".tlt-star .tlt-wedge")];
+  assert.ok(wedges.length >= 13, `星图应画全部项目（2 个原有 + 11 个新），实际 ${wedges.length}`);
+  const labels = [...document.querySelectorAll(".tlt-star .tlt-plab")].map((t) => t.textContent);
+  assert.ok(labels.length >= 13, `每个项目都该有标签，实际 ${labels.length}`);
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  const m = /\.tlt-plab \{[^}]*font-size: ([0-9.]+)px/.exec(css);
+  assert.ok(m && Number(m[1]) >= 9, `.tlt-plab 字号应不小于 9px，实际 ${m && m[1]}`);
+});
+
 await t("切到人员：卡片 + 饱和度 45%", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
