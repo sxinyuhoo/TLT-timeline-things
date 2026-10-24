@@ -120,6 +120,10 @@ export class TLTPlugin extends Plugin {
 
   private async boot() {
     await this.loadSettings();
+    if (this.settings.appliedRoot === undefined) {
+      this.settings.appliedRoot = this.settings.root;   // 老数据没有这个字段：以当前根目录为准
+      await this.saveSettings();
+    }
     await this.migrateFolderDefaults();
     this.store.settings = this.settings;
     setLanguage(this.settings.language);
@@ -407,22 +411,25 @@ desc: 我发布出去的动态
    * 「更新」按钮唯一会做的事：按当前设置重建派生路径，并把旧位置的数据搬过来。
    * 打字阶段只写设置值、别的什么都不动（用户要求：只有点「更新」才真正更新）。
    */
-  async applyNow(): Promise<{ movedFiles: number; blocked: number; kept: number }> {
+  async applyNow(): Promise<{ movedFiles: number; blocked: number; kept: number; moved: number }> {
     const s = this.settings;
-    const beforeRoot = s.appliedRoot ?? s.root;
     const snapshot = { ...s };
-    const before = pathsFromRoot(beforeRoot);
     const after = pathsFromRoot(s.root);
-    let kept = 0;
+    // 判断某一项现在是不是「从某个根目录派生出来的」：只要它等于派生尾巴
+    // （`TLT/tasks` 或 `<任意>/TLT/tasks`）就认为可以跟着根目录走；
+    // 完全自定的路径（如 `乱写的/任务`）才保留。
+    const isDerived = (value: string, tail: string) => value === tail || value.endsWith(`/${tail}`);
+    const tails = pathsFromRoot("");            // TLT/tasks、TLT/crew…（不含根目录前缀的尾巴）
+    let moved = 0, kept = 0;
     PATH_KEYS.forEach((k) => {
-      if (s[k] === before[k]) s[k] = after[k];
+      if (isDerived(s[k], tails[k])) { s[k] = after[k]; moved++; }
       else kept++;
     });
     s.appliedRoot = s.root;
     await this.saveSettings();
     const res = await this.relocate(snapshot);         // 先搬
     if (!res.blocked) await this.store.ensureVault();   // 再补建
-    return { ...res, kept };
+    return { ...res, kept, moved };
   }
 
   private async relocate(old: Settings): Promise<{ movedFiles: number; blocked: number }> {
@@ -591,9 +598,14 @@ export class TLTSettingTab extends PluginSettingTab {
     const r = await this.plugin.applyNow();
     if (r.blocked) return;                       // 目标已有同名文件：弹窗里问过了
     const dataDir = this.plugin.settings.tasksFolder.replace(/\/tasks$/, "");
-    new Notice(r.movedFiles
-      ? t("已把 {n} 个文件搬到 {dir}（旧目录空了，文件夹可以自己删）", { n: r.movedFiles, dir: dataDir })
-      : t("六个路径已更新，目录已就位"));
+    const bits: string[] = [];
+    bits.push(t("{n} 项路径已同步", { n: r.moved }));
+    if (r.kept) bits.push(t("{n} 项手工设置保持不变", { n: r.kept }));
+    if (r.movedFiles) bits.push(t("已搬 {n} 个文件到 {dir}", { n: r.movedFiles, dir: dataDir }));
+    bits.push(t("目录已就位"));
+    new Notice(bits.join(" · "));
+    await this.plugin.store.load();
+    this.plugin.refreshAll();
     this.rerender();
   }
 

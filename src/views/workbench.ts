@@ -180,7 +180,15 @@ export class WorkbenchView extends ItemView {
     const m = el("main", "tlt-main");
     const top = el("div", "tlt-top");
     const crumbs = el("div", "tlt-crumbs");
-    crumbs.append(el("b", "", this.proj || "全部工作"), el("span", "tlt-sep", "/"), el("span", "", this.tabName()));
+    const who = this.proj
+      ? el("b", "tlt-crumb-proj", this.proj)
+      : el("b", "", "全部工作");
+    if (this.proj) {
+      who.dataset.projclear = "1";
+      who.title = T("只看这一个项目，点击回到全部");
+    }
+    crumbs.append(who, el("span", "tlt-sep", "/"), el("span", "", this.tabName()));
+    if (this.proj) crumbs.appendChild(el("span", "tlt-hint2", T("已按项目筛选")));
     top.appendChild(crumbs);
     top.appendChild(el("div", "tlt-spacer"));
 
@@ -228,7 +236,9 @@ export class WorkbenchView extends ItemView {
   /* ---------- 日历 ---------- */
 
   private tasksForDay(k: string) {
-    return this.store.tasks.filter((t) => t.due === k || (t.start && t.due && t.start <= k && t.due >= k));
+    return this.store.tasks
+      .filter((t) => !this.proj || t.project === this.proj)          // 侧栏选中的项目
+      .filter((t) => t.due === k || (t.start && t.due && t.start <= k && t.due >= k));
   }
 
   private paneToday(): HTMLElement {
@@ -584,6 +594,7 @@ export class WorkbenchView extends ItemView {
   /** 任务视图的维度：本周 / 本月 / 本季度 / 全部 */
   private tasksInDim() {
     const all = this.store.tasks.filter((t) => t.kind === "task")
+      .filter((t) => !this.proj || t.project === this.proj)
       .filter((t) => !this.q || t.title.includes(this.q) || (t.project || "").includes(this.q) || (t.milestone || "").includes(this.q))
       .filter((t) => !this.taskTag ||
         (this.taskTag === "工作" || this.taskTag === "个人" ? t.scope === this.taskTag : (t.tags || []).includes(this.taskTag)));
@@ -934,6 +945,7 @@ export class WorkbenchView extends ItemView {
 
     const proj = pick("[data-proj]");
     if (proj) { const name = proj.dataset.proj ?? ""; this.proj = this.proj === name ? null : name; await this.render(); return; }
+    if (pick("[data-projclear]")) { this.proj = null; await this.render(); return; }
 
     if (pick("[data-theme]")) { this.plugin.toggleTheme(); return; }
 

@@ -448,6 +448,16 @@ await t("设置页：声明式改根目录同样同步六项并建目录", async
   assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), "点更新后应把目录建出来");
 });
 
+await t("点「更新」：路径与根目录对不上时也要收敛（历史状态修复）", async () => {
+  // 用户库里出现过：root 已是 Atlas，但六项还是 TLT/*（上一次没同步成功）
+  const inst = makePlugin({ root: "Atlas", appliedRoot: "Atlas" });
+  createdFolderSet.add("Atlas");
+  const r = await inst.applyNow();
+  assert.equal(inst.settings.tasksFolder, "Atlas/TLT/tasks", `应派生到新根目录：${inst.settings.tasksFolder}`);
+  assert.equal(r.moved, 6, `六项都该同步，实际 ${r.moved}`);
+  assert.equal(inst.settings.teamFolder, "Atlas/TLT/crew");
+});
+
 await t("设置页：输入只记值，点「更新」才同步六项、建目录", async () => {
   document.body.empty();
   const inst = makePlugin();
@@ -470,7 +480,7 @@ await t("设置页：输入只记值，点「更新」才同步六项、建目�
   assert.equal(inst.settings.tagsFile, "90-插件运营区/TLT/tags.md");
   assert.ok(createdFolders.some((x) => x.includes("90-插件运营区/TLT")), "点更新后应建目录");
   const said = (globalThis.__notices || []).slice(-3).join(" | ");
-  assert.ok(/六个路径已更新|已把 \d+ 个文件搬到/.test(said), "点更新后应有提示，实际：" + said);
+  assert.ok(/项路径已同步/.test(said) && /目录已就位/.test(said), "点更新后应有提示，实际：" + said);
 });
 
 await t("点「更新」：派生路径跟随根目录，手工改过的那项不动", async () => {
@@ -746,6 +756,46 @@ await t("切到本月：四组 + 任务行", async () => {
   await view.render();
   assert.equal(document.querySelectorAll(".tlt-mgrp").length, 4);
   assert.ok(document.querySelectorAll(".tlt-task").length >= 3);
+});
+
+await t("点侧栏项目：日历 / 任务 / 里程碑跟着一起筛", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  await view.render();
+  const total = document.querySelectorAll(".tlt-task").length;
+
+  // 点侧栏的项目卡（事件走 contentEl 的委托）
+  const card = document.querySelector('.tlt-proj[data-proj="示例项目"]');
+  assert.ok(card, "侧栏没有示例项目卡片");
+  card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 30));
+  const shown = [...document.querySelectorAll(".tlt-task")].map((e) => e.dataset.task || "");
+  assert.ok(shown.length > 0, "筛选后没有任务");
+  assert.ok(shown.length < total, `筛选没生效：${shown.length} / ${total}`);
+  assert.ok(shown.every((id) => id.includes("示例项目")), `混进了别的项目：${shown.join(" / ")}`);
+  assert.equal(document.querySelectorAll(".tlt-proj.on").length, 1, "侧栏没标出选中项目");
+  assert.ok(document.querySelector(".tlt-crumb-proj"), "面包屑没显示项目名");
+
+  // 日历视图同样受限
+  const day = "2026-10-25";
+  assert.ok(view.tasksForDay(day).every((t) => t.project === "示例项目"), "日历没按项目筛");
+
+  // 里程碑视图
+  view.tab = "ms";
+  await view.render();
+  const names = [...document.querySelectorAll(".tlt-ms")].map((e) => e.dataset.ms || "");
+  const allowed = new Set(view.store.milestones("示例项目").map((m) => m.name));
+  assert.ok(names.length > 0, "里程碑视图空了");
+  assert.ok(names.every((n) => allowed.has(n)), `里程碑没筛：${names.join(" / ")}`);
+
+  // 点面包屑上的项目名 → 回到全部
+  document.querySelector(".tlt-crumb-proj").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 30));
+  view.tab = "month";
+  await view.render();
+  assert.equal(document.querySelectorAll(".tlt-task").length, total, "清除筛选后应回到全部");
 });
 
 await t("切到人员：卡片 + 饱和度 45%", async () => {
