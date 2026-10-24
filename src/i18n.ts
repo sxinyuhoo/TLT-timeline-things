@@ -121,6 +121,8 @@ export const EN: Record<string, string> = {
   "日历": "Calendar",
   "任务": "Tasks",
   "里程碑": "Milestones",
+  "开展中": "In progress",
+  "已完成": "Done",
   "人员": "People",
   "随手记": "Notes",
   "随手画": "Sketch",

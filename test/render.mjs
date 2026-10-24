@@ -64,6 +64,7 @@ await esbuild.build({
       export { TLTSettingTab, TLTPlugin } from "./src/main";
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
+      export { TaskModal } from "./src/views/modals";
       export { setLanguage, t as tr } from "./src/i18n";
     `,
     resolveDir: process.cwd(),
@@ -77,7 +78,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 
 /* ---------- 3) 假 vault ---------- */
@@ -804,7 +805,10 @@ await t("点星图上的任务：只读详情 + 打开任务", async () => {
   const jump = [...document.querySelectorAll(".tlt-m-foot button")].find((b) => b.textContent.includes("打开任务"));
   assert.ok(jump, "详情里没有跳转按钮");
   jump.click();
-  assert.ok(document.querySelector(".tlt-m-title"), "跳转后没打开任务弹窗");
+  // 任务详情现在用输入框装标题（可直接改），所以查 .tlt-input.wide 的值
+  const box = document.querySelector(".modal .tlt-input.wide");
+  assert.ok(box, "跳转后没打开任务弹窗");
+  assert.ok((box.value || "").length > 0, "详情弹窗里标题是空的");
 });
 
 await t("切到本月：四组 + 任务行", async () => {
@@ -855,6 +859,46 @@ await t("点侧栏项目：日历 / 任务 / 里程碑跟着一起筛", async ()
   view.tab = "month";
   await view.render();
   assert.equal(document.querySelectorAll(".tlt-task").length, total, "清除筛选后应回到全部");
+});
+
+await t("任务详情：字段与新建对齐（可直接改标题/项目/里程碑/标签/开始/人天）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  await view.render();
+  const tid = document.querySelector(".tlt-task")?.dataset.task;
+  const task = view.store.tasks.find((x) => x.id === tid);
+  assert.ok(task, "夹具里没有任务");
+  new TaskModal(app, view.store, task, () => {}).open();
+  const labels = [...document.querySelectorAll(".modal .tlt-row-l")].map((e) => e.textContent);
+  ["项目", "里程碑", "标签", "开始", "截止", "工作量", "占比", "优先级", "负责人"].forEach((want) => {
+    assert.ok(labels.includes(want), `详情里缺「${want}」，实际：${labels.join(" / ")}`);
+  });
+  assert.ok(document.querySelector(".modal .tlt-input.wide")?.value, "标题应可编辑且带当前值");
+  const opts = [...document.querySelectorAll(".modal select option")].map((o) => o.value);
+  assert.ok(opts.includes("示例项目") && opts.includes("__new__"), "项目应有候选也能新建");
+});
+
+await t("任务详情：改项目会把任务搬过去（含步骤）", async () => {
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const task = view.store.tasks.find((x) => x.project === "示例项目" && x.kind === "task");
+  await view.store.moveTask(task, "论文示例", "示例里程碑：基准与实验");
+  assert.ok(!(files["TLT/tasks/示例项目.md"] || "").includes(task.title), "源文件里还留着这条任务");
+  assert.ok((files["TLT/tasks/论文示例.md"] || "").includes(task.title), "目标项目里没有这条任务");
+});
+
+await t("里程碑视图：开展中放上面、已完成放下面", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "ms";
+  await view.render();
+  const groups = [...document.querySelectorAll(".tlt-ms-group")].map((e) => (e.textContent || "").replace(/\d+/g, "").trim());
+  assert.ok(groups.length >= 1, "没有分组标题");
+  assert.equal(groups[0], "开展中", `第一组应是开展中，实际：${groups.join(" / ")}`);
+  if (groups.length > 1) assert.equal(groups[1], "已完成", `第二组应是已完成，实际：${groups.join(" / ")}`);
 });
 
 await t("切到人员：卡片 + 饱和度 45%", async () => {

@@ -770,31 +770,44 @@ export class WorkbenchView extends ItemView {
     const p = el("div", "tlt-pane");
     const ms = this.store.milestones(this.proj || undefined)
       .filter((m) => !this.q || m.name.includes(this.q) || (m.project || "").includes(this.q) || m.tasks.some((t) => t.title.includes(this.q)));
+    const isDone = (m: { tasks: Task[] }) => m.tasks.length > 0 && m.tasks.every((t) => t.done);
+    const active = ms.filter((m) => !isDone(m));
+    const finished = ms.filter(isDone);
+
     const head = el("div", "tlt-pane-h");
-    head.append(el("span", "", `${ms.length} 个里程碑 · ${ms.filter((m) => m.tasks.every((t) => t.done)).length} 已完成`));
+    head.append(el("span", "", `${ms.length} 个里程碑 · ${active.length} 开展中 · ${finished.length} 已完成`));
     p.appendChild(head);
     if (!ms.length) p.appendChild(el("div", "tlt-empty", "任务文件里用「## 里程碑名」分节，这里就会出现里程碑。"));
 
-    ms.forEach((m) => {
-      const done = m.tasks.filter((t) => t.done).length;
-      const pct = Math.round((done / m.tasks.length) * 100);
-      const card = el("div", "tlt-ms" + (this.expanded.has(m.name) ? " open" : ""));
-      card.dataset.ms = m.name;
-      const h = el("div", "tlt-ms-h");
-      const dot = el("span", "tlt-dot"); dot.addClass("k-ms");
-      h.append(dot, el("span", "tlt-ms-n", m.name), el("span", "tlt-ms-p", m.project));
-      const bar = el("span", "tlt-pbar small");
-      const fill = el("i"); fill.style.width = pct + "%";
-      bar.appendChild(fill);
-      h.append(el("span", "tlt-spacer"), bar, el("span", "tlt-ms-c", `${done}/${m.tasks.length}`));
-      card.appendChild(h);
-      if (this.expanded.has(m.name)) {
-        const body = el("div", "tlt-ms-b");
-        m.tasks.forEach((t) => body.appendChild(this.taskRow(t)));
-        card.appendChild(body);
-      }
-      p.appendChild(card);
-    });
+    // 开展中的放上面，已完成的收在下面
+    const paintGroup = (group: string, list: { name: string; project: string; tasks: Task[] }[]) => {
+      if (!list.length) return;
+      const gh = el("div", "tlt-ms-group");
+      gh.append(el("span", "", group), el("span", "tlt-mgc", String(list.length)));
+      p.appendChild(gh);
+      list.forEach((m) => {
+        const done = m.tasks.filter((t) => t.done).length;
+        const pct = Math.round((done / m.tasks.length) * 100);
+        const card = el("div", "tlt-ms" + (this.expanded.has(m.name) ? " open" : ""));
+        card.dataset.ms = m.name;
+        const h = el("div", "tlt-ms-h");
+        const dot = el("span", "tlt-dot"); dot.addClass("k-ms");
+        h.append(dot, el("span", "tlt-ms-n", m.name), el("span", "tlt-ms-p", m.project));
+        const bar = el("span", "tlt-pbar small");
+        const fill = el("i"); fill.style.width = pct + "%";
+        bar.appendChild(fill);
+        h.append(el("span", "tlt-spacer"), bar, el("span", "tlt-ms-c", `${done}/${m.tasks.length}`));
+        card.appendChild(h);
+        if (this.expanded.has(m.name)) {
+          const body = el("div", "tlt-ms-b");
+          m.tasks.forEach((t) => body.appendChild(this.taskRow(t)));
+          card.appendChild(body);
+        }
+        p.appendChild(card);
+      });
+    };
+    paintGroup(T("开展中"), active);
+    paintGroup(T("已完成"), finished);
     return p;
   }
 

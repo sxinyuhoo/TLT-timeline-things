@@ -302,8 +302,83 @@ export class Store {
     await this.patchLine(t.file, t.line, (l) => setTaskDue(l, due));
   }
 
+  /** 改任务的开始日（🛫）；传空串表示删掉 */
+  async setStart(t: Task, start: string) {
+    await this.patchLine(t.file, t.line, (l) => {
+      if (!start) return l.replace(/\s*🛫\s*\d{4}-\d{2}-\d{2}/g, "");
+      if (/🛫\s*\d{4}-\d{2}-\d{2}/.test(l)) return l.replace(/🛫\s*\d{4}-\d{2}-\d{2}/, `🛫 ${start}`);
+      return l.replace(/(\[[^\]]*\]\s*)?$/, (tail) => ` 🛫 ${start}${tail}`);
+    });
+  }
+
   async setField(t: Task, key: string, value: string | number | null) {
     await this.patchLine(t.file, t.line, (l) => setTaskField(l, key, value));
+  }
+
+  /** 改任务标题：只换标题，🛫/📅 与 [field::] 段原样留在后面 */
+  async setTitle(t: Task, title: string) {
+    const body = title.trim();
+    if (!body) return;
+    await this.patchLine(t.file, t.line, (l) => {
+      const m = /^(\s*[-*+]\s+\[[ xX]\]\s+)(.*)$/.exec(l);
+      if (!m) return l;
+      const rest = m[2];
+      const dates = (rest.match(/(?:🛫|📅|✅)\s*\d{4}-\d{2}-\d{2}/g) || []).join(" ");
+      const fields = (rest.match(/\[[^[\]]+::\s*(?:\[\[[^\]]*\]\]|[^\]])*\]/g) || []).join(" ");
+      const tail = [dates, fields].filter(Boolean).join(" ");
+      return `${m[1]}${body}${tail ? " " + tail : ""}`;
+    });
+  }
+
+  /** 把一条任务（连同缩进步骤）搬到另一个项目/里程碑下 */
+  async moveTask(t: Task, project: string, milestone?: string) {
+    const src = await this.fileByPath(t.file);
+    if (!src) return false;
+    let raw = "";
+    await this.app.vault.process(src, (data) => {
+      const lines = data.split(/\r?\n/);
+      const start = t.line;
+      if (!/^\s*[-*+]\s+\[[ xX]\]/.test(lines[start] || "")) return data;   // 行号漂了就别动
+      let end = start + 1;
+      while (end < lines.length && /^\s{2,}[-*+]\s+\[[ xX]\]/.test(lines[end])) end++;
+      raw = lines.slice(start, end).join("\n");
+      lines.splice(start, end - start);
+      return lines.join("\n");
+    });
+    if (!raw) return false;
+    await this.insertBlock(project, milestone, raw);
+    return true;
+  }
+
+  /** 把一段原始行插到项目文件的里程碑下（没有就补 H2） */
+  private async insertBlock(project: string, milestone: string | undefined, block: string) {
+    await this.ensureFolder(this.settings.tasksFolder);
+    const path = normalizePath(`${this.settings.tasksFolder}/${project}.md`);
+    const file = await this.fileByPath(path);
+    if (!file) {
+      const head = `# ${project}\n\n${milestone ? `## ${milestone}\n\n` : ""}${block}\n`;
+      await this.createSafe(path, head);
+      return;
+    }
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      if (milestone) {
+        const h = lines.findIndex((l) => new RegExp(`^##\\s+${milestone.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`).test(l));
+        if (h >= 0) {
+          let anchor = h + 1;
+          for (let i = h + 1; i < lines.length; i++) {
+            if (/^#{1,2}\s/.test(lines[i])) break;
+            if (/^\s*[-*+]\s+\[.\]/.test(lines[i])) anchor = i + 1;
+          }
+          lines.splice(anchor, 0, ...block.split("\n"));
+          return lines.join("\n");
+        }
+        lines.push("", `## ${milestone}`, "", ...block.split("\n"));
+        return lines.join("\n");
+      }
+      lines.push(...block.split("\n"));
+      return lines.join("\n");
+    });
   }
 
   /** 追加任务到项目文件；若里程碑段落不存在则补 H2 */

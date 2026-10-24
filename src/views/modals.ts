@@ -97,15 +97,187 @@ export class MoveDataModal extends TltModal {
   onClose() { this.contentEl.empty(); }
 }
 
+/**
+ * 项目 / 里程碑选择器（新建任务与任务详情共用同一份，避免两处字段不一致）
+ * 返回读取当前选择的函数。
+ */
+function projectPicker(app: App, store: Store, parent: HTMLElement, init: { project?: string; milestone?: string }, draft: { project?: string; milestone?: string }) {
+  const projRow = row(parent, T("项目"));
+  const projWrap = el("div", "tlt-pick");
+  const proj = el("select", "tlt-input");
+  const fillProjects = (keep?: string) => {
+    proj.empty();
+    [...store.projects(), T("未归属")].forEach((p) => {
+      const o = createEl("option");
+      o.value = p; o.textContent = p;
+      if (p === (keep || draft.project)) o.selected = true;
+      proj.appendChild(o);
+    });
+    const n = createEl("option");
+    n.value = "__new__"; n.textContent = T("＋ 新建项目…");
+    proj.appendChild(n);
+  };
+  draft.project = init.project || "";
+  fillProjects();
+  const projNew = el("input", "tlt-input");
+  projNew.placeholder = T("新项目名（= 文件名）");
+  projNew.addClass("tlt-hidden");
+
+  const msRow = row(parent, T("里程碑"));
+  const msWrap = el("div", "tlt-pick");
+  const msSel = el("select", "tlt-input");
+  const msNew = el("input", "tlt-input");
+  msNew.placeholder = T("新里程碑名");
+  msNew.addClass("tlt-hidden");
+  const fillMs = () => {
+    msSel.empty();
+    const list = draft.project ? store.milestones(draft.project).map((m) => m.name) : [];
+    const o0 = createEl("option");
+    o0.value = ""; o0.textContent = T("（不归里程碑）");
+    msSel.appendChild(o0);
+    list.forEach((name) => {
+      const o = createEl("option");
+      o.value = name; o.textContent = name;
+      msSel.appendChild(o);
+    });
+    const n = createEl("option");
+    n.value = "__new__"; n.textContent = T("＋ 新建里程碑…");
+    msSel.appendChild(n);
+    msSel.value = draft.milestone && list.includes(draft.milestone) ? draft.milestone : "";
+    msNew.value = "";
+    msNew.addClass("tlt-hidden");
+  };
+  draft.milestone = init.milestone || "";
+  fillMs();
+
+  proj.onchange = () => {
+    if (proj.value === "__new__") {
+      projNew.removeClass("tlt-hidden");
+      projNew.focus();
+      draft.project = "";
+    } else {
+      projNew.addClass("tlt-hidden");
+      draft.project = proj.value;
+      draft.milestone = "";      // 项目换了，里程碑要重选
+      fillMs();
+    }
+  };
+  projNew.oninput = () => { draft.project = projNew.value.trim(); };
+  msSel.onchange = () => {
+    if (msSel.value === "__new__") {
+      msNew.removeClass("tlt-hidden"); msNew.focus(); draft.milestone = "";
+    } else {
+      msNew.addClass("tlt-hidden"); draft.milestone = msSel.value;
+    }
+  };
+  msNew.oninput = () => { draft.milestone = msNew.value.trim(); };
+  projWrap.append(proj, projNew);
+  projRow.appendChild(projWrap);
+  msWrap.append(msSel, msNew);
+  msRow.appendChild(msWrap);
+}
+
+/** 标签行（新建与详情共用） */
+function tagPicker(store: Store, parent: HTMLElement, draft: { tags: string[] }) {
+  const tagRow = row(parent, T("标签"));
+  const tagWrap = el("div", "tlt-quick");
+  const known = Array.from(new Set(store.tasks.flatMap((x) => x.tags || [])));
+  const all = Array.from(new Set([T("工作"), T("个人"), ...store.tags, ...known, ...draft.tags]));
+  const paint = () => {
+    tagWrap.empty();
+    all.forEach((tg) => {
+      const b = el("button", "tlt-chip" + (draft.tags.includes(tg) ? " on" : ""), tg);
+      b.onclick = () => {
+        draft.tags = draft.tags.includes(tg) ? draft.tags.filter((x) => x !== tg) : [...draft.tags, tg];
+        paint();
+      };
+      tagWrap.appendChild(b);
+    });
+    const add = el("input", "tlt-input small");
+    add.placeholder = T("新标签");
+    add.onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      const v = add.value.trim();
+      if (!v) return;
+      if (!all.includes(v)) all.push(v);
+      if (!draft.tags.includes(v)) draft.tags.push(v);
+      paint();
+    };
+    tagWrap.appendChild(add);
+  };
+  paint();
+  tagRow.appendChild(tagWrap);
+}
+
+/** 负责人行（默认只显示当前，可展开调整） */
+function ownerPicker(store: Store, parent: HTMLElement, draft: { owners: string[] }) {
+  const owners = row(parent, T("负责人"));
+  const box = el("div", "tlt-ownerbox");
+  const cur = el("div", "tlt-quick");
+  const pool = el("div", "tlt-quick tlt-ownerpick");
+  pool.addClass("tlt-hidden");
+  let picking = false;
+  const paint = () => {
+    cur.empty();
+    const names = draft.owners;
+    if (!names.length) cur.appendChild(el("span", "tlt-owner-none", T("未指派")));
+    names.forEach((n) => {
+      const st = store.staff.find((x) => x.name === n);
+      const chip = el("span", "tlt-chip on tlt-owner-chip");
+      chip.append(el("span", "", n));
+      if (st) chip.title = `${st.role} · ${T("产能")} ${st.capacity}%`;
+      if (picking) {
+        const x = el("i", "", "×");
+        x.onclick = () => { draft.owners = draft.owners.filter((y) => y !== n); paint(); };
+        chip.appendChild(x);
+      }
+      cur.appendChild(chip);
+    });
+    const toggle = el("button", "tlt-btn tiny", picking ? T("完成") : names.length ? T("调整…") : T("指派…"));
+    toggle.onclick = () => { picking = !picking; paint(); };
+    cur.appendChild(toggle);
+
+    pool.empty();
+    if (!picking) { pool.addClass("tlt-hidden"); return; }
+    pool.removeClass("tlt-hidden");
+    const rest = store.staff.filter((x) => !draft.owners.includes(x.name));
+    if (!rest.length) pool.appendChild(el("span", "tlt-owner-none", T("都指派过了")));
+    rest.forEach((st2) => {
+      const b = el("button", "tlt-chip", st2.name);
+      b.title = `${st2.role} · ${T("产能")} ${st2.capacity}%`;
+      b.onclick = () => { draft.owners = [...draft.owners, st2.name]; paint(); };
+      pool.appendChild(b);
+    });
+  };
+  paint();
+  box.append(cur, pool);
+  owners.appendChild(box);
+}
+
 export class TaskModal extends TltModal {
   store: Store;
   task: Task;
   onChange: () => void | Promise<void>;
-  draft: Partial<Task>;
+  draft: {
+    title: string; project?: string; milestone?: string; tags: string[];
+    start?: string; due?: string; est?: number; wl: number; pw: Period; pri: Pri; owners: string[];
+  };
 
   constructor(app: App, store: Store, task: Task, onChange: () => void | Promise<void>) {
     super(app); this.store = store; this.task = task; this.onChange = onChange;
-    this.draft = { due: task.due, wl: task.wl, pw: task.pw, pri: task.pri, owners: [...task.owners], start: task.start };
+    this.draft = {
+      title: task.title,
+      project: task.project,
+      milestone: task.milestone,
+      tags: [...(task.tags || [])],
+      start: task.start,
+      due: task.due,
+      est: task.est,
+      wl: task.wl,
+      pw: task.pw,
+      pri: task.pri,
+      owners: [...task.owners],
+    };
   }
 
   onOpen() {
@@ -113,108 +285,98 @@ export class TaskModal extends TltModal {
     contentEl.addClass("tlt-modal");
     const t = this.task;
 
-    contentEl.appendChild(el("div", "tlt-m-title", t.title));
-    const meta = el("div", "tlt-m-meta",
-      `${t.project}${t.milestone ? " · " + t.milestone : ""} · ${t.done ? "已完成" : "进行中"}`);
-    contentEl.appendChild(meta);
+    const title = el("input", "tlt-input wide");
+    title.placeholder = T("任务名");
+    title.value = this.draft.title;
+    title.oninput = () => { this.draft.title = title.value; };
+    contentEl.appendChild(title);
+    contentEl.appendChild(el("div", "tlt-m-meta",
+      `${t.project}${t.milestone ? " · " + t.milestone : ""} · ${t.done ? T("已完成") : T("进行中")}`));
 
-    const due = row(contentEl, "截止");
+    projectPicker(this.app, this.store, contentEl, { project: t.project, milestone: t.milestone }, this.draft);
+    tagPicker(this.store, contentEl, this.draft);
+
+    const startRow = row(contentEl, T("开始"));
+    const start = el("input", "tlt-input");
+    start.type = "date";
+    start.value = this.draft.start || "";
+    start.onchange = () => { this.draft.start = start.value || undefined; };
+    startRow.appendChild(start);
+
+    const due = row(contentEl, T("截止"));
     const dIn = el("input", "tlt-input");
     dIn.type = "date";
     dIn.value = this.draft.due || "";
     dIn.onchange = () => { this.draft.due = dIn.value || undefined; };
     due.appendChild(dIn);
     const quick = el("div", "tlt-quick");
-    [["今天", 0], ["明天", 1], ["三天后", 3], ["一周后", 7]].forEach(([lbl, n]) => {
+    [[T("今天"), 0], [T("明天"), 1], [T("三天后"), 3], [T("一周后"), 7]].forEach(([lbl, n]) => {
       const b = el("button", "tlt-chip", String(lbl));
       b.onclick = () => { this.draft.due = addDays(todayISO(), Number(n)); dIn.value = this.draft.due; };
       quick.appendChild(b);
     });
     due.appendChild(quick);
 
-    const wl = row(contentEl, "占比");
+    // 工作量（人天）：与新建一致
+    const estRow = row(contentEl, T("工作量"));
+    const estInput = el("input", "tlt-input small");
+    estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0";
+    estInput.value = this.draft.est !== undefined ? String(this.draft.est) : "";
+    estInput.placeholder = T("人天");
+    estInput.onchange = () => { const v = Number(estInput.value); this.draft.est = Number.isFinite(v) && v > 0 ? v : undefined; };
+    seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + " 天" })), this.draft.est || 1, (v) => {
+      this.draft.est = v;
+      estInput.value = String(v);
+    });
+    estRow.appendChild(estInput);
+
+    const wl = row(contentEl, T("占比"));
     seg<number>(wl, [10, 20, 30, 50, 100].map((v) => ({ v, t: v + "%" })), this.draft.wl || 10, (v) => (this.draft.wl = v));
     const per = el("div", "tlt-quick");
     (["w", "m", "q"] as Period[]).forEach((p) => {
-      const b = el("button", "tlt-chip" + (this.draft.pw === p ? " on" : ""), { w: "本周", m: "本月", q: "本季度" }[p]);
+      const b = el("button", "tlt-chip" + (this.draft.pw === p ? " on" : ""), { w: T("本周"), m: T("本月"), q: T("本季度") }[p]);
       b.onclick = () => { this.draft.pw = p; per.querySelectorAll(".tlt-chip").forEach((x) => x.classList.remove("on")); b.classList.add("on"); };
       per.appendChild(b);
     });
     wl.appendChild(per);
 
-    const pri = row(contentEl, "优先级");
-    seg<number>(pri, [{ v: 0, t: "低" }, { v: 1, t: "普通" }, { v: 2, t: "高" }, { v: 3, t: "紧急" }], this.draft.pri || 1, (v) => (this.draft.pri = v as Pri));
+    const pri = row(contentEl, T("优先级"));
+    seg<number>(pri, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri || 1, (v) => (this.draft.pri = v as Pri));
 
-    // 负责人：默认只显示当前负责人，要改再展开
-    const owners = row(contentEl, "负责人");
-    const whoBox = el("div", "tlt-ownerbox");
-    const cur = el("div", "tlt-quick");
-    const pool = el("div", "tlt-quick tlt-ownerpick");
-    pool.addClass("tlt-hidden");
-    let picking = false;
-    const paintOwners = () => {
-      cur.empty();
-      const names = this.draft.owners || [];
-      if (!names.length) cur.appendChild(el("span", "tlt-owner-none", "未指派"));
-      names.forEach((n) => {
-        const st = this.store.staff.find((x) => x.name === n);
-        const chip = el("span", "tlt-chip on tlt-owner-chip");
-        chip.append(el("span", "", n));
-        if (st) chip.title = `${st.role} · 产能 ${st.capacity}%`;
-        if (picking) {
-          const x = el("i", "", "×");
-          x.onclick = () => {
-            this.draft.owners = (this.draft.owners || []).filter((y) => y !== n);
-            paintOwners();
-          };
-          chip.appendChild(x);
-        }
-        cur.appendChild(chip);
-      });
-      const toggle = el("button", "tlt-btn tiny", picking ? "完成" : names.length ? "调整…" : "指派…");
-      toggle.onclick = () => { picking = !picking; paintOwners(); };
-      cur.appendChild(toggle);
-
-      pool.empty();
-      if (picking) pool.removeClass("tlt-hidden"); else pool.addClass("tlt-hidden");
-      if (!picking) return;
-      const rest = this.store.staff.filter((x) => !(this.draft.owners || []).includes(x.name));
-      if (!rest.length) pool.appendChild(el("span", "tlt-owner-none", "都指派过了"));
-      rest.forEach((st2) => {
-        const b = el("button", "tlt-chip", st2.name);
-        b.title = `${st2.role} · 产能 ${st2.capacity}%`;
-        b.onclick = () => {
-          this.draft.owners = [...(this.draft.owners || []), st2.name];
-          paintOwners();
-        };
-        pool.appendChild(b);
-      });
-    };
-    paintOwners();
-    whoBox.append(cur, pool);
-    owners.appendChild(whoBox);
+    ownerPicker(this.store, contentEl, this.draft);
 
     const foot = el("div", "tlt-m-foot");
-    const save = el("button", "tlt-btn pri", "保存");
+    const save = el("button", "tlt-btn pri", T("保存"));
     save.onclick = () => { void (async () => {
       const d = this.draft;
+      // 先就地改字段（行号不变），最后再改标题/搬文件——搬完行号就失效了
       if (d.due !== t.due) await this.store.setDue(t, d.due || "");
+      if ((d.start || "") !== (t.start || "")) await this.store.setStart(t, d.start || "");
       if (d.wl !== t.wl) await this.store.setField(t, "wl", d.wl ?? 0);
       if (d.pw !== t.pw) await this.store.setField(t, "pw", d.pw ?? "m");
       if (d.pri !== t.pri) await this.store.setField(t, "pri", d.pri ?? 1);
+      if ((d.est ?? null) !== (t.est ?? null)) await this.store.setField(t, "est", d.est ?? null);
+      if ((d.tags || []).join(",") !== (t.tags || []).join(",")) {
+        await this.store.setField(t, "tags", (d.tags || []).join(", "));
+      }
       if ((d.owners || []).join(",") !== t.owners.join(",")) {
         await this.store.setField(t, "owner", (d.owners || []).map((o) => `[[${o}]]`).join(", "));
       }
-      this.close(); void this.onChange(); new Notice("已写回任务行");
+      if (d.title.trim() && d.title.trim() !== t.title) await this.store.setTitle(t, d.title.trim());
+      const moved = (d.project || "") !== (t.project || "") || (d.milestone || "") !== (t.milestone || "");
+      if (moved && d.project) await this.store.moveTask(t, d.project, d.milestone || undefined);
+      this.close();
+      void this.onChange();
+      new Notice(moved ? T("已保存，任务已移动") : T("已写回任务行"));
     })(); };
-    const done = el("button", "tlt-btn", t.done ? "标为未完成" : "标记完成");
-    done.onclick = async () => { await this.store.toggleTask(t); this.close(); void this.onChange(); };
-    const del = el("button", "tlt-btn danger", "删除任务");
+    const done = el("button", "tlt-btn", t.done ? T("标为未完成") : T("标记完成"));
+    done.onclick = () => { void (async () => { await this.store.toggleTask(t); this.close(); void this.onChange(); })(); };
+    const del = el("button", "tlt-btn danger", T("删除任务"));
     del.onclick = () => { void (async () => {
       await this.store.deleteTask(t);
-      this.close(); void this.onChange(); new Notice("已删除任务");
+      this.close(); void this.onChange(); new Notice(T("已删除任务"));
     })(); };
-    const open = el("button", "tlt-btn", "打开所在笔记");
+    const open = el("button", "tlt-btn", T("打开所在笔记"));
     open.onclick = () => {
       const f = this.app.vault.getAbstractFileByPath(t.file);
       if (f instanceof TFile) void this.app.workspace.getLeaf(false).openFile(f);

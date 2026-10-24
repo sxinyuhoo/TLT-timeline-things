@@ -634,10 +634,21 @@ body.theme-light .tlt-root .tlt-blk.plan { background: rgba(75, 90, 224, .09); }
   color: var(--tlt-acc-ink);
   box-shadow: inset 0 0 0 1px rgba(91, 108, 255, .5);
 }
-body.theme-light .tlt-root .tlt-seg-b.on,
-body.tlt-light .tlt-root .tlt-seg-b.on {
+/* 浅色下所有选中态一律用深强调字色：不限定在 .tlt-root 里，
+   否则弹窗（挂在 .tlt-host 下）会沿用深色主题的近白字 → 白字浅底看不清 */
+body.theme-light .tlt-seg-b.on,
+body.tlt-light .tlt-seg-b.on,
+body.theme-light .tlt-chip.on,
+body.tlt-light .tlt-chip.on,
+body.theme-light .tlt-pv.on,
+body.tlt-light .tlt-pv.on,
+body.theme-light .tlt-btn.on,
+body.tlt-light .tlt-btn.on {
   background: rgba(75, 90, 224, .14);
   color: #3F4CC4;
+}
+body.theme-light .tlt-seg-b.on,
+body.tlt-light .tlt-seg-b.on {
   box-shadow: inset 0 0 0 1px rgba(75, 90, 224, .42);
 }
 
@@ -1243,3 +1254,11 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 
 /* 弹窗里的提示：需要留意的一条 */
 .tlt-host .tlt-hint.warn { color: var(--tlt-hot); }
+
+/* 里程碑视图：开展中 / 已完成 分组标题 */
+.tlt-ms-group {
+  display: flex; align-items: center; gap: 6px;
+  margin: 12px 2px 6px; font-size: 9px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--tlt-ink4);
+}
+.tlt-ms-group .tlt-mgc { color: var(--tlt-ink5); }
