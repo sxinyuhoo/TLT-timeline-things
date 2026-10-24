@@ -1400,6 +1400,16 @@ var EN = {
   "\u6309\u4E0A\u9762\u7684\u6839\u76EE\u5F55\u91CD\u5EFA\u516D\u4E2A\u8DEF\u5F84\uFF0C\u5E76\u628A\u65E7\u76EE\u5F55\u91CC\u7684\u6570\u636E\u4E00\u8D77\u642C\u8FC7\u53BB\uFF08\u76EE\u6807\u5DF2\u6709\u540C\u540D\u6587\u4EF6\u65F6\u624D\u4F1A\u95EE\u4F60\uFF09\u3002": "Rebuild the six paths from the root folder above and move the existing data over (you are only asked when a file with the same name is already at the destination).",
   "\u5DF2\u8BB0\u5F55\u65B0\u7684\u6839\u76EE\u5F55\uFF0C\u70B9\u300C\u66F4\u65B0\u300D\u751F\u6548": "New root folder recorded \u2014 click Update to apply",
   "\u516D\u4E2A\u8DEF\u5F84\u5DF2\u66F4\u65B0\uFF0C\u76EE\u5F55\u5DF2\u5C31\u4F4D": "Six paths updated; folders are ready",
+  "\u5DF2\u642C {n} \u4E2A\u6587\u4EF6\u5230\u65B0\u76EE\u5F55": "moved {n} file(s) to the new folder",
+  "\u65E7\u76EE\u5F55 {dir} \u5DF2\u6E05\u7A7A\uFF0C\u7A7A\u6587\u4EF6\u5939\u4FDD\u7559\uFF08\u9700\u8981\u7684\u8BDD\u81EA\u884C\u5220\u9664\uFF09": "old folder {dir} is now empty; the empty folders are kept (delete them if you like)",
+  "\u65E7\u76EE\u5F55 {dir} \u4ECD\u6709 {n} \u4E2A\u6587\u4EF6\uFF08\u540C\u540D\u672A\u8986\u76D6\uFF09": "{n} file(s) still in the old folder {dir} (same-name files were not overwritten)",
+  "\u53D6\u6D88\u66F4\u65B0": "Cancel update",
+  "\u786E\u8BA4\u642C\u8FD0": "Move files",
+  "\u5DF2\u53D6\u6D88\u66F4\u65B0\uFF0C\u8BBE\u7F6E\u4E0E\u76EE\u5F55\u90FD\u4FDD\u6301\u539F\u6837": "Update cancelled \u2014 settings and folders are unchanged",
+  "{n} \u9879\u8DEF\u5F84\u5DF2\u540C\u6B65": "{n} path(s) synced",
+  "{n} \u9879\u624B\u5DE5\u8BBE\u7F6E\u4FDD\u6301\u4E0D\u53D8": "{n} hand-set path(s) kept as-is",
+  "\u5DF2\u642C {n} \u4E2A\u6587\u4EF6\u5230 {dir}": "moved {n} file(s) to {dir}",
+  "\u76EE\u5F55\u5DF2\u5C31\u4F4D": "folders are ready",
   "\u5DF2\u6309\u6839\u76EE\u5F55\u66F4\u65B0\u516D\u4E2A\u8DEF\u5F84\uFF0C\u76EE\u5F55\u5DF2\u5C31\u4F4D": "Six paths rebuilt from the root folder; folders are ready",
   "\u6839\u76EE\u5F55\u5DF2\u66F4\u65B0\uFF1B\u65E7\u76EE\u5F55\u91CC\u8FD8\u6709 {n} \u4E2A\u6587\u4EF6\uFF0C\u70B9\u300C\u66F4\u65B0\u300D\u53EF\u4EE5\u642C\u8FC7\u53BB": "Root folder updated; {n} file(s) are still in the old folder \u2014 click Update to move them over",
   "\u751F\u6210\u793A\u4F8B\u6570\u636E": "Generate sample data",
@@ -1409,6 +1419,7 @@ var EN = {
   "\u6839\u76EE\u5F55\u5DF2\u66F4\u65B0\uFF0C{n} \u9879\u81EA\u5B9A\u4E49\u8DEF\u5F84\u4FDD\u6301\u4E0D\u53D8": "Root folder updated; {n} custom path(s) left untouched",
   "\u516D\u4E2A\u8DEF\u5F84\u5DF2\u6309\u6839\u76EE\u5F55\u91CD\u6392\uFF0C\u76EE\u5F55\u5DF2\u5C31\u4F4D": "All six paths re-aligned to the root folder; folders are ready",
   "\u76EE\u5F55\u5DF2\u66F4\u65B0": "Folder updated",
+  "\u5DF2\u8BB0\u5F55\uFF0C\u70B9\u300C\u66F4\u65B0\u300D\u751F\u6548": "Recorded \u2014 click Update to apply",
   /* ---------- 工作台 ---------- */
   "\u65E5\u5386": "Calendar",
   "\u4EFB\u52A1": "Tasks",
@@ -1422,6 +1433,8 @@ var EN = {
   "\u65B0\u5EFA\u4EFB\u52A1": "New task",
   "\u5207\u6362\u660E\u6697": "Toggle theme",
   "\u9879\u76EE \xB7 \u8FDB\u5EA6": "Projects \xB7 progress",
+  "\u5DF2\u6309\u9879\u76EE\u7B5B\u9009": "filtered by project",
+  "\u53EA\u770B\u8FD9\u4E00\u4E2A\u9879\u76EE\uFF0C\u70B9\u51FB\u56DE\u5230\u5168\u90E8": "Showing this project only \u2014 click to go back to all",
   "\u9879\u76EE \u2022 \u8FDB\u5EA6": "Projects \xB7 progress",
   "{dir} \u91CC\u8FD8\u6CA1\u6709\u4EFB\u52A1\u6587\u4EF6": "No task files in {dir} yet",
   "\u641C\u7D22\u4EFB\u52A1/\u8BB0\u5F55": "Search tasks / logs",
@@ -2920,7 +2933,13 @@ var WorkbenchView = class extends ItemView {
     const m = el("main", "tlt-main");
     const top = el("div", "tlt-top");
     const crumbs = el("div", "tlt-crumbs");
-    crumbs.append(el("b", "", this.proj || "\u5168\u90E8\u5DE5\u4F5C"), el("span", "tlt-sep", "/"), el("span", "", this.tabName()));
+    const who = this.proj ? el("b", "tlt-crumb-proj", this.proj) : el("b", "", "\u5168\u90E8\u5DE5\u4F5C");
+    if (this.proj) {
+      who.dataset.projclear = "1";
+      who.title = t("\u53EA\u770B\u8FD9\u4E00\u4E2A\u9879\u76EE\uFF0C\u70B9\u51FB\u56DE\u5230\u5168\u90E8");
+    }
+    crumbs.append(who, el("span", "tlt-sep", "/"), el("span", "", this.tabName()));
+    if (this.proj) crumbs.appendChild(el("span", "tlt-hint2", t("\u5DF2\u6309\u9879\u76EE\u7B5B\u9009")));
     top.appendChild(crumbs);
     top.appendChild(el("div", "tlt-spacer"));
     const search = el("div", "tlt-search");
@@ -2961,7 +2980,7 @@ var WorkbenchView = class extends ItemView {
   }
   /* ---------- 日历 ---------- */
   tasksForDay(k) {
-    return this.store.tasks.filter((t2) => t2.due === k || t2.start && t2.due && t2.start <= k && t2.due >= k);
+    return this.store.tasks.filter((t2) => !this.proj || t2.project === this.proj).filter((t2) => t2.due === k || t2.start && t2.due && t2.start <= k && t2.due >= k);
   }
   paneToday() {
     const p = el("div", "tlt-pane");
@@ -3321,7 +3340,7 @@ var WorkbenchView = class extends ItemView {
   }
   /** 任务视图的维度：本周 / 本月 / 本季度 / 全部 */
   tasksInDim() {
-    const all = this.store.tasks.filter((t2) => t2.kind === "task").filter((t2) => !this.q || t2.title.includes(this.q) || (t2.project || "").includes(this.q) || (t2.milestone || "").includes(this.q)).filter((t2) => !this.taskTag || (this.taskTag === "\u5DE5\u4F5C" || this.taskTag === "\u4E2A\u4EBA" ? t2.scope === this.taskTag : (t2.tags || []).includes(this.taskTag)));
+    const all = this.store.tasks.filter((t2) => t2.kind === "task").filter((t2) => !this.proj || t2.project === this.proj).filter((t2) => !this.q || t2.title.includes(this.q) || (t2.project || "").includes(this.q) || (t2.milestone || "").includes(this.q)).filter((t2) => !this.taskTag || (this.taskTag === "\u5DE5\u4F5C" || this.taskTag === "\u4E2A\u4EBA" ? t2.scope === this.taskTag : (t2.tags || []).includes(this.taskTag)));
     const dim = this.taskDim;
     const inDim = (d) => dim === "all" ? true : !!d && inPeriod(d, dim);
     const today = todayISO();
@@ -3687,6 +3706,11 @@ var WorkbenchView = class extends ItemView {
     if (proj) {
       const name = proj.dataset.proj ?? "";
       this.proj = this.proj === name ? null : name;
+      await this.render();
+      return;
+    }
+    if (pick("[data-projclear]")) {
+      this.proj = null;
       await this.render();
       return;
     }
