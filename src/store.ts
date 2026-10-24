@@ -256,6 +256,129 @@ export class Store {
     this.loaded = true;
   }
 
+  /* ---------------- 快捷命令用的读写 ---------------- */
+
+  /** 归档目录：和 tasks 同一个 TLT 目录下的 archive/（跟着任务目录走，不额外加设置项） */
+  archiveDir(): string {
+    const dataDir = this.settings.tasksFolder.replace(/\/tasks\/?$/, "");
+    return normalizePath(`${dataDir}/archive`);
+  }
+
+  /** 任务目录下的项目文件（不看有没有任务，空项目也列出来） */
+  projectFiles(): TFile[] {
+    return this.filesIn(this.settings.tasksFolder).slice().sort((a, b) => a.basename.localeCompare(b.basename));
+  }
+
+  /** 读一个项目文件里的任务行（行号 + 所属里程碑 + 勾选状态 + 原文） */
+  async projectTaskLines(file: TFile): Promise<{ line: number; raw: string; title: string; done: boolean; milestone: string }[]> {
+    const text = await this.app.vault.cachedRead(file);
+    const lines = text.split(/\r?\n/);
+    const out: { line: number; raw: string; title: string; done: boolean; milestone: string }[] = [];
+    let milestone = "";
+    lines.forEach((ln, i) => {
+      const h = /^##\s+(.+?)\s*$/.exec(ln);
+      if (h) { milestone = h[1].trim(); return; }
+      if (/^#\s/.test(ln)) { milestone = ""; return; }
+      const m = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/.exec(ln);
+      if (!m) return;
+      const title = m[2].replace(/\[[a-zA-Z\u4e00-\u9fa5]+::[^\]]*\]/g, "")
+        .replace(/\s*[🛫📅➕✅⏫🔼🔽⏬🔁🏁](\s*\d{4}-\d{2}-\d{2})?/gu, " ")   // 行内标记与日期标记都不进标题
+        .replace(/\s{2,}/g, " ").trim();
+      out.push({ line: i, raw: ln, title, done: m[1].toLowerCase() === "x", milestone });
+    });
+    return out;
+  }
+
+  /** 把一条任务行插到指定里程碑下（里程碑不存在就新建一个 ## 小节） */
+  private insertUnderMilestone(lines: string[], milestone: string, entry: string): string[] {
+    if (!milestone) { lines.push(entry); return lines; }
+    const esc = milestone.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const h = lines.findIndex((l) => new RegExp(`^##\\s+${esc}\\s*$`).test(l));
+    if (h < 0) { lines.push("", `## ${milestone}`, "", entry); return lines; }
+    let anchor = h + 1;
+    for (let i = h + 1; i < lines.length; i++) {
+      if (/^#{1,2}\s/.test(lines[i])) break;
+      if (/^\s*[-*+]\s+\[.\]/.test(lines[i])) anchor = i + 1;
+    }
+    lines.splice(anchor, 0, entry);
+    return lines;
+  }
+
+  /** 把项目文件移进归档目录（文件还在库里，只是不再出现在工作台） */
+  async archiveProject(file: TFile): Promise<boolean> {
+    await this.ensureFolder(this.archiveDir());
+    const dir = this.archiveDir();
+    let target = normalizePath(`${dir}/${file.name}`);
+    let n = 2;
+    while (this.app.vault.getAbstractFileByPath(target)) {
+      target = normalizePath(`${dir}/${file.basename}-${n}.md`);
+      n++;
+    }
+    await this.app.fileManager.renameFile(file, target);
+    return true;
+  }
+
+  /** 任务归档：从项目里摘掉那一行（含缩进步骤），在原项目的归档文件里留下一条 */
+  async archiveTask(file: TFile, line: number, milestone: string): Promise<boolean> {
+    let entry = "";
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      let start = line;
+      if (!/^\s*[-*+]\s+\[[ xX]\]/.test(lines[start] || "")) {
+        start = lines.findIndex((l) => /^\s*[-*+]\s+\[[ xX]\]/.test(l));
+        if (start < 0) return data;
+      }
+      let end = start + 1;
+      while (end < lines.length && /^\s{2,}[-*+]\s+\[[ xX]\]/.test(lines[end])) end++;
+      entry = lines.slice(start, end).join("\n");
+      const kept = lines.slice(0, start).concat(lines.slice(end));
+      // 收尾：如果这一节只剩空行，压掉多余空行
+      return kept.join("\n").replace(/\n{3,}/g, "\n\n");
+    });
+    if (!entry) return false;
+    await this.ensureFolder(this.archiveDir());
+    const path = normalizePath(`${this.archiveDir()}/${file.basename}.md`);
+    let af = this.asFile(this.app.vault.getAbstractFileByPath(path));
+    if (!af) {
+      await this.createSafe(path, `# ${file.basename}（已归档）\n\n## ${milestone || "未分区"}\n\n${entry}\n`);
+      return true;
+    }
+    await this.app.vault.process(af, (data) => {
+      const lines = data.split(/\r?\n/);
+      this.insertUnderMilestone(lines, milestone || "未分区", entry);
+      return lines.join("\n");
+    });
+    return true;
+  }
+
+  /** 新建项目文件 */
+  async createProject(name: string): Promise<boolean> {
+    const clean = name.trim().replace(/[\\/:*?"<>|]/g, "");
+    if (!clean) return false;
+    const path = normalizePath(`${this.settings.tasksFolder}/${clean}.md`);
+    await this.ensureFolder(this.settings.tasksFolder);
+    if (this.app.vault.getAbstractFileByPath(path)) return false;
+    await this.createSafe(path, `# ${clean}\n\n## 第一个里程碑\n\n- [ ] 示例任务，改成你自己的 🛫 ${todayISO()} 📅 ${todayISO()} [pri:: 1]\n`);
+    return true;
+  }
+
+  /** 给项目加一个里程碑（## 小节） */
+  async addMilestone(project: string, name: string): Promise<boolean> {
+    const clean = name.trim();
+    if (!clean) return false;
+    const file = await this.fileByPath(`${this.settings.tasksFolder}/${project}.md`);
+    if (!file) return false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const esc = clean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (lines.some((l) => new RegExp(`^##\\s+${esc}\\s*$`).test(l))) return data;
+      while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
+      lines.push("", `## ${clean}`, "");
+      return lines.join("\n");
+    });
+    return true;
+  }
+
   /* ---------------- 写 ---------------- */
 
   private asFile(f: TAbstractFile | null | undefined): TFile | null {
@@ -280,6 +403,25 @@ export class Store {
   }
 
   /** 删除一条任务（连同它下面缩进的步骤） */
+  /** 按文件 + 行号删掉一条任务（含紧跟的缩进步骤）。行号对不上时按标题兜底找一次。 */
+  async removeTaskAt(file: TFile, line: number, title?: string): Promise<boolean> {
+    let ok = false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      let start = line;
+      if (!/^\s*[-*+]\s+\[[ xX]\]/.test(lines[start] || "")) {
+        start = title ? lines.findIndex((l) => /^\s*[-*+]\s+\[[ xX]\]/.test(l) && l.includes(title)) : -1;
+        if (start < 0) return data;
+      }
+      let end = start + 1;
+      while (end < lines.length && /^\s{2,}[-*+]\s+\[[ xX]\]/.test(lines[end])) end++;
+      lines.splice(start, end - start);
+      ok = true;
+      return lines.join("\n");
+    });
+    return ok;
+  }
+
   async deleteTask(t: Task) {
     const file = await this.fileByPath(t.file);
     if (!file) return false;

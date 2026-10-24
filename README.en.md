@@ -98,14 +98,37 @@ All six paths live under `TLT/` by default and **the root folder is configurable
 
 ## Commands
 
+Search `TLT` in the command palette (⌘P); bind your own hotkeys.
+
+**Quick commands** (native since 0.5 — no QuickAdd or other plugin needed)
+
+| Command | Effect |
+| --- | --- |
+| 快捷命令… (Quick commands…) | One launcher listing everything below |
+| 登记任务 (Log a task) | Jot a task down and pick project / milestone / dates / priority / owner |
+| 新建项目 (New project) | Create a project file (`##` sections are milestones) |
+| 新建里程碑 (New milestone) | Add a `##` section to an existing project |
+| 归档任务 (Archive a task) | Take one task out of a project, keep a record in that project's archive file |
+| 归档项目 (Archive a project) | Move the whole project file into `TLT/archive/`, off the workbench |
+| 删除任务 (Delete a task) | Pick project → pick task → confirm (filter as you type, or search across projects) |
+
+Every list filters as you type, ↑↓ to move, Enter to confirm, Esc to cancel.
+
+**Other commands**
+
 | Command | Effect |
 | --- | --- |
 | 打开工作台 | Open the workbench |
 | 打开消息中心（独立页） | Open the message center only |
-| 新建任务 | Quick-add a task |
 | 生成示例数据 | Seed a sample under `TLT/` (never overwrites) |
 | 切换明暗 | Toggle dark / light |
 | 推送到发布服务 / 从拉取服务同步 | Manual message sync |
+
+## How archiving works
+
+- **Archive a task**: the line (plus its indented steps) leaves the project and is filed under its milestone in `TLT/archive/<project>.md`. The project stays clean; the record stays in the vault and links still resolve.
+- **Archive a project**: the whole `TLT/tasks/<project>.md` moves to `TLT/archive/`. It disappears from the workbench; the file and its content are untouched.
+- Neither action deletes anything — move files back by hand if you like. To really remove something, use "Delete a task" or delete the file yourself.
 
 ## Privacy and network
 

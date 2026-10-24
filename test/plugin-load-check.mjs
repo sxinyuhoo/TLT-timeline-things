@@ -116,5 +116,25 @@ try {
   process.exitCode = 1;
 }
 
+/* 命令都要真的注册上（stub 里 addCommand 不进注册表，所以这里列出实例自己的记录） */
+try {
+  const cmds = inst.commands || inst._commands || [];
+  const ids = (cmds).map((c) => c.id).filter(Boolean);
+  const want = ["quick-menu", "new-task", "new-project", "new-milestone", "archive-task", "archive-project", "delete-task"];
+  const missing = want.filter((x) => !ids.includes(x));
+  if (missing.length) { console.error("命令缺失 ✗ →", missing.join(", "), "实际：", ids.join(", ")); process.exitCode = 1; }
+  else console.log(`命令注册 ✓  ${ids.length} 个（含快捷命令 ${want.length} 个）`);
+  /* 顺带点一下「快捷命令…」看看弹窗能不能开 */
+  const menu = cmds.find((c) => c.id === "quick-menu");
+  menu?.callback?.();
+  await new Promise((r) => w.setTimeout(r, 60));
+  const rows = w.document.querySelectorAll(".tlt-pickrow").length;
+  console.log(rows >= 6 ? `快捷命令面板 ✓  ${rows} 项` : `快捷命令面板 ✗  只有 ${rows} 项`);
+  if (rows < 6) process.exitCode = 1;
+} catch (e) {
+  console.error("命令注册检查抛错 ✗ →", e && e.message ? e.message : e);
+  process.exitCode = 1;
+}
+
 /* 完事就退出：onload 里注册的定时器会把进程挂住 */
 process.exit(process.exitCode ?? 0);

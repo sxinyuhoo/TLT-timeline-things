@@ -5,7 +5,11 @@ import {
 import { Store, TLTSettings, DEFAULT_SETTINGS, pathsFromRoot, PATH_KEYS } from "./store";
 import { WorkbenchView, VIEW_TYPE_WORKBENCH } from "./views/workbench";
 import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
-import { MoveDataModal, QuickTaskModal } from "./views/modals";
+import { MoveDataModal } from "./views/modals";
+import {
+  taskRegisterFlow, newProjectFlow, newMilestoneFlow, deleteTaskFlow,
+  archiveTaskFlow, archiveProjectFlow, quickMenuFlow,
+} from "./actions";
 import { todayISO, asText, type Period } from "./data";
 import { t, setLanguage, LANGUAGE_LABELS, type Language } from "./i18n";
 import { attachFolderSuggest } from "./views/folder-suggest";
@@ -136,7 +140,15 @@ export class TLTPlugin extends Plugin {
 
     this.addCommand({ id: "open-workbench", name: "打开工作台", callback: () => { void this.activateWorkbench(); } });
     this.addCommand({ id: "open-messages", name: "打开消息中心（独立页）", callback: () => { void this.activateMessages(); } });
-    this.addCommand({ id: "new-task", name: "新建任务", callback: () => { new QuickTaskModal(this.app, this.store, () => this.refreshAll()).open(); } });
+    const refresh = () => this.refreshAll();
+    // —— 快捷命令（原生，不依赖 QuickAdd）——
+    this.addCommand({ id: "quick-menu", name: t("快捷命令…"), callback: () => quickMenuFlow(this.app, this.store, refresh, { workbench: () => this.activateWorkbench(), messages: () => this.activateMessages() }) });
+    this.addCommand({ id: "new-task", name: t("登记任务"), callback: () => taskRegisterFlow(this.app, this.store, refresh) });
+    this.addCommand({ id: "new-project", name: t("新建项目"), callback: () => newProjectFlow(this.app, this.store, refresh) });
+    this.addCommand({ id: "new-milestone", name: t("新建里程碑"), callback: () => { void newMilestoneFlow(this.app, this.store, refresh); } });
+    this.addCommand({ id: "archive-task", name: t("归档任务"), callback: () => { void archiveTaskFlow(this.app, this.store, refresh); } });
+    this.addCommand({ id: "archive-project", name: t("归档项目"), callback: () => { void archiveProjectFlow(this.app, this.store, refresh); } });
+    this.addCommand({ id: "delete-task", name: t("删除任务"), callback: () => { void deleteTaskFlow(this.app, this.store, refresh); } });
     this.addCommand({ id: "seed-demo", name: "生成示例数据", callback: () => { void this.seedDemo(); } });
     this.addCommand({ id: "toggle-theme", name: "切换明暗", callback: () => this.toggleTheme() });
     this.addCommand({ id: "self-check", name: "自检（写一份诊断报告）", callback: () => { void this.selfCheck(); } });

@@ -44,7 +44,8 @@ export class Plugin {
   registerView(_t: string, _f: any) {}
   registerEvent(_e: any) {}
   addRibbonIcon() { return document.createElement("div"); }
-  addCommand(_c: any) {}
+  commands: any[] = [];
+  addCommand(c: any) { this.commands.push(c); }
   addSettingTab(_t: any) {}
   registerInterval(id: number) { return id; }
   registerDomEvent(_el: any, _type: string, _cb: any) {}

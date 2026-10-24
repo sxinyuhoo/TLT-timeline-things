@@ -1316,3 +1316,19 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-pickck.on { background: var(--tlt-acc); border-color: var(--tlt-acc); }
 .tlt-pickname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tlt-pickrole { font-size: 8.5px; color: var(--tlt-ink5); flex: none; }
+
+/* ---- 快捷命令：可搜索列表弹窗 ---- */
+.tlt-picklist.big {
+  max-height: 320px; overflow: auto; margin-top: 10px;
+  display: flex; flex-direction: column; gap: 1px;
+  border-top: 1px solid var(--tlt-line); padding-top: 6px;
+}
+.tlt-picklist.big .tlt-pickrow { padding: 9px 11px; }
+.tlt-picklist.big .tlt-pickrow.on { background: var(--tlt-surface3); color: var(--tlt-ink); }
+.tlt-picklist.big .tlt-pickrow.on .tlt-pickname { font-weight: 600; }
+.tlt-modal .tlt-confirm-body {
+  margin: 6px 0 2px; font-size: 11.5px; color: var(--tlt-ink2); line-height: 1.75;
+  max-width: 460px; word-break: break-all;
+}
+.tlt-btn.danger { color: #E5534B; border-color: rgba(229, 83, 75, .38); }
+.tlt-btn.danger:hover { background: rgba(229, 83, 75, .12); }
