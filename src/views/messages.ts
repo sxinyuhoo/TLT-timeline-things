@@ -1,5 +1,5 @@
 import { t as T } from "../i18n";
-import { ItemView, WorkspaceLeaf, Notice, App } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, App, requestUrl } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS } from "../store";
 import { Msg, Feed, todayISO, addDays, D, cleanFeedUrl, errMsg } from "../data";
@@ -7,6 +7,18 @@ import { el, MsgModal, buildMsgFields, popMenu, TltModal } from "./modals";
 import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_MESSAGES = "tlt-messages";
+
+/** 问服务端：这个 id 真的注册上了吗（发布成功的唯一凭据） */
+async function remoteHasFeed(hub: string, id: string): Promise<boolean> {
+  try {
+    const res = await requestUrl({ url: `${hub.replace(/\/$/, "")}/feeds`, method: "GET", throw: false });
+    if (res.status >= 400) return false;
+    const body = res.json as { feeds?: { id?: string }[] };
+    return (body.feeds || []).some((x) => x.id === id);
+  } catch {
+    return false;
+  }
+}
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -45,6 +57,7 @@ export class MessagesView extends ItemView {
 
   async onOpen() { await this.ensureData(); await this.render(); }
   async refresh() { await this.ensureData(true); await this.render(); }
+
 
   /** 视图可能比插件先就绪；拿不到 store 就跳过，绝不抛 */
   private async ensureData(force = false) {
@@ -659,11 +672,11 @@ export class MessagesView extends ItemView {
           const unpub = el("button", "tlt-btn danger", T("取消发布"));
           unpub.onclick = () => { void (async () => {
             try { await this.store.unpublishFeed(pid, st.publish); } catch { /* 服务没起也不影响本地 */ }
-            const back = f.personal ? 0 : await this.store.foldBackToPersonal(f, "个人");
+            const back = f.personal ? 0 : await this.store.demoteToPersonal(f, "个人");
             this.selected.delete(f.id);
             await this.refresh();
             if (back < 0) new Notice("并回个人失败，源文件已保留，稍后再试");
-            else new Notice(back ? `已取消发布，${back} 条回到「个人」` : "已取消发布（这个源里没有内容）");
+            else new Notice(back ? `已取消发布，${back} 条回到「个人」` : "已取消发布，源已回到「个人」");
           })(); };
           act.append(push, unpub);
         } else {
@@ -798,13 +811,7 @@ class PublishFeedModal extends TltModal {
     descIn.placeholder = "这个源发什么（可留空）";
     descRow.appendChild(descIn);
 
-    const cadRow = el("div", "tlt-row");
-    cadRow.appendChild(el("span", "tlt-row-l", "节奏"));
-    const cadIn = el("input", "tlt-input");
-    cadIn.placeholder = "比如 每周 2–3 条（可留空）";
-    cadRow.appendChild(cadIn);
-
-    contentEl.append(descRow, cadRow);
+    contentEl.append(descRow);
     contentEl.appendChild(el("div", "tlt-hint",
       "名称取自这个源本身（要改在右栏 ✎ 改，发布/取消发布都不会变）。订阅地址由插件自动生成，不用自己起 ID。"));
 
@@ -820,15 +827,19 @@ class PublishFeedModal extends TltModal {
       if (!(await this.plugin.pingHub("publish"))) return;
       try {
         const r = await this.store.publishSource(this.from, {
-          name, desc: descIn.value.trim(), cadence: cadIn.value.trim(),
+          name, desc: descIn.value.trim(),
         });
         if (!r.ok) { new Notice("发布失败：名称空着"); return; }
         await this.store.load();
         const feed = this.store.feeds.find((f) => f.id === r.id || f.file === r.path);
         if (!feed) throw new Error(T("发布后没读回这个源"));
         const pushed = await this.store.publishFeed(feed, hub, r.id);
+        // 读回服务端，确认它真的收到了这个源（否则只是本地改了个文件）
+        const okRemote = await remoteHasFeed(hub, r.id);
         this.close(); void this.onDone();
-        new Notice(T("已发布并推送「{name}」· {n} 条", { name, n: pushed.count ?? 0 }), 6000);
+        new Notice(okRemote
+          ? T("已发布并推送「{name}」· {n} 条 · 服务端已确认", { name, n: pushed.count ?? 0 })
+          : T("已推送，但服务端没查到「{id}」，请检查服务地址：{hub}", { id: r.id, hub }), 8000);
       } catch (e) {
         this.close(); void this.onDone();
         new Notice(T("源已建好，但推送失败：{msg}（可在右栏「手动推送」重试）", { msg: errMsg(e) }), 8000);

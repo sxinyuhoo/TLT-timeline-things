@@ -502,12 +502,64 @@ export class Store {
    * - 个人 → 我发布的：新建 `feeds/<id>.md`，把选中的草稿搬过去
    * - 已是发布源：只改 id/名称/说明
    */
+  /**
+   * 改写源文件的 frontmatter 状态（个人 ↔ 已发布）。
+   * 个人源发布后应当**从「个人」挪到「我发布的」**，而不是另存一份——所以这里是就地改标志位。
+   */
+  private async setFeedFlags(feed: Feed, flags: { personal: boolean; mine: boolean; title?: string; desc?: string }) {
+    const file = await this.fileByPath(feed.file);
+    if (!file) console.warn("TLT: setFeedFlags 找不到文件", feed.file);
+    if (!file) return false;
+    await this.app.vault.process(file, (data) => {
+      const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(data);
+      const keep: string[] = [];
+      const body = m ? data.slice(m[0].length) : data;
+      if (m) {
+        for (const ln of m[1].split(/\r?\n/)) {
+          const k = ln.split(":")[0].trim();
+          if (["personal", "mine", "title", "desc"].includes(k)) continue;
+          if (ln.trim()) keep.push(ln);
+        }
+      }
+      if (flags.title !== undefined) keep.unshift(`title: ${flags.title}`);
+      if (flags.desc !== undefined && flags.desc) keep.push(`desc: ${flags.desc}`);
+      if (flags.personal) keep.push("personal: true");
+      if (flags.mine) keep.push("mine: true");
+      if (!keep.some((l) => l.startsWith("owner:"))) keep.push("owner: me");
+      return `---\n${keep.join("\n")}\n---\n${body}`;
+    });
+    return true;
+  }
+
+  /** 把个人源就地变成「我发布的」：文件改名成发布 id，标志位翻转，消息留在原地 */
+  private async promoteToPublished(from: Feed, id: string, name: string, desc?: string, cadence?: string) {
+    const target = normalizePath(`${this.settings.feedsFolder}/${id}.md`);
+    const file = await this.fileByPath(from.file);
+    if (!file) return null;
+    if (target !== from.file) {
+      await this.ensureFolder(this.settings.feedsFolder);
+      if (this.app.vault.getAbstractFileByPath(target)) return null;   // 目标已被占用，交给调用方换 id
+      await this.app.fileManager.renameFile(file, target);
+    }
+    await this.setFeedFlags({ ...from, file: target }, { personal: false, mine: true, title: name, desc });
+    if (cadence) {
+      const f2 = await this.fileByPath(target);
+      if (f2) {
+        await this.app.vault.process(f2, (data) => (/^cadence:/m.test(data) ? data : data.replace(/^---\n([\s\S]*?)\n---/, (_a, b) => `---\n${b}\ncadence: ${cadence}\n---`)));
+      }
+    }
+    return target;
+  }
+
   async publishSource(from: Feed, opts: { name: string; desc?: string; cadence?: string }) {
     const name = (opts.name || "").trim();
     if (!name) return { ok: false as const, reason: "empty" };
 
     // id 不让用户填：按名字生成，重名自动加序号；同一个源再次发布沿用上次的 id
-    const remembered = (this.settings.feedIds || {})[from.id];
+    // 只有"同一个源、同一个名字"才沿用上次的 id；改了名字就按新名字重新派生
+    const rememberedId = (this.settings.feedIds || {})[from.id];
+    const rememberedName = (this.settings.feedNames || {})[from.id];
+    const remembered = rememberedId && rememberedName === name ? rememberedId : undefined;
     const banned = new Set('\\/:*?"<>|#[]^'.split(""));
     const clean = (t: string) => Array.from(t).map((c) => (banned.has(c) ? "-" : c)).join("");
     let id = remembered || clean(name).replace(/\s+/g, "-").slice(0, 40) || "feed";
@@ -518,6 +570,23 @@ export class Store {
         id = `${base}-${n++}`;
         target = normalizePath(`${this.settings.feedsFolder}/${id}.md`);
       }
+    }
+
+    if (from.personal) {
+      // 个人源：就地转成已发布（不另存一份、不搬消息）
+      let pid = id;
+      let target2 = normalizePath(`${this.settings.feedsFolder}/${pid}.md`);
+      if (target2 !== from.file && this.app.vault.getAbstractFileByPath(target2)) {
+        let base = id, n = 2;
+        while (this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.feedsFolder}/${base}-${n}.md`))) n++;
+        pid = `${base}-${n}`;
+        target2 = normalizePath(`${this.settings.feedsFolder}/${pid}.md`);
+      }
+      const made = await this.promoteToPublished(from, pid, name, opts.desc, opts.cadence);
+      if (!made) return { ok: false as const, reason: "rename" };
+      this.settings.feedIds = { ...(this.settings.feedIds || {}), [from.id]: pid };
+      this.settings.feedNames = { ...(this.settings.feedNames || {}), [from.id]: name };
+      return { ok: true as const, path: made, moved: 0, id: pid };
     }
 
     const head = [
@@ -576,6 +645,26 @@ export class Store {
   }
 
   /** 取消发布：把内容并回个人源，然后把这个源文件删掉（进系统回收站） */
+  /**
+   * 取消发布：把「我发布的」源就地变回个人源（改名回 个人.md 并翻转标志）。
+   * 如果已经有另一个个人源，就把消息并进去、删掉这个文件（老数据兼容）。
+   */
+  async demoteToPersonal(feed: Feed, personalId: string) {
+    const home = normalizePath(`${this.settings.feedsFolder}/${personalId}.md`);
+    if (feed.file === home) {
+      await this.setFeedFlags(feed, { personal: true, mine: false, title: personalId });
+      return 0;
+    }
+    if (!this.app.vault.getAbstractFileByPath(home)) {
+      const file = await this.fileByPath(feed.file);
+      if (!file) return -1;
+      await this.app.fileManager.renameFile(file, home);
+      await this.setFeedFlags({ ...feed, file: home }, { personal: true, mine: false, title: personalId });
+      return 0;
+    }
+    return this.foldBackToPersonal(feed, personalId);     // 已有个人源：并回去（老路径）
+  }
+
   async foldBackToPersonal(feed: Feed, personalId: string) {
     const personal = this.feeds.find((f) => f.id === personalId);
     const home = personal ? personal.file : normalizePath(`${this.settings.feedsFolder}/${personalId}.md`);

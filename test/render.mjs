@@ -146,9 +146,23 @@ const vault = {
   createFolder: async (p) => { createdFolders.push(p); createdFolderSet.add(p); },
   on: () => ({}),
 };
+/** 从文件内容解析 frontmatter：改名/改写之后必须重新算，不能只靠静态表 */
+const parseFmNow = (path) => {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(files[path] || "");
+  if (!m) return fm[path] || {};
+  const out = {};
+  for (const ln of m[1].split("\n")) {
+    const i = ln.indexOf(":");
+    if (i < 0) continue;
+    const k = ln.slice(0, i).trim(), v = ln.slice(i + 1).trim();
+    out[k] = v === "true" ? true : v === "false" ? false : v;
+  }
+  return out;
+};
+
 const app = {
   vault,
-  metadataCache: { getFileCache: (f) => ({ frontmatter: fm[f.path] }) },
+  metadataCache: { getFileCache: (f) => ({ frontmatter: parseFmNow(f.path) }) },
   workspace: { getLeavesOfType: () => [], getLeaf: () => ({}) },
   // 搬运走 Obsidian 的 renameFile：实测语义照搬（内容跟着路径走）
   fileManager: { renameFile: async (f, to) => { if (f && f.path in files) { files[to] = files[f.path]; delete files[f.path]; } } },
@@ -941,7 +955,7 @@ await t("发布消息源：不再单独给名称框，用源自身的名字", as
   btn.click();
   await new Promise((r) => window.setTimeout(r, 40));
   const inputs = [...document.querySelectorAll(".modal input")];
-  assert.equal(inputs.length, 2, `弹窗里应只剩 说明/节奏 两个输入框，实际 ${inputs.length}`);
+  assert.equal(inputs.length, 1, `弹窗里应只剩「说明」一个输入框，实际 ${inputs.length}`);
   assert.ok((document.querySelector(".modal")?.textContent || "").includes("源名称"), "应显示源名称");
 });
 
@@ -989,6 +1003,33 @@ await t("发布消息源：服务不通时不许报发布成功", async () => {
   [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "发布")?.click();
   await new Promise((r) => window.setTimeout(r, 80));
   assert.equal(view.store.feeds.length, before, "ping 不通时也不该发布");
+});
+
+await t("发布个人源：从「个人」挪到「我发布的」（只留一份）", async () => {
+  document.body.empty();
+  const view = mount(MessagesView);
+  await view.onOpen();
+  const personal = view.store.feeds.find((f) => f.personal);
+  assert.ok(personal, "夹具里没有个人源");
+  const before = view.store.feeds.length;
+  await view.store.publishSource(personal, { name: "对外动态" });
+  await view.store.load();
+  const after = view.store.feeds;
+  assert.equal(after.length, before, `不该多出一个源文件（${before} → ${after.length}）`);
+  assert.equal(after.filter((f) => f.personal).length, 0, "「个人」里不该还留着它");
+  const pub = after.find((f) => f.name === "对外动态");
+  assert.ok(pub && pub.mine && !pub.personal, "「我发布的」里没有它");
+  assert.ok(pub.items.length >= 1, "消息应留在原地，不该丢");
+  assert.ok(!Object.keys(files).some((k) => k === "TLT/feeds/个人.md"), "个人源文件应已改名为发布 id");
+
+  // 再取消发布：应就地回到「个人」，消息还在
+  const n = pub.items.length;
+  await view.store.demoteToPersonal(pub, "个人");
+  await view.store.load();
+  const back = view.store.feeds.find((f) => f.personal);
+  assert.ok(back, "取消发布后没回到「个人」");
+  assert.ok(!view.store.feeds.some((f) => f.name === "对外动态"), "「我发布的」里不该还在");
+  assert.equal(back.items.length, n, `消息数应保持 ${n}，实际 ${back.items.length}`);
 });
 
 await t("切到人员：卡片 + 饱和度 45%", async () => {

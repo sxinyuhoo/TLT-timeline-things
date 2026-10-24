@@ -1,4 +1,8 @@
-/* 消息源生命周期：个人 →(发布)→ 我发布的 →(取消发布)→ 个人；订阅 →(退订)→ 删文件 */
+/* 消息源生命周期：个人 →(发布)→ 我发布的 →(取消发布)→ 个人；订阅 →(退订)→ 删文件
+ *
+ * 口径（2026-10 改）：发布是**就地换状态**——同一个文件从「个人」挪到「我发布的」，
+ * 消息留在原地；取消发布再挪回来。不再"新建一份 + 搬消息"。
+ */
 import esbuild from "esbuild";
 import assert from "node:assert/strict";
 
@@ -49,7 +53,11 @@ function parseFm(text = "") {
 }
 const app = {
   vault,
-  fileManager: { trashFile: async (f) => { vault.trashed.push(f.path); delete vault.files[f.path]; } },
+  fileManager: {
+    trashFile: async (f) => { vault.trashed.push(f.path); delete vault.files[f.path]; },
+    // 改名：内容跟着路径走（与 Obsidian 行为一致）
+    renameFile: async (f, to) => { vault.files[to] = vault.files[f.path]; delete vault.files[f.path]; },
+  },
   metadataCache: { getFileCache: (f) => ({ frontmatter: parseFm(vault.files[f.path] || "") }) },
 };
 const store = new Store(app, {
@@ -66,51 +74,58 @@ const t = async (name, fn) => {
 };
 
 const me = () => store.feeds.find((f) => f.personal);
+const byName = (n) => store.feeds.find((f) => f.name === n);
 
 await t("个人源被识别为 personal", async () => {
   assert.ok(me(), "没有个人源");
   assert.equal(me().items.length, 3);
 });
 
-await t("发布源：自动生成 id，全部搬过去，个人清空", async () => {
+await t("发布个人源：就地变成「我发布的」，消息不丢也不重复", async () => {
   const r = await store.publishSource(me(), { name: "部门动态", desc: "试试" });
   assert.equal(r.ok, true, "发布失败");
   assert.equal(r.id, "部门动态", `id 应来自名称，实际 ${r.id}`);
-  assert.ok("TLT/feeds/部门动态.md" in vault.files, "新源文件没建出来");
+  assert.ok("TLT/feeds/部门动态.md" in vault.files, "文件没改名成发布 id");
+  assert.ok(!("TLT/feeds/个人.md" in vault.files), "个人源文件应已不在（不是另存一份）");
   const text = vault.files["TLT/feeds/部门动态.md"];
-  assert.ok(text.includes("草稿一") && text.includes("草稿三"), "草稿没搬全");
-  assert.ok(/mine: true/.test(text), "新源应是 mine");
-  const left = vault.files["TLT/feeds/个人.md"];
-  assert.ok(!left.includes("草稿一"), "个人里还有草稿一（会重复）");
+  assert.ok(/mine: true/.test(text), "应标记 mine");
+  assert.ok(!/personal: true/.test(text), "不该还留着 personal");
+  assert.ok(/title: 部门动态/.test(text), "标题应改成发布名");
+  assert.ok(text.includes("草稿一") && text.includes("草稿三"), "消息应留在原地");
+  await store.load();
+  assert.equal(me(), undefined, "「个人」里不该还留着它");
+  assert.ok(byName("部门动态"), "「我发布的」里应该有它");
 });
 
-await t("再次发布：不重复写入，个人里新加的会被带过去", async () => {
+await t("取消发布：就地回到「个人」，消息还在、不多出文件", async () => {
+  const pub = byName("部门动态");
+  const n = pub.items.length;
+  const r = await store.demoteToPersonal(pub, "个人");
+  assert.equal(r, 0, "就地回迁应返回 0（不需要搬消息）");
   await store.load();
-  vault.files["TLT/feeds/个人.md"] += `- ${D} 草稿四\n`;
-  await store.load();
-  const r = await store.publishSource(me(), { name: "部门动态" });
-  assert.equal(r.id, "部门动态", "应沿用上次的 id");
-  const text = vault.files["TLT/feeds/部门动态.md"];
-  assert.equal((text.match(/草稿一/g) || []).length, 1, "重复写入了同一条");
-  assert.ok(text.includes("草稿四"), "新草稿没带过去");
-  assert.equal(r.moved, 1, `只该搬 1 条，实际 ${r.moved}`);
+  assert.ok("TLT/feeds/个人.md" in vault.files, "文件应改名回 个人.md");
+  assert.ok(!byName("部门动态"), "「我发布的」里不该还在");
+  assert.ok(me(), "「个人」里应回来了");
+  assert.equal(me().items.length, n, `消息数应保持 ${n}，实际 ${me().items.length}`);
+  assert.ok(/personal: true/.test(vault.files["TLT/feeds/个人.md"]), "应标记 personal");
 });
 
-await t("同名不同源：自动加序号，不报占用", async () => {
-  const other = store.feeds.find((f) => f.id === "部门动态");
-  const r = await store.publishSource({ ...other, id: "another", file: "TLT/feeds/x.md", items: [] }, { name: "部门动态" });
-  assert.equal(r.ok, true, "同名二次发布被拒了");
-  assert.equal(r.id, "部门动态-2", `应加序号，实际 ${r.id}`);
+await t("发布名重复：自动加序号，不覆盖别人的源", async () => {
+  const r = await store.publishSource(me(), { name: "我的工作动态" });
+  assert.equal(r.ok, true, "同名发布不该被拒");
+  assert.equal(r.id, "我的工作动态-2", `应加序号，实际 ${r.id}`);
+  assert.ok("TLT/feeds/我的工作动态.md" in vault.files, "原来的同名源不能被覆盖");
 });
 
-await t("取消发布：内容并回个人，源文件进回收站", async () => {
-  const pub = store.feeds.find((f) => f.id === "部门动态");
-  const n = await store.foldBackToPersonal(pub, "个人");
-  assert.ok(n >= 3, `应并回至少 3 条，实际 ${n}`);
-  assert.ok(vault.trashed.includes("TLT/feeds/部门动态.md"), "文件没进回收站");
+await t("再次发布：不产生第二份文件", async () => {
   await store.load();
-  assert.equal(store.feeds.find((f) => f.id === "部门动态"), undefined, "源还在列表里");
-  assert.ok(me().items.length >= 3, `个人里只有 ${me().items.length} 条`);
+  const pub = store.feeds.find((f) => f.mine && f.name.startsWith("我的工作动态"));
+  const before = Object.keys(vault.files).filter((k) => k.startsWith("TLT/feeds/")).length;
+  const r = await store.publishSource(pub, { name: pub.name, desc: "改说明" });
+  assert.equal(r.ok, true);
+  assert.equal(r.id, pub.id, "同名再发布应沿用原 id");
+  const after = Object.keys(vault.files).filter((k) => k.startsWith("TLT/feeds/")).length;
+  assert.equal(after, before, `再发布不该多出文件（${before} → ${after}）`);
 });
 
 await t("退订：文件进回收站并从列表消失", async () => {
