@@ -56,7 +56,7 @@ EP.createDiv = function (o) { return this.createEl("div", typeof o === "string" 
 EP.createSpan = function (o) { return this.createEl("span", typeof o === "string" ? { cls: o } : o); };
 
 const mod = await import(out);
-const { fps, makeStore, setLanguage, t, WorkbenchView, MessagesView, TLTSettingTab,
+const { fps, makeStore, setLanguage, t, WorkbenchView, MessagesView, TLTSettingTab, TLTPlugin,
   QuickTaskModal, TaskModal, QuickLogModal, IdeaModal, MsgModal, AddStaffModal, StaffModal,
   MilestonePeekModal, PromptModal, LogModal, TaskPeekModal } = mod;
 
@@ -236,6 +236,30 @@ await t2("弹窗（英文）：按钮与说明无中文", async () => {
     const bad = firstCjk(box);
     assert.ok(!bad, `${label}：还有中文 → ${bad}${cjkReport(box).length ? " / " + cjkReport(box)[0] : ""}`);
   }
+});
+
+await t2("切语言：命令名 / 视图页签 / 设置页一起刷新", async () => {
+  setLanguage("zh");
+  const { app, store } = await makeStore();
+  const plugin = new TLTPlugin(app, { id: "tlt-timeline-things", version: "0.7.1" });
+  plugin.app = app; plugin.store = store; plugin.settings = store.settings;
+  const calls = { header: 0, openTab: 0, render: 0 };
+  const leaves = [
+    { view: { render: async () => { calls.render++; } }, updateHeader: () => { calls.header++; } },
+    { view: { render: async () => { calls.render++; } }, updateHeader: () => { calls.header++; } },
+  ];
+  app.workspace.getLeavesOfType = () => leaves;
+  app.setting = { activeTab: { id: "tlt-timeline-things" }, openTabById: () => { calls.openTab++; } };
+  plugin.cmdNames = [{ cmd: { name: "Open workbench" }, name: () => t("打开工作台") }];
+
+  setLanguage("zh");
+  plugin.relabel();
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(plugin.cmdNames[0].cmd.name, "打开工作台", "命令名没跟着换");
+  assert.ok(calls.header >= 2, "视图页签标题应刷新（getDisplayText 是缓存的）");
+  assert.equal(calls.openTab, 1, "设置页应整页重建，否则刚改的那一项还是旧语言");
+  assert.ok(calls.render >= 2, "两个视图应重渲染");
 });
 
 console.log(out2.join("\n"));

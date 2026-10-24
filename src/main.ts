@@ -65,8 +65,30 @@ export class TLTPlugin extends Plugin {
   /** 切语言后：命令名、设置页、两个视图一起换 */
   relabel() {
     this.cmdNames.forEach((x) => { x.cmd.name = x.name(); });
-    this.settingTab?.rerender();
+
+    // 视图页签的标题来自 getDisplayText()，Obsidian 只在建标签时读一次；
+    // 不显式刷新，切完语言页签还挂着旧语言的名字。
+    for (const type of [VIEW_TYPE_WORKBENCH, VIEW_TYPE_MESSAGES]) {
+      for (const leaf of this.app.workspace.getLeavesOfType(type)) {
+        const l = leaf as unknown as { updateHeader?: () => void };
+        if (typeof l.updateHeader === "function") l.updateHeader();
+      }
+    }
+
     this.refreshAll();
+
+    // 设置页整页重建：声明式设置会沿用"刚改的那一项"的旧标签，
+    // 只调 update() 时语言项自己还是旧语言，所以把这一页重开一次。
+    const st = (this.app as unknown as {
+      setting?: { openTabById?: (id: string) => void; activeTab?: { id?: string } };
+    }).setting;
+    if (st && st.activeTab?.id === this.manifest.id && typeof st.openTabById === "function") {
+      st.openTabById(this.manifest.id);
+    } else {
+      // 没有 setting 容器（或不是当前页）：退回刷新一次，再补一次防框架异步重绘
+      this.settingTab?.rerender();
+      window.setTimeout(() => this.settingTab?.rerender(), 60);
+    }
   }
 
   async onload() {

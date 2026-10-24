@@ -29,7 +29,7 @@ export async function makeStore(settings: Partial<TLTSettings> = {}) {
 
 export { WorkbenchView } from "../src/views/workbench";
 export { MessagesView } from "../src/views/messages";
-export { TLTSettingTab } from "../src/main";
+export { TLTSettingTab, TLTPlugin } from "../src/main";
 export { setLanguage, t } from "../src/i18n";
 export {
   QuickTaskModal, TaskModal, QuickLogModal, IdeaModal, MsgModal,
