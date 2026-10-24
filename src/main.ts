@@ -8,7 +8,7 @@ import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
 import { MoveDataModal } from "./views/modals";
 import {
   taskRegisterFlow, newProjectFlow, newMilestoneFlow, deleteTaskFlow,
-  archiveTaskFlow, archiveProjectFlow, quickMenuFlow,
+  archiveTaskFlow, archiveProjectFlow, quickMenuFlow, quickIdeaFlow, newMessageFlow,
 } from "./actions";
 import { todayISO, asText, type Period } from "./data";
 import { t, setLanguage, LANGUAGE_LABELS, type Language } from "./i18n";
@@ -144,6 +144,8 @@ export class TLTPlugin extends Plugin {
     // —— 快捷命令（原生，不依赖 QuickAdd）——
     this.addCommand({ id: "quick-menu", name: t("快捷命令…"), callback: () => quickMenuFlow(this.app, this.store, refresh, { workbench: () => this.activateWorkbench(), messages: () => this.activateMessages() }) });
     this.addCommand({ id: "new-task", name: t("登记任务"), callback: () => taskRegisterFlow(this.app, this.store, refresh) });
+    this.addCommand({ id: "new-idea", name: t("随手记"), callback: () => quickIdeaFlow(this.app, this.store, refresh) });
+    this.addCommand({ id: "new-message", name: t("新建消息"), callback: () => newMessageFlow(this.app, this.store, refresh) });
     this.addCommand({ id: "new-project", name: t("新建项目"), callback: () => newProjectFlow(this.app, this.store, refresh) });
     this.addCommand({ id: "new-milestone", name: t("新建里程碑"), callback: () => { void newMilestoneFlow(this.app, this.store, refresh); } });
     this.addCommand({ id: "archive-task", name: t("归档任务"), callback: () => { void archiveTaskFlow(this.app, this.store, refresh); } });

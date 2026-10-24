@@ -1,7 +1,8 @@
 import { App, Notice, TFile } from "obsidian";
 import { Store } from "./store";
 import { ConfirmModal, PickerModal, type PickItem } from "./views/picker";
-import { PromptModal, QuickTaskModal } from "./views/modals";
+import { IdeaModal, PromptModal, QuickTaskModal } from "./views/modals";
+import { ComposeModal } from "./views/messages";
 import { t as T } from "./i18n";
 
 type Refresh = () => void | Promise<void>;
@@ -37,6 +38,23 @@ async function pickProject(app: App, store: Store, title: string): Promise<TFile
 
 export function taskRegisterFlow(app: App, store: Store, refresh: Refresh) {
   new QuickTaskModal(app, store, refresh).open();
+}
+
+/* ---------------- ①b 随手记（想法池） ---------------- */
+
+export function quickIdeaFlow(app: App, store: Store, refresh: Refresh) {
+  new IdeaModal(app, store, undefined, refresh).open();
+}
+
+/* ---------------- ①c 新建消息（消息中心） ---------------- */
+
+export function newMessageFlow(app: App, store: Store, refresh: Refresh) {
+  const writable = [
+    ...store.feeds.filter((f) => f.personal),
+    ...store.feeds.filter((f) => f.mine && !f.personal),
+  ];
+  if (!writable.length) { new Notice(T("没有可写的消息源（个人源或我发布的）")); return; }
+  new ComposeModal(app, store, refresh).open();
 }
 
 /* ---------------- ② 新建项目 ---------------- */
@@ -182,8 +200,10 @@ export function quickMenuFlow(
     { label: T("登记任务"), hint: T("一句话记下来，顺手挑项目和里程碑"), value: "task" },
     { label: T("新建项目"), hint: T("建一个项目文件（## 是里程碑）"), value: "project" },
     { label: T("新建里程碑"), hint: T("给已有项目加一个 ## 小节"), value: "milestone" },
-    { label: T("归档任务"), hint: T("从项目里摘出来，留档备查"), value: "archive-task" },
-    { label: T("归档项目"), hint: T("整个项目移出工作台"), value: "archive-project" },
+    { label: T("随手记"), hint: T("一句想法进想法池，可带 #标签"), value: "idea" },
+    { label: T("新建消息"), hint: T("记一条消息到消息源（个人 / 我发布的）"), value: "message" },
+    { label: T("归档任务"), hint: T("一条任务收起来：从项目里摘掉，记到 archive/项目.md"), value: "archive-task" },
+    { label: T("归档项目"), hint: T("项目结束了：整个文件搬进 archive/，工作台不再显示"), value: "archive-project" },
     { label: T("删除任务"), hint: T("选项目 → 选任务 → 确认"), value: "delete" },
     { label: T("打开工作台"), hint: T("日历 / 任务 / 里程碑 / 人员"), value: "workbench" },
     { label: T("打开消息中心"), hint: T("时间线消息"), value: "messages" },
@@ -191,6 +211,8 @@ export function quickMenuFlow(
   new PickerModal<string>(app, T("TLT 快捷命令"), items, T("输入关键字过滤命令"), (v) => {
     if (!v) return;
     if (v === "task") taskRegisterFlow(app, store, refresh);
+    else if (v === "idea") quickIdeaFlow(app, store, refresh);
+    else if (v === "message") newMessageFlow(app, store, refresh);
     else if (v === "project") newProjectFlow(app, store, refresh);
     else if (v === "milestone") void newMilestoneFlow(app, store, refresh);
     else if (v === "archive-task") void archiveTaskFlow(app, store, refresh);

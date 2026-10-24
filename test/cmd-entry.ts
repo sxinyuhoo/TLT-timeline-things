@@ -90,5 +90,5 @@ export async function makeStore() {
 export { PickerModal, ConfirmModal } from "../src/views/picker";
 export {
   taskRegisterFlow, newProjectFlow, newMilestoneFlow, deleteTaskFlow,
-  archiveTaskFlow, archiveProjectFlow, quickMenuFlow,
+  archiveTaskFlow, archiveProjectFlow, quickMenuFlow, quickIdeaFlow, newMessageFlow,
 } from "../src/actions";

@@ -106,6 +106,8 @@ Search `TLT` in the command palette (⌘P); bind your own hotkeys.
 | --- | --- |
 | 快捷命令… (Quick commands…) | One launcher listing everything below |
 | 登记任务 (Log a task) | Jot a task down and pick project / milestone / dates / priority / owner |
+| 随手记 (Quick note) | One thought into the idea pool (`TLT/ideas.md`), `#tags` welcome |
+| 新建消息 (New message) | Write a message into your personal or published source |
 | 新建项目 (New project) | Create a project file (`##` sections are milestones) |
 | 新建里程碑 (New milestone) | Add a `##` section to an existing project |
 | 归档任务 (Archive a task) | Take one task out of a project, keep a record in that project's archive file |

@@ -213,6 +213,36 @@ await t("归档项目：文件搬进 archive/，原位置消失", async () => {
   assert.ok(fps.files["TLT/archive/泽塔.md"], "应搬到 archive/");
 });
 
+/* ---------------- ⑤b 随手记 ---------------- */
+await t("随手记：写进 ideas.md，带 #标签", async () => {
+  const { app, store, refresh } = await NEW();
+  void mod.quickIdeaFlow(app, store, refresh);
+  await flush(30);
+  const title = document.querySelector(".modal .tlt-idea-title");
+  assert.ok(title, "应弹出随手记表单");
+  await typeInto(title, "把回归脚本整理成工具");
+  clickText(document.querySelector(".modal"), "收录");
+  await flush(80);
+  const ideas = fps.files["TLT/ideas.md"] || "";
+  assert.ok(ideas.includes("把回归脚本整理成工具"), `ideas.md 里应有这条：\n${ideas}`);
+});
+
+/* ---------------- ⑤c 新建消息 ---------------- */
+await t("新建消息：写进消息源文件", async () => {
+  const { app, store, refresh } = await NEW();
+  void mod.newMessageFlow(app, store, refresh);
+  await flush(30);
+  const modal = document.querySelector(".modal");
+  assert.ok(modal, "应弹出新建消息");
+  const title = modal.querySelector("input.tlt-input-title") || modal.querySelector("input.tlt-input");
+  await typeInto(title, "周五的评审会");
+  clickText(modal, "创建");
+  await flush(90);
+  const files = Object.keys(fps.files).filter((k) => k.startsWith("TLT/feeds/"));
+  const hit = files.find((k) => (fps.files[k] || "").includes("周五的评审会"));
+  assert.ok(hit, `消息应写进某个源：${files.join(", ")}`);
+});
+
 /* ---------------- ⑥ 选择器键盘操作 ---------------- */
 await t("选择器：打字过滤 + ↑↓ + 回车选中", async () => {
   const { app } = await makeStore();
@@ -235,12 +265,23 @@ await t("选择器：打字过滤 + ↑↓ + 回车选中", async () => {
 });
 
 /* ---------------- ⑦ 命令都注册上了 ---------------- */
-await t("插件注册了六个快捷命令 + 一个总入口", async () => {
+await t("插件注册了九个快捷命令 + 一个总入口", async () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   assert.ok(manifest.version.startsWith("0.5"), `版本应是 0.5.x，实际 ${manifest.version}`);
   const src = readFileSync(join(root, "src/main.ts"), "utf8");
-  for (const id of ["quick-menu", "new-task", "new-project", "new-milestone", "archive-task", "archive-project", "delete-task"]) {
+  for (const id of ["quick-menu", "new-task", "new-idea", "new-message", "new-project",
+    "new-milestone", "archive-task", "archive-project", "delete-task"]) {
     assert.ok(src.includes(`id: "${id}"`), `缺少命令 ${id}`);
+  }
+});
+
+await t("总入口列出全部动作（含随手记 / 新建消息）", async () => {
+  const { app, store, refresh } = await NEW();
+  mod.quickMenuFlow(app, store, refresh, { workbench: () => {}, messages: () => {} });
+  await flush(30);
+  const labels = [...document.querySelectorAll(".tlt-pickrow")].map((r) => r.querySelector(".tlt-pickname")?.textContent || "");
+  for (const want of ["登记任务", "随手记", "新建消息", "新建项目", "新建里程碑", "归档任务", "归档项目", "删除任务"]) {
+    assert.ok(labels.some((l) => l.includes(want)), `总入口缺「${want}」，实际：${labels.join(" / ")}`);
   }
 });
 

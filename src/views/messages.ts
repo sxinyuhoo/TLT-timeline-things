@@ -855,7 +855,7 @@ class PublishFeedModal extends TltModal {
 
 /* ================= 新建消息 ================= */
 
-class ComposeModal extends TltModal {
+export class ComposeModal extends TltModal {
   store: Store;
   onDone: () => void | Promise<void>;
   presetFeed?: string;
