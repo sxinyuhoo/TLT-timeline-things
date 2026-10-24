@@ -1,12 +1,13 @@
 import { t as T } from "../i18n";
-import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, TFile } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS } from "../store";
 import {
   Task, Msg, Period, todayISO, addDays,
   hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, ideaTags, ideaFilterTags,
 } from "../data";
-import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, el } from "./modals";
+import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, PromptModal, popMenu, el } from "./modals";
+import { confirmArchiveProject, confirmArchiveTask, confirmDeleteTask } from "../archive";
 import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
@@ -144,6 +145,16 @@ export class WorkbenchView extends ItemView {
       const sw = el("span", "tlt-sw");
       sw.setCssProps({ "--tlt-sw": this.projColor(p) });
       row.append(sw, el("span", "tlt-pname", p), el("span", "tlt-ppct", pct + "%"));
+      // 项目级动作：悬停出现「…」，右键也可以
+      const more = el("button", "tlt-pmore", "⋯");
+      more.title = T("新建里程碑 / 归档项目");
+      more.dataset.projmenu = p;
+      more.onclick = (ev) => { ev.stopPropagation(); this.projectMenu(more, p); };
+      row.appendChild(more);
+      card.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        this.projectMenu(card, p, { x: ev.clientX, y: ev.clientY });
+      });
       const bar = el("div", "tlt-pbar");
       const fill = el("i"); fill.style.width = pct + "%"; bar.appendChild(fill);
       const meta = el("div", "tlt-pmeta", `${list.filter((t) => !t.done).length} 项未完成 · ${list.filter((t) => t.milestone).length} 个里程碑任务`);
@@ -648,6 +659,43 @@ export class WorkbenchView extends ItemView {
     };
   }
 
+  /** 项目菜单：新建里程碑 / 归档项目 / 打开文件 */
+  private projectMenu(anchor: HTMLElement, p: string, at?: { x: number; y: number }) {
+    const file = this.app.vault.getAbstractFileByPath(`${this.cfg.tasksFolder}/${p}.md`);
+    popMenu(anchor, [
+      { label: T("新建里程碑"), onClick: () => this.promptMilestone(p) },
+      { label: T("归档项目"), onClick: () => { if (file instanceof TFile) confirmArchiveProject(this.app, this.store, file, () => this.render()); } },
+      { label: T("打开项目文件"), onClick: () => {
+        if (!(file instanceof TFile)) return;
+        const leaf = this.app.workspace.getLeaf(true) as unknown as { openFile?: (f: TFile) => Promise<void> };
+        if (leaf && typeof leaf.openFile === "function") void leaf.openFile(file);
+        else new Notice(T("当前窗口不支持打开文件"));
+      } },
+    ], "right", at);
+  }
+
+  private promptMilestone(p: string) {
+    new PromptModal(this.app, T("新建里程碑"), T("里程碑名（项目文件里的 ## 小节）"), async (name) => {
+      const ok = await this.store.addMilestone(p, name);
+      if (!ok) { new Notice(T("没加成：名字空了，或者这个里程碑已经在了")); return; }
+      await this.store.load();
+      await this.render();
+      new Notice(T("已在 {p} 加了里程碑：{n}", { p, n: name }), 3000);
+    }).open();
+  }
+
+  /** 任务菜单：详情 / 归档 / 删除 */
+  private taskMenu(t: Task, at?: { x: number; y: number }, anchor?: HTMLElement) {
+    const file = this.app.vault.getAbstractFileByPath(t.file);
+    if (!(file instanceof TFile)) return;
+    const open = this.store.tasks.filter((x) => x.file === t.file && !x.done).length;
+    popMenu(anchor ?? this.contentEl, [
+      { label: T("打开详情"), onClick: () => new TaskModal(this.app, this.store, t, () => this.render()).open() },
+      { label: T("归档任务"), onClick: () => confirmArchiveTask(this.app, this.store, { file, line: t.line, title: t.title, milestone: t.milestone, done: t.done }, () => this.render(), open) },
+      { label: T("删除任务"), danger: true, onClick: () => confirmDeleteTask(this.app, this.store, { file, line: t.line, title: t.title, milestone: t.milestone, done: t.done }, () => this.render()) },
+    ], "right", at);
+  }
+
   private taskRow(t: Task): HTMLElement {
     const r = el("div", "tlt-task" + (t.done ? " done" : ""));
     r.dataset.task = t.id;
@@ -673,6 +721,10 @@ export class WorkbenchView extends ItemView {
     if (t.files.length) meta.appendChild(el("span", "", `▤ ${t.files.length}`));
     body.appendChild(meta);
     r.appendChild(body);
+    r.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      this.taskMenu(t, { x: ev.clientX, y: ev.clientY }, r);
+    });
     return r;
   }
 

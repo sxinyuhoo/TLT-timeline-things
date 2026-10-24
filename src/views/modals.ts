@@ -1073,20 +1073,31 @@ export class IdeaModal extends TltModal {
 
 
 /** 轻量弹出菜单（锚在按钮上方，点外面关掉） */
-export function popMenu(anchor: HTMLElement, items: { label: string; onClick: () => void | Promise<void> }[], align: "left" | "right" = "left") {
+export function popMenu(
+  anchor: HTMLElement,
+  items: { label: string; onClick: () => void | Promise<void>; danger?: boolean }[],
+  align: "left" | "right" = "left",
+  at?: { x: number; y: number },
+) {
   document.querySelectorAll(".tlt-menu").forEach((n) => n.remove());
   const m = el("div", "tlt-menu");
   items.forEach((it) => {
-    const b = el("button", "tlt-menu-i", it.label);
+    const b = el("button", "tlt-menu-i" + (it.danger ? " danger" : ""), it.label);
     b.onclick = () => { m.remove(); void it.onClick(); };
     m.appendChild(b);
   });
   document.body.appendChild(m);
   const r = anchor.getBoundingClientRect();
   const w = m.offsetWidth || 150;
-  const left = align === "right" ? Math.min(r.right - w, window.innerWidth - w - 8) : Math.max(8, r.left);
-  m.style.left = `${Math.round(left)}px`;
-  m.style.top = `${Math.round(Math.min(r.top - m.offsetHeight - 6, window.innerHeight - m.offsetHeight - 8))}px`;
+  if (at) {
+    // 右键：贴在指针下方，出界就往回收
+    m.style.left = `${Math.round(Math.min(at.x, window.innerWidth - w - 8))}px`;
+    m.style.top = `${Math.round(Math.min(at.y, window.innerHeight - m.offsetHeight - 8))}px`;
+  } else {
+    const left = align === "right" ? Math.min(r.right - w, window.innerWidth - w - 8) : Math.max(8, r.left);
+    m.style.left = `${Math.round(left)}px`;
+    m.style.top = `${Math.round(Math.min(r.top - m.offsetHeight - 6, window.innerHeight - m.offsetHeight - 8))}px`;
+  }
   const off = (e: MouseEvent) => {
     if (!m.contains(e.target as Node)) { m.remove(); document.removeEventListener("mousedown", off); }
   };

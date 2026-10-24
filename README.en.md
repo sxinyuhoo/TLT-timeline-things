@@ -122,9 +122,15 @@ Every list filters as you type, ↑↓ to move, Enter to confirm, Esc to cancel.
 | --- | --- |
 | 打开工作台 | Open the workbench |
 | 打开消息中心（独立页） | Open the message center only |
-| 生成示例数据 | Seed a sample under `TLT/` (never overwrites) |
 | 切换明暗 | Toggle dark / light |
 | 推送到发布服务 / 从拉取服务同步 | Manual message sync |
+
+## Archiving from the workbench
+
+- **Right-click a task row**: open / archive / delete
+- **Right-click a project card** (or the `⋯` that appears on hover): new milestone / archive project / open file
+
+Both ask first and say which file it goes to and how many tasks are still open.
 
 ## How archiving works
 

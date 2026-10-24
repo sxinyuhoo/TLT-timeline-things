@@ -151,7 +151,6 @@ export class TLTPlugin extends Plugin {
     this.addCommand({ id: "archive-task", name: t("归档任务"), callback: () => { void archiveTaskFlow(this.app, this.store, refresh); } });
     this.addCommand({ id: "archive-project", name: t("归档项目"), callback: () => { void archiveProjectFlow(this.app, this.store, refresh); } });
     this.addCommand({ id: "delete-task", name: t("删除任务"), callback: () => { void deleteTaskFlow(this.app, this.store, refresh); } });
-    this.addCommand({ id: "seed-demo", name: "生成示例数据", callback: () => { void this.seedDemo(); } });
     this.addCommand({ id: "toggle-theme", name: "切换明暗", callback: () => this.toggleTheme() });
     this.addCommand({ id: "self-check", name: "自检（写一份诊断报告）", callback: () => { void this.selfCheck(); } });
     this.addCommand({ id: "hub-publish", name: "推送到发布服务", callback: () => { void this.publishAll(); } });

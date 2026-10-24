@@ -1,7 +1,8 @@
 import { App, Notice, TFile } from "obsidian";
 import { Store } from "./store";
-import { ConfirmModal, PickerModal, type PickItem } from "./views/picker";
+import { PickerModal, type PickItem } from "./views/picker";
 import { IdeaModal, PromptModal, QuickTaskModal } from "./views/modals";
+import { confirmArchiveProject, confirmArchiveTask, confirmDeleteTask } from "./archive";
 import { ComposeModal } from "./views/messages";
 import { t as T } from "./i18n";
 
@@ -124,17 +125,7 @@ export async function deleteTaskFlow(app: App, store: Store, refresh: Refresh) {
   if (!pick) return;
 
   // ③ 确认
-  new ConfirmModal(app, {
-    title: T("删除任务"),
-    body: `${pick.title}\n\n${T("来源")}：${pick.file.path}${pick.milestone ? " · " + pick.milestone : ""}\n\n${T("这一行会从文档里移除，不可撤销（可从回收站/文件历史恢复）。")}`,
-    ok: T("删除"),
-  }, async (ok) => {
-    if (!ok) return;
-    const done = await store.removeTaskAt(pick.file, pick.line, pick.title);
-    await store.load();
-    await refresh();
-    new Notice(done ? T("已删除：{n}", { n: pick.title }) : T("任务行内容已变化，删除中止（请重试）"));
-  }).open();
+  confirmDeleteTask(app, store, pick, refresh);
 }
 
 /* ---------------- ⑤ 归档任务（从项目里摘出来，留档） ---------------- */
@@ -156,15 +147,7 @@ export async function archiveTaskFlow(app: App, store: Store, refresh: Refresh) 
   });
   if (!pick) return;
 
-  const body = `${pick.title}\n\n${T("归档")}：${file.basename}${pick.milestone ? " · " + pick.milestone : ""}\n→ ${store.archiveDir()}/${file.basename}.md\n\n` +
-    (pick.done ? T("这条任务已完成，会从项目里摘掉、在归档文件里留一条。") : T("这条任务还没完成（这个项目里还有 {n} 条未完成）。仍然要归档吗？", { n: undone }));
-  new ConfirmModal(app, { title: T("归档任务"), body, ok: T("归档") }, async (ok) => {
-    if (!ok) return;
-    const done = await store.archiveTask(file, pick.line, pick.milestone);
-    await store.load();
-    await refresh();
-    new Notice(done ? T("已归档：{n}", { n: pick.title }) : T("任务行内容已变化，归档中止（请重试）"));
-  }).open();
+  confirmArchiveTask(app, store, { file, line: pick.line, title: pick.title, milestone: pick.milestone, done: pick.done }, refresh, undone);
 }
 
 /* ---------------- ⑥ 归档项目（整个文件移进归档目录） ---------------- */
@@ -172,22 +155,7 @@ export async function archiveTaskFlow(app: App, store: Store, refresh: Refresh) 
 export async function archiveProjectFlow(app: App, store: Store, refresh: Refresh) {
   const file = await pickProject(app, store, T("归档项目"));
   if (!file) return;
-  const rows = await store.projectTaskLines(file);
-  const undone = rows.filter((r) => !r.done).length;
-  const body = undone
-    ? T("{p} 还有 {n} 条未完成（共 {m} 条）。归档后它会移出工作台，任务不会丢（在 {d} 里）。", { p: file.basename, n: undone, m: rows.length, d: store.archiveDir() })
-    : T("{p} 的任务都已完成（共 {m} 条）。归档后移出工作台，文件仍在 {d} 里，随时能翻回来。", { p: file.basename, m: rows.length, d: store.archiveDir() });
-  new ConfirmModal(app, {
-    title: T("归档项目"),
-    body: `${body}\n\n${file.path} → ${store.archiveDir()}/${file.name}`,
-    ok: T("归档"),
-  }, async (ok) => {
-    if (!ok) return;
-    const done = await store.archiveProject(file);
-    await store.load();
-    await refresh();
-    new Notice(done ? T("已归档项目：{n}", { n: file.basename }) : T("归档失败，文件可能已被移动"));
-  }).open();
+  confirmArchiveProject(app, store, file, refresh);
 }
 
 /* ---------------- ⑦ 一个总入口：快捷命令面板 ---------------- */
