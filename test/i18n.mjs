@@ -244,10 +244,19 @@ await t2("切语言：命令名 / 视图页签 / 设置页一起刷新", async (
   const plugin = new TLTPlugin(app, { id: "tlt-timeline-things", version: "0.7.1" });
   plugin.app = app; plugin.store = store; plugin.settings = store.settings;
   const calls = { header: 0, update: 0, renderTab: 0, render: 0 };
-  const leaves = [
-    { view: { render: async () => { calls.render++; } }, updateHeader: () => { calls.header++; } },
-    { view: { render: async () => { calls.render++; } }, updateHeader: () => { calls.header++; } },
-  ];
+  const mkLeaf = () => {
+    const box = document.createElement("div");
+    const head = document.createElement("div");
+    head.className = "view-header-title";
+    box.appendChild(head);
+    return {
+      containerEl: box,
+      view: { render: async () => { calls.render++; }, getDisplayText: () => t("时间线工作台") },
+      updateHeader: () => { calls.header++; },
+      titleEl: head,
+    };
+  };
+  const leaves = [mkLeaf(), mkLeaf()];
   app.workspace.getLeavesOfType = () => leaves;
   plugin.settingTab = { update: () => { calls.update++; }, renderTab: () => { calls.renderTab++; }, containerEl: document.createElement("div") };
   plugin.cmdNames = [{ cmd: { name: "Open workbench" }, name: () => t("打开工作台") }];
@@ -258,8 +267,11 @@ await t2("切语言：命令名 / 视图页签 / 设置页一起刷新", async (
 
   assert.equal(plugin.cmdNames[0].cmd.name, "打开工作台", "命令名没跟着换");
   assert.ok(calls.header >= 2, "视图页签标题应刷新（getDisplayText 是缓存的）");
-  assert.equal(calls.update, 1, "设置页要先刷定义");
-  assert.equal(calls.renderTab, 1, "再重建 DOM——只 update() 时刚改的那一项还是旧语言");
+  assert.ok(calls.update >= 1, "设置页要先刷定义");
+  assert.ok(calls.renderTab >= 1, "再重建 DOM——只 update() 时刚改的那一项还是旧语言");
+  // 视图头部那条大标题（.view-header-title）也要换，updateHeader 只管标签页
+  const headTexts = leaves.map((l) => l.titleEl.textContent);
+  assert.ok(headTexts.every((x) => x === "时间线工作台"), `视图头部标题没换：${headTexts.join(" / ")}`);
   assert.ok(calls.render >= 2, "两个视图应重渲染");
 });
 

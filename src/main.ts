@@ -70,8 +70,19 @@ export class TLTPlugin extends Plugin {
     // 不显式刷新，切完语言页签还挂着旧语言的名字。
     for (const type of [VIEW_TYPE_WORKBENCH, VIEW_TYPE_MESSAGES]) {
       for (const leaf of this.app.workspace.getLeavesOfType(type)) {
-        const l = leaf as unknown as { updateHeader?: () => void };
+        const l = leaf as unknown as {
+          updateHeader?: () => void;
+          containerEl?: HTMLElement;
+          view?: { getDisplayText?: () => string };
+        };
+        // updateHeader() 只改标签页上的标题，不改视图头部那条大标题
         if (typeof l.updateHeader === "function") l.updateHeader();
+        const text = l.view?.getDisplayText?.();
+        const titleEl = l.containerEl?.querySelector<HTMLElement>(".view-header-title");
+        if (text && titleEl) {
+          if (typeof titleEl.setText === "function") titleEl.setText(text);
+          else titleEl.textContent = text;
+        }
       }
     }
 
@@ -87,10 +98,16 @@ export class TLTPlugin extends Plugin {
       containerEl?: HTMLElement;
     } | undefined;
     if (tab && typeof tab.update === "function" && typeof tab.renderTab === "function") {
-      tab.update();
-      const keep = tab.containerEl?.scrollTop ?? 0;
-      tab.renderTab();
-      if (tab.containerEl) tab.containerEl.scrollTop = keep;
+      const repaint = () => {
+        tab.update?.();
+        const keep = tab.containerEl?.scrollTop ?? 0;
+        tab.renderTab?.();
+        if (tab.containerEl) tab.containerEl.scrollTop = keep;
+      };
+      repaint();
+      // 再补一帧：触发的这一行（语言下拉）会被框架用自己的旧定义重画一次，
+      // 不同步重建的话，只有这一行要等下次打开设置才更新
+      window.setTimeout(repaint, 0);
     } else {
       tab?.rerender?.();
     }
