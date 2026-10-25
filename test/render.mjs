@@ -937,6 +937,22 @@ await t("人员视图：一行两个 + 星图图例带样张（并说明灰点=�
   const grid = document.querySelector(".tlt-staffgrid");
   assert.ok(grid, "没有人员网格");
   // jsdom 不做样式计算：直接核对样式表里的规则
+  // 标签不能互相压住：按 x/y/anchor + 估宽算框，两两比较
+  const wrap = [...document.querySelectorAll(".tlt-star .tlt-plab")].map((t) => {
+    const str = Array.from(t.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join("");
+    const w = Array.from(str).reduce((n, ch) => n + (/[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? 10 : 5.8), 0);
+    const x = Number(t.getAttribute("x")), y = Number(t.getAttribute("y"));
+    const a = t.getAttribute("text-anchor");
+    const x0 = a === "end" ? x - w : a === "middle" ? x - w / 2 : x;
+    return { str, x0: x0 - 3, x1: x0 + w + 3, y0: y - 11, y1: y + 5 };
+  });
+  for (let i = 0; i < wrap.length; i++) {
+    for (let j = i + 1; j < wrap.length; j++) {
+      const a = wrap[i], b = wrap[j];
+      const hit = !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1);
+      assert.ok(!hit, `标签压住了：「${a.str}」×「${b.str}」`);
+    }
+  }
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   assert.ok(/\.tlt-staffgrid \{[^}]*repeat\(2,/.test(css), "人员网格不是两列");
   assert.ok(/@media \(max-width: 720px\) \{ \.tlt-staffgrid \{ grid-template-columns: 1fr/.test(css), "窄屏应退回一列");
@@ -1153,6 +1169,22 @@ await t("星图：项目全部画出来（不再只画前 8 个），标签用�
   assert.ok(wedges.length >= 13, `星图应画全部项目（2 个原有 + 11 个新），实际 ${wedges.length}`);
   const labels = [...document.querySelectorAll(".tlt-star .tlt-plab")].map((t) => t.textContent);
   assert.ok(labels.length >= 13, `每个项目都该有标签，实际 ${labels.length}`);
+  // 标签不能互相压住：按 x/y/anchor + 估宽算框，两两比较
+  const wrap = [...document.querySelectorAll(".tlt-star .tlt-plab")].map((t) => {
+    const str = Array.from(t.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join("");
+    const w = Array.from(str).reduce((n, ch) => n + (/[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? 10 : 5.8), 0);
+    const x = Number(t.getAttribute("x")), y = Number(t.getAttribute("y"));
+    const a = t.getAttribute("text-anchor");
+    const x0 = a === "end" ? x - w : a === "middle" ? x - w / 2 : x;
+    return { str, x0: x0 - 3, x1: x0 + w + 3, y0: y - 11, y1: y + 5 };
+  });
+  for (let i = 0; i < wrap.length; i++) {
+    for (let j = i + 1; j < wrap.length; j++) {
+      const a = wrap[i], b = wrap[j];
+      const hit = !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1);
+      assert.ok(!hit, `标签压住了：「${a.str}」×「${b.str}」`);
+    }
+  }
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   const m = /\.tlt-plab \{[^}]*font-size: ([0-9.]+)px/.exec(css);
   assert.ok(m && Number(m[1]) >= 9, `.tlt-plab 字号应不小于 9px，实际 ${m && m[1]}`);

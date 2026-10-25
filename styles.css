@@ -604,7 +604,7 @@ body.theme-light .tlt-root .tlt-blk.plan { background: rgba(75, 90, 224, .09); }
 .tlt-spoke { stroke: var(--tlt-line4); stroke-width: 1; }
 .tlt-rlab { font-size: 7.5px; fill: var(--tlt-ink5); }
 .tlt-plab { font-size: 9.5px; fill: var(--tlt-ink3); font-weight: 500; }
-.tlt-wedge { pointer-events: none; }
+.tlt-wedge { pointer-events: auto; }   /* 让扇形能悬停出 tooltip（"项目 · 未完成 n / 共 m"） */
 .tlt-node { cursor: pointer; }
 .tlt-node:hover { stroke: var(--tlt-ink); stroke-width: 1.4; }
 .tlt-plink { stroke: var(--tlt-acc); stroke-width: 1; fill: none; opacity: .18; }

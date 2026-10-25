@@ -18,6 +18,8 @@ const kindLabel = (k: string) => ({ ask: T("要求"), event: T("活动"), risk: 
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
 const weekday = (i: number) => [T("日"), T("一"), T("二"), T("三"), T("四"), T("五"), T("六")][i] || "";
 const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
+/** 粗略估宽（星图标签 9.5px 字号）：中文按 10px，其余按 5.8px */
+const labelWidth = (s: string) => Array.from(s).reduce((w, ch) => w + (/[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? 10 : 5.8), 0);
 
 /** 项目配色：星图扇形与侧栏色块共用，颜色一致才好认 */
 const PROJ_COLORS = ["#5B6CFF", "#F0C24B", "#27C1A3", "#B57BFF", "#F2994A", "#FF7A9C", "#5FD6B4", "#7C8BA1"];
@@ -499,8 +501,8 @@ export class WorkbenchView extends ItemView {
     const wrap = el("div", "tlt-star-wrap");
     const svg = createSvg("svg");
     svg.setAttribute("class", "tlt-star");
-    svg.setAttribute("viewBox", "0 0 560 200");
-    const redraw = () => { setSvgMarkup(svg, this.starBody(560, 200)); };
+    svg.setAttribute("viewBox", "0 0 560 240");
+    const redraw = () => { setSvgMarkup(svg, this.starBody(560, 240)); };
     redraw();
     wrap.appendChild(svg);
     box.appendChild(wrap);
@@ -563,6 +565,8 @@ export class WorkbenchView extends ItemView {
     tasks.forEach((t) => { if (t.due) (byP[t.project] = byP[t.project] || []).push(t); });
 
     let body = "";
+    /** 标签占位框：两圈交错时用来判断会不会压住 */
+    const boxes: { x0: number; x1: number; y0: number; y1: number }[] = [];
     // 每个项目一块扇形底（颜色与侧栏色块一致），这样"哪块属于哪个项目"一眼可见
     projects.forEach((p, i) => {
       const a0 = ((-90 + i * span) * Math.PI) / 180;
@@ -570,7 +574,9 @@ export class WorkbenchView extends ItemView {
       const rr = R + 10;
       const x0 = cx + Math.cos(a0) * rr, y0 = cy + Math.sin(a0) * rr;
       const x1 = cx + Math.cos(a1) * rr, y1 = cy + Math.sin(a1) * rr;
-      body += `<path class="tlt-wedge" data-proj="${escapeXml(p)}" d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${x0.toFixed(1)} ${y0.toFixed(1)} A${rr.toFixed(1)} ${rr.toFixed(1)} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)} Z" fill="${this.projColor(p)}" opacity=".1"/>`;
+      const list = byP[p] || [];
+      const open = list.filter((t) => !t.done).length;
+      body += `<path class="tlt-wedge" data-proj="${escapeXml(p)}" d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${x0.toFixed(1)} ${y0.toFixed(1)} A${rr.toFixed(1)} ${rr.toFixed(1)} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)} Z" fill="${this.projColor(p)}" opacity=".1"><title>${escapeXml(p)} · ${T("未完成")} ${open} / ${T("共")} ${list.length}</title></path>`;
     });
     [0, 7, 14, 21].forEach((d) => {
       const r = r0 + (d / 21) * (R - r0);
@@ -580,14 +586,30 @@ export class WorkbenchView extends ItemView {
     projects.forEach((p, i) => {
       const a = ((-90 + i * span) * Math.PI) / 180;
       body += `<line class="tlt-spoke" x1="${cx}" y1="${cy}" x2="${(cx + Math.cos(a) * (R + 8)).toFixed(1)}" y2="${(cy + Math.sin(a) * (R + 8)).toFixed(1)}"/>`;
-      // 标签放扇形正中（不是分界线），名字尽量给全，过长才截断；完整名字留在 tooltip 里
+    });
+
+    // 标签：两圈交错 + 先到先得。
+    // 项目一多，同一圈的字会互相压住；撞到已放好的就往外挪一圈，两圈都放不下才不画
+    //（不画也不丢信息：扇形上有 tooltip，左侧栏也列着全部项目）。
+    // 摆放顺序按任务数从多到少——忙的项目优先拿到位置，被挤掉的总是小项目。
+    const maxLen = projects.length > 12 ? 10 : projects.length > 8 ? 14 : 18;
+    const labelOrder = projects.map((p, i) => i).sort((a, b) => (byP[projects[b]] || []).length - (byP[projects[a]] || []).length);
+    labelOrder.forEach((i) => {
+      const p = projects[i];
       const am = ((-90 + (i + 0.5) * span) * Math.PI) / 180;
-      const lx = cx + Math.cos(am) * (R + 20), ly = cy + Math.sin(am) * (R + 20);
       const anchor = Math.abs(Math.cos(am)) < 0.3 ? "middle" : Math.cos(am) > 0 ? "start" : "end";
-      // 项目多的时候标签短一点，免得互相压住；完整名字在 tooltip 里
-      const maxLen = projects.length > 12 ? 8 : 14;
-      const label = Array.from(p).length > maxLen ? Array.from(p).slice(0, maxLen - 1).join("") + "…" : p;
-      body += `<text class="tlt-plab" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="${anchor}" fill="${this.projColor(p)}">${escapeXml(label)}<title>${escapeXml(p)}</title></text>`;
+      const chars = Array.from(p);
+      const label = chars.length > maxLen ? chars.slice(0, maxLen - 1).join("") + "…" : p;
+      const w = labelWidth(label);
+      for (const ring of [R + 16, R + 34]) {
+        const lx = cx + Math.cos(am) * ring, ly = cy + Math.sin(am) * ring;
+        const x0 = anchor === "end" ? lx - w : anchor === "middle" ? lx - w / 2 : lx;
+        const box = { x0: x0 - 3, x1: x0 + w + 3, y0: ly - 11, y1: ly + 5 };
+        if (boxes.some((b) => !(box.x1 < b.x0 || box.x0 > b.x1 || box.y1 < b.y0 || box.y0 > b.y1))) continue;
+        boxes.push(box);
+        body += `<text class="tlt-plab" data-proj="${escapeXml(p)}" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="${anchor}" fill="${this.projColor(p)}">${escapeXml(label)}<title>${escapeXml(p)}</title></text>`;
+        break;
+      }
     });
 
     projects.forEach((p, i) => {
