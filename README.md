@@ -2,9 +2,28 @@
 
 **中文** | [English](README.en.md)
 
-**A timeline-first workbench for Obsidian**: calendar, tasks, milestones, team load and quick notes, plus a standalone message center with publishing and subscribing. Everything is stored as plain Markdown in your vault — uninstall the plugin and your data is still there. Full English guide: [README.en.md](README.en.md).
+**A timeline-first workbench for Obsidian**: task management + schedule + timeline + project milestones, with calendar, team workload and quick notes, plus a standalone message center (publish / subscribe). Everything is stored as plain Markdown in your vault — uninstall the plugin and your data is still there. Full English guide: [README.en.md](README.en.md).
 
 以**时间线**为中心的任务与消息工作台：日历、任务、里程碑、人员饱和度、随手记，外加一个可以单独使用的消息中心。所有内容都是你库里的普通 Markdown —— 删掉插件，数据还在。
+
+## 这些词你可能在找（关键词对照）
+
+插件市场里搜 **tasks / timeline / schedule / task manager / gantt / kanban** 都可能落到这里。下面把大家常用的叫法逐条对一遍，方便你判断是不是你要的那个：
+
+| 你在找 | TLT 里对应什么 |
+| --- | --- |
+| 任务管理 / Tasks / To-do / Task manager | 项目笔记里的一行 `- [ ]`，勾选即完成；按**逾期 / 要做 / 已完成 / 待排期**分组，可按标签筛 |
+| 时间线 / Timeline | 打开就是「今天」：几点做了什么、这天还要做什么；记录按天攒进月文件 |
+| 日程 / Schedule / 日历 / Calendar | 一天的日程排布（时间块 + 计划块），点空白处把任务排进这天 |
+| 项目 / Project / 里程碑 / Milestone | 一个项目一个 md，`##` 小节就是里程碑；里程碑视图分「开展中 / 已完成」两段 |
+| 甘特图 / Gantt | **没有甘特条**。用里程碑视图看排期、星图按到期日铺开，回答"哪几周最挤"够用 |
+| 看板 / Kanban / Board | **没有拖拽看板**。任务按状态分组呈现（状态即分组），拖拽排序还没做 |
+| 工时 / 工作量 / 产能 / Workload | 任务可写人天估算；人员页算每人饱和度（本期未完成人天 ÷ 产能） |
+| 待办清单 / Checklist / Sub-task | 任务下面可以挂缩进子步骤，勾子步骤不影响父任务 |
+| 周报 / 复盘 / 日志 / Daily note | 每天的记录按 `## 日期` 攒进 `TLT/logs/YYYY-MM.md`，写周报直接抄 |
+| 消息 / 通知 / Inbox / 订阅 | 独立的消息中心：消息源、时间线（卡片/轴/分带/热力）、发布与订阅 |
+
+> 和 `obsidian-tasks`、`dataview`、`kanban`、`calendar` 这类插件**不冲突**：TLT 读的是普通 `- [ ]` 行，不要求也不写 `#task` 标签，可以同一个库里共存。
 
 ![日历视图：左边项目进度、中间日程与节奏星图、右边消息](docs/screenshots/01-calendar-day.png)
 
@@ -27,7 +46,7 @@
 - **BRAT**（测试版）：装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) → *Add beta plugin* → `sxinyuhoo/TLT-timeline-things`
 - **手动**：把 `main.js`、`manifest.json`、`styles.css` 放进 `<vault>/.obsidian/plugins/tlt-timeline-things/`，再到 设置 → 第三方插件 启用
 
-首次启用会按需建目录；命令面板里有 **「生成示例数据」**，可以先看效果再上手——示例里的人名、项目、消息全是编的占位内容，已存在的文件不覆盖。
+首次启用会按需建目录。想先看效果：**设置 → TLT → 维护 → 生成示例数据**，会写一份虚构样例（人名、项目、消息都是编的），已存在的文件不覆盖。
 
 需要 Obsidian **1.8.7+**（桌面端与移动端都可）。界面语言可在设置里选：跟随 Obsidian／中文／English，漏译的条目会回落成中文。
 
@@ -178,6 +197,12 @@ npm run preview    # 导出各视图静态 HTML，用于看样式
 ## 路线图
 
 见 [ROADMAP.md](ROADMAP.md)。下一步是**日历互操作**（导入 macOS 日历 / `.ics`，双向同步）。
+
+## 关键词
+
+任务管理 · 任务清单 · 待办 · 时间线 · 时间轴 · 日程 · 日程安排 · 日历 · 项目 · 项目管理 · 里程碑 · 甘特 · 看板 · 工时 · 工作量 · 饱和度 · 人员排期 · 随手记 · 想法池 · 每日记录 · 周报 · 消息中心 · 通知 · 订阅 · 发布 · 纯 Markdown · 本地优先
+
+tasks · todo · to-do · task manager · task list · checklist · timeline · time line · schedule · scheduler · calendar · planner · project · project management · milestone · gantt · kanban · board · workload · capacity · effort · team · notes · inbox · messages · notifications · feeds · rss · plain markdown · local-first · offline
 
 ## 许可
 

@@ -1,7 +1,7 @@
 {
   "name": "tlt-timeline-things",
-  "version": "0.7.5",
-  "description": "TLT — 以时间线为中心的任务与消息工作台（Obsidian 插件）",
+  "version": "0.7.6",
+  "description": "Obsidian plugin: timeline-first task manager with schedule, calendar, project milestones, workload and a message center (plain Markdown)",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

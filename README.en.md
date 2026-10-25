@@ -1,10 +1,29 @@
 # TLT - Timeline Things
 
-A **timeline-first** workbench for tasks and messages: calendar, tasks, milestones, team load, quick notes — plus a message center that works on its own.
+A **timeline-first** workbench for **task management, schedule and project milestones**: calendar, tasks, team workload, quick notes — plus a message center that works on its own.
 
 [中文](README.md) | **English**
 
 Everything is plain Markdown inside your vault. Uninstall the plugin and your data is still there.
+
+## What you might be searching for
+
+People find this plugin by many names — **tasks, timeline, schedule, task manager, planner, gantt, kanban, project milestones**. Here is an honest mapping of each:
+
+| You're looking for | What TLT gives you |
+| --- | --- |
+| Task management / Tasks / To-do / Task manager | One `- [ ]` line inside a project note; tick to finish. Grouped as **overdue / to do / done / unscheduled**, filterable by tag |
+| Timeline | Opens on *today*: what happened at what hour, what's still due. Entries pile up per day into a monthly file |
+| Schedule / Calendar / Planner | A day laid out as time blocks and planned blocks; click empty space to slot a task into that day |
+| Project / Milestone | One project = one markdown file, each `##` section is a milestone; milestone view splits *active* vs *done* |
+| Gantt | **No gantt bars.** Milestone view shows the schedule and the star chart spreads tasks by due date — enough to answer "which weeks are packed" |
+| Kanban / Board | **No drag-and-drop board.** Tasks are grouped by state (the state *is* the column); drag-to-reorder isn't there yet |
+| Workload / Capacity / Effort | Tasks carry person-day estimates; the team view computes each person's load (open person-days ÷ capacity) |
+| Checklist / Sub-task | A task can carry indented sub-steps; ticking a step doesn't tick the parent |
+| Daily note / Log / Weekly review | Entries are filed under `## date` into `TLT/logs/YYYY-MM.md` — copy from it when writing your weekly report |
+| Messages / Notifications / Inbox / Feeds | A separate message center: feeds, timeline (cards / axis / lanes / heatmap), publish and subscribe |
+
+> **It coexists** with `obsidian-tasks`, `dataview`, `kanban`, `calendar` and friends: TLT reads plain `- [ ]` lines and never requires or writes a `#task` tag.
 
 ![Calendar view: project progress on the left, schedule and rhythm chart in the middle, messages on the right](docs/screenshots/01-calendar-day.png)
 
@@ -27,7 +46,7 @@ Everything is plain Markdown inside your vault. Uninstall the plugin and your da
 - **BRAT** (beta): install [BRAT](https://github.com/TfTHacker/obsidian42-brat) → *Add beta plugin* → `sxinyuhoo/TLT-timeline-things`
 - **Manual**: copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/tlt-timeline-things/`, then enable it in Settings → Community plugins
 
-Folders are created on demand. There is a command **“生成示例数据” (seed demo data)** that writes a small sample under `TLT/` without overwriting existing files.
+Folders are created on demand. To see it populated first: **Settings → TLT → Maintenance → generate sample data** — it writes a fictional sample (names, projects and messages are made up) and never overwrites existing files.
 
 ## What makes it different
 
@@ -174,6 +193,12 @@ TypeScript + esbuild (CJS); tests run real rendering through jsdom with an Obsid
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md). Next up: **calendar interoperability** (import from macOS Calendar / `.ics`, two-way sync).
+
+## Keywords
+
+tasks · todo · to-do · task manager · task list · checklist · timeline · schedule · scheduler · calendar · planner · project · project management · milestone · gantt · kanban · board · workload · capacity · effort · team · notes · inbox · messages · notifications · feeds · plain markdown · local-first · offline
+
+任务管理 · 待办 · 时间线 · 日程 · 日历 · 项目管理 · 里程碑 · 甘特 · 看板 · 工作量 · 人员排期 · 随手记 · 周报 · 消息中心 · 订阅
 
 ## License
 

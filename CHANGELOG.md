@@ -1,5 +1,16 @@
 # 更新日志
 
+## 0.7.6
+
+**补检索词：让搜 tasks / timeline / schedule 的人能找到这个插件**
+
+- 改：`manifest.json` 的 description 重写成一句中英双语、含主要检索词的描述（163 字符）：任务 / 日程 / 项目管理 / 日历 / 里程碑 / 人员饱和度 / 消息中心 + tasks / schedule / calendar / milestones
+- 新增：README 中英各加一节「**这些词你可能在找**」对照表——任务管理、时间线、日程、日历、项目与里程碑、甘特、看板、工时、待办清单、周报、消息中心，逐条说明「有 / 没有 / 换成什么做法」，不吹没有的功能
+- 新增：README 末尾「关键词」一行（中英各 30 个左右），给站外搜索用
+- 修：README 里还写着「命令面板有生成示例数据」——这个命令 0.5.2 已移除，入口改到 设置 → 维护
+- 新增回归：manifest 描述 ≤250 字符且必须含 tasks/schedule/calendar/milestone/message 与中文关键词；两版 README 必须提到 gantt/kanban/workload
+
+
 ## 0.7.5
 
 **星图标签不再互相压住**（项目一多，环上的项目名会叠在一起）

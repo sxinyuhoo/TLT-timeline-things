@@ -260,6 +260,28 @@ await t("总入口列出全部动作（含随手记 / 新建消息）", async ()
   }
 });
 
+/* ---------------- 市场可检索性（README / manifest 关键词） ---------------- */
+await t("manifest 描述：够短、且带上主要检索词", async () => {
+  const m = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
+  const d = m.description || "";
+  assert.ok(d.length <= 250, `描述应 ≤250 字符，实际 ${d.length}`);
+  for (const kw of ["task", "tasks", "schedule", "calendar", "milestone", "message", "任务", "日程", "里程碑"]) {
+    assert.ok(d.toLowerCase().includes(kw.toLowerCase()), `manifest 描述里缺关键词「${kw}」：${d}`);
+  }
+});
+
+await t("README（中英）：有关键词对照表，且覆盖 tasks/timeline/schedule", async () => {
+  for (const f of ["README.md", "README.en.md"]) {
+    const s = readFileSync(join(root, f), "utf8").toLowerCase();
+    for (const kw of ["tasks", "timeline", "schedule", "calendar", "milestone"]) {
+      assert.ok(s.includes(kw), `${f} 里没提到「${kw}」`);
+    }
+    assert.ok(/甘特|gantt/.test(s), `${f} 里没提甘特/gantt`);
+    assert.ok(/看板|kanban/.test(s), `${f} 里没提看板/kanban`);
+    assert.ok(/工时|workload/.test(s), `${f} 里没提工时/workload`);
+  }
+});
+
 console.log(results.join("\n"));
 console.log(`\n${pass} 项通过${fail ? `，${fail} 项失败` : "，全部通过"}`);
 process.exit(fail ? 1 : 0);
