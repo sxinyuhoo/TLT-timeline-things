@@ -1,5 +1,13 @@
 # 更新日志
 
+## 0.7.7
+
+- 改：插件显示名 **`TLT - Timeline Things` → `TLT - Timeline & Tasks`**（`id` 仍是 `tlt-timeline-things`，已装用户不受影响，数据与快捷键都保留）
+  - 顺带让应用内市场搜 **tasks** 能直接命中插件名，不必只依赖描述
+  - 命令面板里的前缀随之变成「TLT - Timeline & Tasks: …」
+- 改：README 中英标题同步
+
+
 ## 0.7.6
 
 **补检索词：让搜 tasks / timeline / schedule 的人能找到这个插件**

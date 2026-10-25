@@ -1,4 +1,4 @@
-# TLT - Timeline Things · 时间线工作台
+# TLT - Timeline & Tasks · 时间线工作台
 
 **中文** | [English](README.en.md)
 

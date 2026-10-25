@@ -261,7 +261,7 @@ await t2("切语言：命令名 / 视图页签 / 设置页一起刷新", async (
   const leaves = [mkLeaf(), mkLeaf()];
   app.workspace.getLeavesOfType = () => leaves;
   plugin.settingTab = { update: () => { calls.update++; }, renderTab: () => { calls.renderTab++; }, containerEl: document.createElement("div") };
-  plugin.cmdNames = [{ cmd: { name: "Open workbench" }, full: () => `TLT - Timeline Things: ${t("打开工作台")}` }];
+  plugin.cmdNames = [{ cmd: { name: "Open workbench" }, full: () => `TLT - Timeline & Tasks: ${t("打开工作台")}` }];
 
   setLanguage("zh");
   plugin.relabel();
