@@ -91,7 +91,8 @@ const mod = require_(path.join(PLUGIN_DIR, "main.js"));
 const PluginClass = mod.default ?? mod;
 console.log("导出形态:", typeof PluginClass, "原型上有 onload:", typeof PluginClass.prototype?.onload);
 
-const inst = new PluginClass(app, { id: "tlt-timeline-things", dir: "tlt-timeline-things", version: "0.4.13", minAppVersion: "1.8.7" });
+const realManifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, "manifest.json"), "utf8"));
+const inst = new PluginClass(app, { ...realManifest, dir: PLUGIN_DIR });
 if (process.env.TLT_LANG) settings.language = process.env.TLT_LANG;   // 想验英文就 TLT_LANG=en
 inst.loadData = async () => settings;
 // 模拟「重启时先恢复视图，再跑完 onload」——旧标签页在数据就绪前就构造
