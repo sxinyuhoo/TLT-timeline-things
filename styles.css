@@ -35,6 +35,28 @@ body {
   --tlt-acc-ink: #E7E9FF;
   --tlt-hot: #D96A6A;
 }
+/* Obsidian 主题（或第三方主题）会给 button / input 套一层默认底色，
+   选择器常常是 `button:not(.clickable-icon)` 这类，比我们的 .tlt-xxx 更"具体"。
+   系统深色 + 插件浅色时，这些控件就还是深色。这里统一按我们的令牌压回去。 */
+.tlt-root button, .tlt-modal button, .tlt-menu button, .tlt-pickpop button {
+  font-family: inherit;
+  background-image: none;
+  box-shadow: none;
+  background-color: transparent;
+  color: var(--tlt-ink2);
+  border-color: var(--tlt-line);
+}
+.tlt-root input:not([type="checkbox"]):not([type="radio"]),
+.tlt-modal input:not([type="checkbox"]):not([type="radio"]),
+.tlt-root select, .tlt-modal select,
+.tlt-root textarea, .tlt-modal textarea {
+  font-family: inherit;
+  box-shadow: none;
+  background-color: var(--tlt-surface2);
+  color: var(--tlt-ink);
+  border-color: var(--tlt-line);
+}
+
 .tlt-root, .tlt-modal { color: var(--tlt-ink); }
 .tlt-root { background: var(--tlt-bg); }
 
@@ -76,7 +98,9 @@ body.tlt-dark {
   --tlt-acc-ink: #E7E9FF;
   --tlt-hot: #D96A6A;
 }
+body.tlt-dark { color-scheme: dark; }
 body.tlt-light {
+  color-scheme: light;
   --tlt-bg: #F5F6FA; --tlt-bg2: #FFFFFF; --tlt-surface: #FAFBFD; --tlt-surface2: #F0F2F7; --tlt-surface3: #E9ECF3;
   --tlt-line: rgba(18,22,38,.09); --tlt-line2: rgba(18,22,38,.17); --tlt-line3: #DBDFE9; --tlt-line4: #E2E5EE;
   --tlt-ink: #16181F; --tlt-ink2: #4C5260; --tlt-ink3: #6B7280; --tlt-ink4: #767D8C; --tlt-ink5: #828A99;
@@ -1233,7 +1257,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   margin: 8px 0 4px;
   padding: 8px 10px;
   border-radius: 8px;
-  background: var(--background-secondary);
+  background: var(--tlt-surface2);
 }
 .tlt-host .tlt-moves .tlt-hint { margin: 0; line-height: 1.7; }
 
@@ -1243,8 +1267,8 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   z-index: var(--layer-menu, 30);
   padding: 4px;
   border-radius: 8px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  background: var(--tlt-bg2);
+  border: 1px solid var(--tlt-line2);
   box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
   max-height: 220px;
   overflow: auto;
@@ -1253,13 +1277,13 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   padding: 5px 8px;
   border-radius: 6px;
   font-size: 12px;
-  color: var(--text-normal);
+  color: var(--tlt-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.tlt-suggest-i.on, .tlt-suggest-i:hover { background: var(--background-modifier-hover); }
+.tlt-suggest-i.on, .tlt-suggest-i:hover { background: var(--tlt-surface3); }
 
 /* 面包屑里被选中的项目：可点击（回到全部） */
 .tlt-crumb-proj { cursor: pointer; color: var(--tlt-acc) !important; }
@@ -1399,3 +1423,53 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   width: 16px; height: 2px; border-radius: 2px; background: var(--tlt-ink5); opacity: 0;
 }
 .tlt-blk:hover .tlt-blk-grip::after { opacity: .7; }
+
+/* ==========================================================
+   主题兜底：Obsidian（或第三方主题）会给 button / input 套一层默认底色，
+   选择器是 `button:not(.clickable-icon)` 这种（特异性 0,1,1），比我们
+   的裸类名（0,1,0）更"具体"。系统深色 + 插件浅色时，这些控件就还是深色。
+   这里用更高的特异性把控件拉回 TLT 的令牌，集中放在文件末尾。
+   ========================================================== */
+:is(.tlt-root, .tlt-modal) .tlt-btn,
+:is(.tlt-root, .tlt-modal) .tlt-tab,
+:is(.tlt-root, .tlt-modal) .tlt-seg-b,
+:is(.tlt-root, .tlt-modal) .tlt-dnav,
+:is(.tlt-root, .tlt-modal) .tlt-fold-btn,
+:is(.tlt-root, .tlt-modal) .tlt-pmore,
+:is(.tlt-root, .tlt-modal) .tlt-ms-edit,
+:is(.tlt-root, .tlt-modal) .tlt-expand-btn,
+:is(.tlt-root, .tlt-modal) .tlt-chip,
+:is(.tlt-root, .tlt-modal) .tlt-tagp,
+:is(.tlt-root, .tlt-modal) .tlt-tlink,
+.tlt-menu .tlt-menu-i {
+  background-image: none;
+  box-shadow: none;
+  background-color: transparent;
+}
+
+:is(.tlt-root, .tlt-modal) .tlt-tab { color: var(--tlt-ink3); }
+:is(.tlt-root, .tlt-modal) .tlt-tab:hover { color: var(--tlt-ink2); }
+:is(.tlt-root, .tlt-modal) .tlt-tab.on { color: var(--tlt-ink); }
+:is(.tlt-root, .tlt-modal) .tlt-seg-b { color: var(--tlt-ink4); }
+:is(.tlt-root, .tlt-modal) .tlt-seg-b:hover { color: var(--tlt-ink2); }
+:is(.tlt-root, .tlt-modal) .tlt-dnav,
+:is(.tlt-root, .tlt-modal) .tlt-fold-btn,
+:is(.tlt-root, .tlt-modal) .tlt-pmore,
+:is(.tlt-root, .tlt-modal) .tlt-ms-edit { color: var(--tlt-ink5); }
+:is(.tlt-root, .tlt-modal) .tlt-btn { color: var(--tlt-ink2); border-color: var(--tlt-line2); }
+:is(.tlt-root, .tlt-modal) .tlt-btn:hover { background-color: var(--tlt-surface2); color: var(--tlt-ink); }
+:is(.tlt-root, .tlt-modal) .tlt-btn.pri { background-color: var(--tlt-acc); border-color: var(--tlt-acc); color: #fff; }
+:is(.tlt-root, .tlt-modal) .tlt-btn.on { background-color: rgba(91, 108, 255, .16); border-color: rgba(91, 108, 255, .45); color: var(--tlt-acc-ink); }
+:is(.tlt-root, .tlt-modal) .tlt-btn.danger { background-color: transparent; color: #D9755C; border-color: rgba(217, 117, 92, .34); }
+:is(.tlt-root, .tlt-modal) .tlt-seg-b.on { background-color: rgba(91, 108, 255, .14); color: var(--tlt-acc); }
+:is(.tlt-root, .tlt-modal) .tlt-chip.on { background-color: rgba(91, 108, 255, .16); color: var(--tlt-acc-ink); border-color: rgba(91, 108, 255, .45); }
+
+:is(.tlt-root, .tlt-modal) input:not([type="checkbox"]):not([type="radio"]),
+:is(.tlt-root, .tlt-modal) select,
+:is(.tlt-root, .tlt-modal) textarea {
+  background-image: none;
+  box-shadow: none;
+  background-color: var(--tlt-surface2);
+  color: var(--tlt-ink);
+  border-color: var(--tlt-line);
+}

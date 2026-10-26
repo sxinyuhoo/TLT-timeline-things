@@ -1301,6 +1301,21 @@ await t("两侧栏可折叠，折叠状态写进设置", async () => {
   view.store.settings.sideCollapsed = false;   // 还原，别污染别的用例
 });
 
+await t("主题令牌：color-scheme 跟着插件走 + 控件规则压得住主题", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  // 1) 浅色要显式声明 color-scheme，否则日期框 / 滚动条还是系统深色
+  assert.ok(/body\.tlt-light\s*\{[^}]*color-scheme:\s*light/.test(css), "浅色块缺 color-scheme: light");
+  assert.ok(/body\.tlt-dark\s*\{[^}]*color-scheme:\s*dark/.test(css), "深色块缺 color-scheme: dark");
+  // 2) 末尾的兜底块：主题的 button:not(.clickable-icon) 是 (0,1,1)，我们必须更高
+  for (const cls of ["tlt-btn", "tlt-tab", "tlt-seg-b", "tlt-dnav"]) {
+    assert.ok(css.includes(`:is(.tlt-root, .tlt-modal) .${cls}`), `兜底块里缺少 .${cls}`);
+  }
+  assert.ok(/:is\(\.tlt-root, \.tlt-modal\) input:not\(\[type="checkbox"\]\)/.test(css), "输入框也要压回来");
+  // 3) 不该再依赖 Obsidian 的变量（深色/浅色切换时会不跟随）
+  const obsidianVars = [...css.matchAll(/var\(--(background|text|interactive|divider)[a-z-]*/g)].map((m) => m[0]);
+  assert.equal(obsidianVars.length, 0, `还有 Obsidian 变量没换：${obsidianVars.slice(0, 5).join(", ")}`);
+});
+
 await t("切到人员：卡片 + 饱和度 45%", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);

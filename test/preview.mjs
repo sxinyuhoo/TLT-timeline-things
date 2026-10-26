@@ -179,7 +179,7 @@ const plugin = {
   store, isLight: () => false, toggleTheme: () => {}, activateMessages: async () => {}, refreshAll: () => {},
   applyTheme: () => {}, publishAll: async () => {}, syncAll: async () => {}, seedDemo: async () => {},
   pingHub: async () => true,
-  hubState: () => ({ publish: "http://127.0.0.1:8787", sync: "http://127.0.0.1:8788", lastSync: "15:04", lastResult: "新增 2 条", lastError: "" }),
+  vaultName: () => "测试库", hubState: () => ({ publish: "http://127.0.0.1:8787", sync: "http://127.0.0.1:8788", lastSync: "15:04", lastResult: "新增 2 条", lastError: "" }),
   setHubState: () => {},
 };
 const css = fs.readFileSync("styles.css", "utf8");

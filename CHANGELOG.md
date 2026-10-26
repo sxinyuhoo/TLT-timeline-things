@@ -1,5 +1,16 @@
 # 更新日志
 
+## 0.8.3
+
+**修「系统深色 + 插件浅色」时部分按钮还是深色**
+
+- 根因：Obsidian 默认主题（以及很多第三方主题）给按钮的样式是 `button:not(.clickable-icon)`，特异性 (0,1,1)，而我们的控件是裸类名 `.tlt-tab`（0,1,0）——**被主题盖掉**。所以系统是深色时，标签页、分段控件、各种小按钮拿到了主题的深色底 + 浅色字，只有我们那批用 `--tlt-*` 令牌画出来的卡片正常
+- 修：在 `styles.css` 末尾加一层兜底，用 `:is(.tlt-root, .tlt-modal) .tlt-xxx`（0,2,0）把控件拉回 TLT 的令牌；实心/选中/危险这些变体再按更高优先级重述一遍
+- 修：`body.tlt-light` 补 `color-scheme: light`、`body.tlt-dark` 补 `color-scheme: dark`——日期框、下拉的原生外观和滚动条都看它，否则浅色界面上日期选择器还是深色的
+- 修：补全浮层（目录输入提示）原来用的 5 个 Obsidian 变量（`--background-primary` 等）改成 TLT 令牌，现在样式里不再依赖任何主题变量
+- 新增回归：浅/深色块必须有对应的 `color-scheme`；兜底块必须覆盖按钮/输入框；`styles.css` 里不许再出现 `var(--background…)` 这类主题变量
+
+
 ## 0.8.2
 
 - 改：插件名 **`TLT - Timeline & Tasks` → `TLT - Timeline + Tasks`**。官方命名规范只允许 hyphen、plus、parenthesis 三种标点，`&` 不在其中，目录因此把插件隐藏了（`id` 仍是 `tlt-timeline-things`，已装用户不受影响）
