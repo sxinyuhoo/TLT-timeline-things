@@ -260,6 +260,54 @@ await t("总入口列出全部动作（含随手记 / 新建消息）", async ()
   }
 });
 
+/* ---------------- 里程碑重命名 ---------------- */
+await t("里程碑重命名：改 ## 标题，任务跟着走；重名/空名不改", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/tasks/米.md"] = `# 米\n\n## 一期\n\n- [ ] 甲 📅 2026-10-30\n\n## 二期\n\n- [ ] 乙 📅 2026-11-02\n`;
+  await store.load();
+  assert.equal(await store.renameMilestone("米", "一期", "第一阶段"), true, "应改名成功");
+  await store.load();
+  const text = fps.files["TLT/tasks/米.md"];
+  assert.ok(text.includes("## 第一阶段"), `标题应改掉：\n${text}`);
+  assert.ok(!text.includes("## 一期"), "旧标题不该还在");
+  const ms = store.milestones("米").find((m) => m.name === "第一阶段");
+  assert.ok(ms && ms.tasks.length === 1 && ms.tasks[0].title.includes("甲"), "任务应跟着新标题");
+  // 重名
+  assert.equal(await store.renameMilestone("米", "第一阶段", "二期"), false, "同名已存在应拒绝");
+  // 空名
+  assert.equal(await store.renameMilestone("米", "第一阶段", "   "), false, "空名应拒绝");
+  // 不存在的小节
+  assert.equal(await store.renameMilestone("米", "没有这个", "随便"), false, "找不到小节应返回 false");
+  assert.ok(fps.files["TLT/tasks/米.md"].includes("## 第一阶段"), "拒绝时文件不能被动过");
+});
+
+/* ---------------- 定时任务：关掉就真的不跑 ---------------- */
+await t("定时任务：改成「关闭」后旧定时器被清掉", async () => {
+  const { app, store } = await NEW();
+  const { TLTPlugin } = mod;
+  const plugin = new TLTPlugin(app, { id: "tlt-timeline-things", name: "TLT - Timeline & Tasks", version: "0.7.8" });
+  plugin.app = app; plugin.store = store; plugin.settings = { ...store.settings, autoSyncMin: 15, autoPushMin: 0 };
+
+  const made = [], cleared = [];
+  const origSet = dom.window.setInterval, origClear = dom.window.clearInterval;
+  dom.window.setInterval = (fn, ms) => { const id = 1000 + made.length; made.push({ id, ms }); return id; };
+  dom.window.clearInterval = (id) => { cleared.push(id); };
+  plugin.registerInterval = () => 0;
+  try {
+    plugin.setupTimers();
+    assert.equal(made.length, 1, `sync=15 时应建 1 个定时器，实际 ${made.length}`);
+    assert.equal(made[0].ms, 15 * 60000, "间隔应是 15 分钟");
+    // 用户改成「关闭」
+    plugin.settings.autoSyncMin = 0;
+    plugin.setupTimers();
+    assert.ok(cleared.includes(made[0].id), "旧的同步定时器应被清掉");
+    assert.equal(made.length, 1, "关闭后不该再建新的定时器");
+  } finally {
+    dom.window.setInterval = origSet;
+    dom.window.clearInterval = origClear;
+  }
+});
+
 /* ---------------- 市场可检索性（README / manifest 关键词） ---------------- */
 await t("manifest 描述：够短、且带上主要检索词", async () => {
   const m = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));

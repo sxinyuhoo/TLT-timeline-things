@@ -1190,6 +1190,40 @@ await t("星图：项目全部画出来（不再只画前 8 个），标签用�
   assert.ok(m && Number(m[1]) >= 9, `.tlt-plab 字号应不小于 9px，实际 ${m && m[1]}`);
 });
 
+await t("点空白处不该切主题（只认主题按钮）", async () => {
+  document.body.empty();
+  const calls = { theme: 0 };
+  plugin.toggleTheme = () => { calls.theme++; };
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const blankTargets = [
+    document.querySelector(".tlt-work"),
+    document.querySelector(".tlt-pane"),
+    document.querySelector(".tlt-tabs"),
+    document.querySelector(".tlt-side"),
+    document.querySelector("body"),
+  ].filter(Boolean);
+  for (const el of blankTargets) {
+    el.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  assert.equal(calls.theme, 0, `点空白处不该切主题，实际切了 ${calls.theme} 次`);
+  const btn = document.querySelector("[data-tlt-theme]");
+  assert.ok(btn, "应有主题按钮");
+  btn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(calls.theme, 1, "点主题按钮应切一次");
+
+  // 模拟真实 Obsidian：body 上挂 data-theme，点空白处仍然不能切
+  document.body.setAttribute("data-theme", "dark");
+  const view2 = mount(WorkbenchView);
+  await view2.onOpen();
+  document.querySelector(".tlt-work").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(calls.theme, 1, "body 上有 data-theme 时，点空白仍不该切主题");
+  document.body.removeAttribute("data-theme");
+});
+
 await t("切到人员：卡片 + 饱和度 45%", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);

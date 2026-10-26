@@ -889,9 +889,20 @@ export class MilestonePeekModal extends TltModal {
     contentEl.appendChild(list);
 
     const foot = el("div", "tlt-m-foot");
+    const rename = el("button", "tlt-btn", T("重命名"));
+    rename.title = T("改项目文件里这个 ## 小节的标题");
+    rename.onclick = () => {
+      this.close();
+      new PromptModal(this.app, T("重命名里程碑"), T("里程碑名（项目文件里的 ## 小节）"), async (name) => {
+        const ok = await this.store.renameMilestone(m.project, m.name, name);
+        new Notice(ok ? T("已重命名为：{n}", { n: name }) : T("没改成：名字空了、同名已存在，或原来的小节已不在"));
+        await this.store.load();
+        this.onOpenMs();
+      }, m.name).open();
+    };
     const open = el("button", "tlt-btn pri", T("打开里程碑 →"));
     open.onclick = () => { this.close(); this.onOpenMs(); };
-    foot.appendChild(open);
+    foot.append(rename, open);
     contentEl.appendChild(foot);
   }
   onClose() { this.contentEl.empty(); }
@@ -1418,7 +1429,7 @@ export class TagEditModal extends TltModal {
     })(); };
     foot.append(del, cancel, ok);
     contentEl.appendChild(foot);
-    window.setTimeout(() => input.focus(), 50);
+    window.setTimeout(() => { input.focus(); input.select(); }, 50);
   }
   onClose() { this.contentEl.empty(); }
 }
@@ -1428,8 +1439,9 @@ export class PromptModal extends TltModal {
   title: string;
   label: string;
   onSubmit: (v: string) => void | Promise<void>;
-  constructor(app: App, title: string, label: string, onSubmit: (v: string) => void | Promise<void>) {
-    super(app); this.title = title; this.label = label; this.onSubmit = onSubmit;
+  initial: string;
+  constructor(app: App, title: string, label: string, onSubmit: (v: string) => void | Promise<void>, initial = "") {
+    super(app); this.title = title; this.label = label; this.onSubmit = onSubmit; this.initial = initial;
   }
   onOpen() {
     const { contentEl } = this;
@@ -1437,6 +1449,7 @@ export class PromptModal extends TltModal {
     contentEl.appendChild(el("div", "tlt-m-title", this.title));
     const input = el("input", "tlt-input wide tlt-input-title");
     input.placeholder = this.label;
+    input.value = this.initial;
     contentEl.appendChild(input);
     const foot = el("div", "tlt-m-foot");
     const cancel = el("button", "tlt-btn", T("取消"));
@@ -1452,7 +1465,7 @@ export class PromptModal extends TltModal {
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); ok.click(); }
     });
-    window.setTimeout(() => input.focus(), 50);
+    window.setTimeout(() => { input.focus(); input.select(); }, 50);
   }
   onClose() { this.contentEl.empty(); }
 }

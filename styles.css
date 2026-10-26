@@ -1357,3 +1357,14 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-proj.arch:hover { opacity: 1; }
 .tlt-proj.arch .tlt-pname { color: var(--tlt-ink3); }
 .tlt-sw.arch { background: var(--tlt-ink5) !important; }
+
+/* ---- 里程碑卡：悬停出现的改名按钮 ---- */
+.tlt-ms-edit {
+  flex: none; width: 16px; height: 16px; padding: 0; margin-left: 2px;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 0; border-radius: 4px; cursor: pointer;
+  color: var(--tlt-ink5); font-size: 10px; line-height: 1;
+  opacity: 0; transition: opacity .12s ease;
+}
+.tlt-ms:hover .tlt-ms-edit { opacity: 1; }
+.tlt-ms-edit:hover { background: var(--tlt-surface3); color: var(--tlt-ink); }

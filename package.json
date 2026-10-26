@@ -1,6 +1,6 @@
 {
   "name": "tlt-timeline-things",
-  "version": "0.7.7",
+  "version": "0.7.8",
   "description": "Obsidian plugin: timeline-first task manager with schedule, calendar, project milestones, workload and a message center (plain Markdown)",
   "main": "main.js",
   "scripts": {

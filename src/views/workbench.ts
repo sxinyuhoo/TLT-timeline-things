@@ -260,8 +260,9 @@ export class WorkbenchView extends ItemView {
     top.appendChild(search);
 
     const theme = el("button", "tlt-btn", this.plugin.isLight() ? "☾" : "☀");
-    theme.dataset.theme = "1";
+    theme.dataset.tltTheme = "1";
     theme.title = T("切换明暗");
+    theme.onclick = (ev) => { ev.stopPropagation(); this.plugin.toggleTheme(); };
     const add = el("button", "tlt-btn pri lg", T("＋ 新建"));
     add.dataset.newtask = "1";
     top.append(theme, add);
@@ -753,6 +754,31 @@ export class WorkbenchView extends ItemView {
     else new Notice(T("当前窗口不支持打开文件"));
   }
 
+  /** 里程碑菜单：重命名 / 打开详情 / 展开收起 */
+  private milestoneMenu(anchor: HTMLElement, m: { name: string; project: string; tasks: Task[] }, at?: { x: number; y: number }) {
+    popMenu(anchor, [
+      { label: T("重命名里程碑"), onClick: () => this.promptRenameMilestone(m) },
+      { label: T("打开详情"), onClick: () => new MilestonePeekModal(this.app, this.store, m, () => {
+        this.tab = "ms"; this.proj = m.project; void this.render();
+      }).open() },
+      { label: this.expanded.has(m.name) ? T("收起") : T("展开"), onClick: async () => {
+        if (this.expanded.has(m.name)) this.expanded.delete(m.name); else this.expanded.add(m.name);
+        await this.render();
+      } },
+    ], "right", at);
+  }
+
+  private promptRenameMilestone(m: { name: string; project: string }) {
+    new PromptModal(this.app, T("重命名里程碑"), T("里程碑名（项目文件里的 ## 小节）"), async (name) => {
+      const ok = await this.store.renameMilestone(m.project, m.name, name);
+      if (!ok) { new Notice(T("没改成：名字空了、同名已存在，或原来的小节已不在")); return; }
+      if (this.expanded.delete(m.name) ) this.expanded.add(name);
+      await this.store.load();
+      await this.render();
+      new Notice(T("已重命名为：{n}", { n: name }), 3000);
+    }, m.name).open();
+  }
+
   private promptMilestone(p: string) {
     new PromptModal(this.app, T("新建里程碑"), T("里程碑名（项目文件里的 ## 小节）"), async (name) => {
       const ok = await this.store.addMilestone(p, name);
@@ -958,9 +984,17 @@ export class WorkbenchView extends ItemView {
         const pct = Math.round((done / m.tasks.length) * 100);
         const card = el("div", "tlt-ms" + (this.expanded.has(m.name) ? " open" : ""));
         card.dataset.ms = m.name;
+        card.addEventListener("contextmenu", (ev) => {
+          ev.preventDefault();
+          this.milestoneMenu(card, m, { x: ev.clientX, y: ev.clientY });
+        });
         const h = el("div", "tlt-ms-h");
         const dot = el("span", "tlt-dot"); dot.addClass("k-ms");
-        h.append(dot, el("span", "tlt-ms-n", m.name), el("span", "tlt-ms-p", m.project));
+        const nameEl = el("span", "tlt-ms-n", m.name);
+        const edit = el("button", "tlt-ms-edit", "✎");
+        edit.title = T("重命名里程碑");
+        edit.onclick = (ev) => { ev.stopPropagation(); this.promptRenameMilestone(m); };
+        h.append(dot, nameEl, el("span", "tlt-ms-p", m.project), edit);
         const bar = el("span", "tlt-pbar small");
         const fill = el("i"); fill.style.width = pct + "%";
         bar.appendChild(fill);
@@ -1081,7 +1115,12 @@ export class WorkbenchView extends ItemView {
   /** 空白处点击 → 按坐标算时间 */
   private async onClick(ev: MouseEvent) {
     const t = ev.target as HTMLElement;
-    const pick = (sel: string) => t.closest<HTMLElement>(sel);
+    // 只认视图内部的命中：closest() 会一路走到 body，
+    // 而 body / workspace 上可能带着同名的 data-* 属性（实测 data-theme 会让"点哪都切主题"）
+    const pick = (sel: string) => {
+      const hit = t.closest<HTMLElement>(sel);
+      return hit && this.contentEl.contains(hit) ? hit : null;
+    };
 
     const tab = pick("[data-tab]");
     if (tab) { this.tab = tab.dataset.tab!; await this.render(); return; }
@@ -1128,7 +1167,6 @@ export class WorkbenchView extends ItemView {
     if (proj) { const name = proj.dataset.proj ?? ""; this.proj = this.proj === name ? null : name; await this.render(); return; }
     if (pick("[data-projclear]")) { this.proj = null; await this.render(); return; }
 
-    if (pick("[data-theme]")) { this.plugin.toggleTheme(); return; }
 
     if (pick("[data-newtask]")) { new QuickTaskModal(this.app, this.store, () => this.refresh()).open(); return; }
 

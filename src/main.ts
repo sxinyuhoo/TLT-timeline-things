@@ -228,15 +228,22 @@ export class TLTPlugin extends Plugin {
     this.setupTimers();
   }
 
-  /** 自动同步 / 自动推送 */
+  /** 自动同步 / 自动推送：改设置或重启都会先清掉旧定时器再按当前值重建 */
+  private timers: number[] = [];
   setupTimers() {
+    this.timers.forEach((id) => window.clearInterval(id));
+    this.timers = [];
     const sync = Number(this.settings.autoSyncMin) || 0;
     const push = Number(this.settings.autoPushMin) || 0;
     if (sync > 0) {
-      this.registerInterval(window.setInterval(() => this.syncAll(true), sync * 60_000));
+      const id = window.setInterval(() => { void this.syncAll(true); }, sync * 60_000);
+      this.registerInterval(id);
+      this.timers.push(id);
     }
     if (push > 0) {
-      this.registerInterval(window.setInterval(() => this.publishAll(true), push * 60_000));
+      const id = window.setInterval(() => { void this.publishAll(true); }, push * 60_000);
+      this.registerInterval(id);
+      this.timers.push(id);
     }
   }
 
@@ -719,6 +726,7 @@ export class TLTSettingTab extends PluginSettingTab {
     await this.plugin.saveSettings();
     if (key === "theme") this.plugin.applyTheme();
     if (key === "language") { setLanguage(asText(value)); this.plugin.relabel(); }
+    if (key === "autoSyncMin" || key === "autoPushMin") this.plugin.setupTimers();
   }
 
   /** 老版本客户端（< 1.13）只认 display()，转发到 renderSettings 以便内部重建这一页 */
@@ -840,14 +848,14 @@ export class TLTSettingTab extends PluginSettingTab {
       .setDesc(t("按这个间隔自动拉取订阅的源。"))
       .addDropdown((dd) =>
         dd.addOptions(intervals).setValue(String(p.settings.autoSyncMin))
-          .onChange((v) => { p.settings.autoSyncMin = Number(v); void p.saveSettings(); })
+          .onChange((v) => { p.settings.autoSyncMin = Number(v); void p.saveSettings(); p.setupTimers(); })
       );
     new Setting(containerEl)
       .setName(t("自动推送间隔"))
       .setDesc(t("按这个间隔把我发布的源推上去。"))
       .addDropdown((dd) =>
         dd.addOptions(intervals).setValue(String(p.settings.autoPushMin))
-          .onChange((v) => { p.settings.autoPushMin = Number(v); void p.saveSettings(); })
+          .onChange((v) => { p.settings.autoPushMin = Number(v); void p.saveSettings(); p.setupTimers(); })
       );
     const hub = p.hubState();
     new Setting(containerEl)

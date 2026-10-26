@@ -333,6 +333,26 @@ export class Store {
     return true;
   }
 
+  /** 重命名里程碑：改项目文件里的 `## 标题`（同名已存在则拒绝） */
+  async renameMilestone(project: string, from: string, to: string): Promise<boolean> {
+    const clean = to.trim();
+    if (!clean || clean === from) return false;
+    const file = await this.fileByPath(`${this.settings.tasksFolder}/${project}.md`);
+    if (!file) return false;
+    let ok = false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const head = (l: string) => (/^##\s+/.test(l) ? l.replace(/^##\s+/, "").trim() : null);
+      const i = lines.findIndex((l) => head(l) === from);
+      if (i < 0) return data;
+      if (lines.some((l, j) => j !== i && head(l) === clean)) return data;   // 重名，别撞
+      lines[i] = `## ${clean}`;
+      ok = true;
+      return lines.join("\n");
+    });
+    return ok;
+  }
+
   /** 给项目加一个里程碑（## 小节） */
   async addMilestone(project: string, name: string): Promise<boolean> {
     const clean = name.trim();

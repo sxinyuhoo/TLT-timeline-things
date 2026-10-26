@@ -88,6 +88,7 @@ export async function makeStore() {
 }
 
 export { PickerModal, ConfirmModal } from "../src/views/picker";
+export { TLTPlugin } from "../src/main";
 export {
   taskRegisterFlow, newProjectFlow, newMilestoneFlow, deleteTaskFlow,
   archiveProjectFlow, quickMenuFlow, quickIdeaFlow, newMessageFlow,
