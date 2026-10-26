@@ -42,6 +42,8 @@ export class WorkbenchView extends ItemView {
   private rhythmView: "bars" | "star" = "star";
   private taskDim: TaskDim = "m";
   private showArchived = false;
+  private get sideOff() { return !!this.cfg.sideCollapsed; }
+  private get railOff() { return !!this.cfg.railCollapsed; }
   private taskTag: string | null = null;
   private starZoom = 1;
   private scrollToMin: number | null = null;
@@ -130,12 +132,24 @@ export class WorkbenchView extends ItemView {
 
   private sidebar(): HTMLElement {
     const s = el("aside", "tlt-side");
+    if (this.sideOff) {
+      s.addClass("off");
+      const reopen = el("button", "tlt-fold-btn", "›");
+      reopen.title = T("展开项目栏");
+      reopen.onclick = () => { void this.setPanels({ sideCollapsed: false }); };
+      s.appendChild(reopen);
+      return s;
+    }
     const top = el("div", "tlt-brand");
     const dot = el("span", "tlt-mark");
     top.append(dot, el("b", "", "TLT"));
     const folder = el("span", "tlt-fold", "TLT/");
     folder.title = `${this.cfg.tasksFolder} · ${this.cfg.teamFolder}`;
     top.appendChild(folder);
+    const fold = el("button", "tlt-fold-btn", "‹");
+    fold.title = T("收起项目栏");
+    fold.onclick = () => { void this.setPanels({ sideCollapsed: true }); };
+    top.appendChild(fold);
     s.appendChild(top);
 
     const scroll = el("div", "tlt-side-scroll");
@@ -365,6 +379,10 @@ export class WorkbenchView extends ItemView {
       c.append(el("div", "tlt-blk-t", t.title),
         el("div", "tlt-blk-m", `${t.st}–${t.en} · ${T("计划")}${t.wl ? " · " + t.wl + "%" : ""}`));
       blk.appendChild(c);
+      this.wireDrag(blk, c, {
+        kind: "plan", id: t.id, a, b,
+        onMenu: (at) => this.blockMenu("plan", t, at),
+      });
       inner.appendChild(blk);
     });
     logs.forEach((l) => {
@@ -378,6 +396,10 @@ export class WorkbenchView extends ItemView {
       c.append(el("div", "tlt-blk-t", l.title),
         el("div", "tlt-blk-m", `${l.st}–${l.en} · ${l.extra ? T("临时") : T("记录")}${l.project ? " · " + l.project : ""}`));
       blk.appendChild(c);
+      this.wireDrag(blk, c, {
+        kind: "log", id: l.id, a, b,
+        onMenu: (at) => this.blockMenu("log", l, at),
+      });
       inner.appendChild(blk);
     });
     if (sel === todayISO()) {
@@ -754,6 +776,14 @@ export class WorkbenchView extends ItemView {
     else new Notice(T("当前窗口不支持打开文件"));
   }
 
+  /** 两侧栏折叠：写进设置（重开 Obsidian 也记得），然后重画 */
+  private async setPanels(patch: { sideCollapsed?: boolean; railCollapsed?: boolean }) {
+    Object.assign(this.cfg, patch);
+    const p = this.plugin as unknown as { saveSettings?: () => Promise<void> };
+    try { await p.saveSettings?.(); } catch { /* 存不下也不影响这次折叠 */ }
+    await this.render();
+  }
+
   /** 里程碑菜单：重命名 / 打开详情 / 展开收起 */
   private milestoneMenu(anchor: HTMLElement, m: { name: string; project: string; tasks: Task[] }, at?: { x: number; y: number }) {
     popMenu(anchor, [
@@ -1017,6 +1047,14 @@ export class WorkbenchView extends ItemView {
 
   private rail(): HTMLElement {
     const r = el("aside", "tlt-msgs");
+    if (this.railOff) {
+      r.addClass("off");
+      const reopen = el("button", "tlt-fold-btn", "‹");
+      reopen.title = T("展开消息栏");
+      reopen.onclick = () => { void this.setPanels({ railCollapsed: false }); };
+      r.appendChild(reopen);
+      return r;
+    }
     const head = el("div", "tlt-msgs-h");
     const unread = this.allMsgs().filter((m) => !m.read_ && m.state !== "ended").length;
     head.append(el("b", "", T("消息")));
@@ -1027,6 +1065,10 @@ export class WorkbenchView extends ItemView {
     expand.title = T("在独立页打开消息中心");
     expand.append(el("span", "tlt-expand-i", "⤢"), el("span", "", T("消息中心")));
     head.appendChild(expand);
+    const fold = el("button", "tlt-fold-btn", "›");
+    fold.title = T("收起消息栏");
+    fold.onclick = () => { void this.setPanels({ railCollapsed: true }); };
+    head.appendChild(fold);
     r.appendChild(head);
 
     const list = el("div", "tlt-mtl");
@@ -1259,17 +1301,157 @@ export class WorkbenchView extends ItemView {
     }
   }
 
+  /**
+   * 日程块：拖动改时间、拖底边改结束时间、右键出菜单。
+   * 时间只按 5 分钟吸附；松手才落盘（拖的过程中只动画面）。
+   */
+  private wireDrag(
+    blk: HTMLElement,
+    body: HTMLElement,
+    opts: { kind: "plan" | "log"; id: string; a: number; b: number; onMenu: (at: { x: number; y: number }) => void },
+  ) {
+    const grip = el("div", "tlt-blk-grip");
+    grip.title = T("拖动改结束时间");
+    blk.appendChild(grip);
+    let mode: "move" | "resize" | null = null;
+    let y0 = 0, a0 = opts.a, b0 = opts.b, curA = opts.a, curB = opts.b;
+    const snap = (m: number) => Math.round(m / 5) * 5;
+    const clamp = (a: number, b: number) => {
+      const A = Math.max(DAY_FROM, Math.min(DAY_TO - 15, a));
+      const B = Math.max(A + 15, Math.min(DAY_TO, b));
+      return { A, B };
+    };
+    const paint = (A: number, B: number) => {
+      blk.style.top = `${((A - DAY_FROM) / 60) * HOUR_PX}px`;
+      blk.style.height = `${Math.max(26, ((B - A) / 60) * HOUR_PX)}px`;
+      const m = body.querySelector(".tlt-blk-m");
+      if (m) m.textContent = m.textContent?.replace(/^\d{2}:\d{2}[–-]\d{2}:\d{2}/, `${minToHHMM(A)}–${minToHHMM(B)}`) ?? m.textContent;
+    };
+
+    blk.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      opts.onMenu({ x: ev.clientX, y: ev.clientY });
+    });
+    blk.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0) return;
+      mode = (ev.target as HTMLElement).classList.contains("tlt-blk-grip") ? "resize" : "move";
+      y0 = ev.clientY; a0 = curA; b0 = curB;
+      blk.addClass("dragging");
+      try { blk.setPointerCapture(ev.pointerId); } catch { /* 老客户端 */ }
+      ev.stopPropagation();          // 别触发"点空白新建"，也别顺手打开弹窗
+      ev.preventDefault();
+    });
+    blk.addEventListener("pointermove", (ev) => {
+      if (!mode) return;
+      const d = snap(((ev.clientY - y0) / HOUR_PX) * 60);
+      const r = mode === "move" ? clamp(a0 + d, a0 + d + (b0 - a0)) : clamp(a0, b0 + d);
+      curA = r.A; curB = r.B;
+      paint(curA, curB);
+    });
+    let dragged = false;
+    // 拖完那一下的 click 不该再打开弹窗（拖 = 改时间，不是点开）
+    blk.addEventListener("click", (ev) => {
+      if (!dragged) return;
+      dragged = false;
+      ev.stopPropagation();
+      ev.preventDefault();
+    }, true);
+    const finish = () => {
+      if (!mode) return;
+      const moved = curA !== opts.a || curB !== opts.b;
+      mode = null;
+      blk.removeClass("dragging");
+      if (moved) { dragged = true; void this.saveBlockTime(opts.kind, opts.id, curA, curB); }
+    };
+    blk.addEventListener("pointerup", finish);
+    blk.addEventListener("pointercancel", finish);
+  }
+
+  /** 落盘：计划块写回任务的 [st::]/[en::]，记录块改行首的时间段 */
+  private async saveBlockTime(kind: "plan" | "log", id: string, a: number, b: number) {
+    const st = minToHHMM(a), en = minToHHMM(b);
+    if (kind === "plan") {
+      const t = this.store.tasks.find((x) => x.id === id);
+      if (!t) return;
+      await this.store.setField(t, "st", st);
+      await this.store.setField(t, "en", en);
+      new Notice(T("已改到 {a}–{b}", { a: st, b: en }), 2500);
+    } else {
+      const l = this.store.logs.find((x) => x.id === id);
+      if (!l) return;
+      await this.store.setLogTime(l, st, en);
+      new Notice(T("已改到 {a}–{b}", { a: st, b: en }), 2500);
+    }
+    await this.refresh();
+  }
+
+  /** 日程块右键菜单：编辑 / 删除（计划块是"取消排期"） */
+  private blockMenu(kind: "plan" | "log", item: Task, at: { x: number; y: number }) {
+    const items: { label: string; onClick: () => void | Promise<void>; danger?: boolean }[] = [];
+    if (kind === "plan") {
+      items.push({ label: T("打开任务"), onClick: () => new TaskModal(this.app, this.store, item, () => this.refresh()).open() });
+      items.push({
+        label: T("调整时间…"),
+        onClick: () => {
+          new PromptModal(this.app, T("调整时间段"), T("09:30–11:00"), async (v) => {
+            const m = /^(\d{1,2}):(\d{2})\s*(?:–|-|~)\s*(\d{1,2}):(\d{2})$/.exec(v.trim());
+            if (!m) { new Notice(T("格式像 09:30–11:00")); return; }
+            await this.saveBlockTime("plan", item.id, Number(m[1]) * 60 + Number(m[2]), Number(m[3]) * 60 + Number(m[4]));
+          }, `${item.st || "09:00"}–${item.en || "10:00"}`).open();
+        },
+      });
+      items.push({ label: T("取消排期"), danger: true, onClick: async () => {
+        await this.store.setField(item, "st", null);
+        await this.store.setField(item, "en", null);
+        new Notice(T("已取消排期"), 2500);
+        await this.refresh();
+      } });
+    } else {
+      items.push({ label: T("编辑记录"), onClick: () => new LogModal(this.app, this.store, item, () => this.refresh()).open() });
+      items.push({
+        label: T("调整时间…"),
+        onClick: () => {
+          new PromptModal(this.app, T("调整时间段"), T("09:30–11:00"), async (v) => {
+            const m = /^(\d{1,2}):(\d{2})\s*(?:–|-|~)\s*(\d{1,2}):(\d{2})$/.exec(v.trim());
+            if (!m) { new Notice(T("格式像 09:30–11:00")); return; }
+            await this.saveBlockTime("log", item.id, Number(m[1]) * 60 + Number(m[2]), Number(m[3]) * 60 + Number(m[4]));
+          }, `${item.st || "09:00"}–${item.en || "10:00"}`).open();
+        },
+      });
+      items.push({ label: T("删除这条记录"), danger: true, onClick: async () => {
+        await this.store.deleteLog(item);
+        new Notice(T("已删除记录"), 2500);
+        await this.refresh();
+      } });
+    }
+    const anchor = this.contentEl.querySelector<HTMLElement>(".tlt-daygrid") ?? this.contentEl;
+    popMenu(anchor, items, "left", at);
+  }
+
   /** 把一条任务排进当前日期的第一个空档（排完写回 [st::] [en::]） */
   private async scheduleTask(t: Task) {
     const day = this.viewDate;
-    const busy = [
+    const spans = [
       ...this.store.logs.filter((l) => l.due === day),
-      ...this.store.tasks.filter((x) => x.due === day && x.st && !x.done),
-    ];
+      ...this.store.tasks.filter((x) => x.due === day && x.st && !x.done && x.id !== t.id),
+    ]
+      .map((b) => ({ a: hhmmToMin(b.st) || DAY_FROM, b: hhmmToMin(b.en) || (hhmmToMin(b.st) || DAY_FROM) + 30 }))
+      .filter((r) => r.b > r.a)
+      .sort((x, y) => x.a - y.a);
+
+    // 今天：从"现在"开始（向上取到下一个 15 分钟），而不是固定 9 点
     let start = 9 * 60;
-    if (busy.length) {
-      start = Math.max(...busy.map((b) => hhmmToMin(b.en) || (hhmmToMin(b.st) || 540) + 30));
+    if (day === todayISO()) {
+      const now = new Date();
+      start = Math.max(start, Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15) * 15);
     }
+    // 往后挪到第一个不撞的空档
+    for (const r of spans) {
+      if (start + 30 <= r.a) break;
+      if (start < r.b) start = r.b;
+    }
+    start = Math.round(start / 5) * 5;
     if (start >= 22 * 60) { new Notice(T("这天排满了，换一天试试")); return; }
     const end = Math.min(23 * 60, start + 60);
     if (t.due !== day) await this.store.setDue(t, day);

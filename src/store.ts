@@ -33,6 +33,9 @@ export interface TLTSettings {
   feedIds: Record<string, string>;   // 本地源 → 发布 ID
   /** 发布者名：订阅别人时用来区分"这是谁的源"，默认取库名 */
   publisherName?: string;
+  /** 工作台两侧栏是否折叠（视图状态，跟着库走） */
+  sideCollapsed?: boolean;
+  railCollapsed?: boolean;
   /** 每库一个随机盐：让不同人发布的同名源也不会撞 ID */
   publisherSalt?: string;
   feedNames: Record<string, string>; // 本地源 → 上次用的发布名称
@@ -52,6 +55,8 @@ export const DEFAULT_SETTINGS: TLTSettings = {
   feedNames: {},
   publisherName: "",
   publisherSalt: "",
+  sideCollapsed: false,
+  railCollapsed: false,
 };
 
 /**
@@ -956,6 +961,23 @@ export class Store {
   }
 
   /** 改写记录正文：替换该行后面的引用块 */
+  /** 改一条记录的时间段（日程拖拽用）：只动行首的 09:30–11:00 那一截 */
+  async setLogTime(log: Task, st: string, en: string): Promise<boolean> {
+    const file = await this.fileByPath(log.file);
+    if (!file) return false;
+    let ok = false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const hit = (l: string) => /^\s*[-*+]\s+\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}\s+/.test(l) && l.includes(log.title);
+      let i = log.line >= 0 && lines[log.line] && hit(lines[log.line]) ? log.line : lines.findIndex(hit);
+      if (i < 0) return data;
+      lines[i] = lines[i].replace(/^(\s*[-*+]\s+)\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}(\s+)/, `$1${st}–${en}$2`);
+      ok = true;
+      return lines.join("\n");
+    });
+    return ok;
+  }
+
   async updateLogBody(log: Task, body: string) {
     const file = await this.fileByPath(log.file);
     if (!file) return false;

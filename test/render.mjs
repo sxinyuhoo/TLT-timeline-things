@@ -1225,6 +1225,67 @@ await t("点空白处不该切主题（只认主题按钮）", async () => {
   document.body.removeAttribute("data-theme");
 });
 
+await t("今天的排期从「现在」开始，不再固定 9 点", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.viewDate = D;                     // 今天
+  const t0 = view.store.tasks.find((t) => !t.done && !t.st) || view.store.tasks[0];
+  await view.scheduleTask(t0);
+  await view.store.load();
+  const after = view.store.tasks.find((t) => t.id === t0.id);
+  const now = new Date();
+  const want = Math.max(9 * 60, Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15) * 15);
+  const got = Number((after.st || "0:0").split(":")[0]) * 60 + Number((after.st || "0:0").split(":")[1]);
+  assert.ok(Math.abs(got - want) <= 20, `今天排期应从现在（${Math.floor(want / 60)}:${String(want % 60).padStart(2, "0")}）附近开始，实际 ${after.st}`);
+  assert.ok(after.en && after.en > after.st, "应写入结束时间");
+});
+
+await t("日程块：拖拽改时间 + 右键菜单（删记录 / 取消排期）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.viewDate = D;
+  await view.render();
+  const blk = document.querySelector(".tlt-blk");
+  assert.ok(blk, "日历里应有日程块");
+  assert.ok(blk.querySelector(".tlt-blk-grip"), "日程块底部应有拖拽把手");
+
+  // 拖动 1 小时：st 应往后挪（记录块）
+  const before = files["TLT/logs/" + D.slice(0, 7) + ".md"];
+  const y0 = 300;
+  blk.dispatchEvent(new dom.window.MouseEvent("pointerdown", { bubbles: true, clientX: 100, clientY: y0, button: 0 }));
+  blk.dispatchEvent(new dom.window.MouseEvent("pointermove", { bubbles: true, clientX: 100, clientY: y0 + 62 }));
+  blk.dispatchEvent(new dom.window.MouseEvent("pointerup", { bubbles: true, clientX: 100, clientY: y0 + 62 }));
+  await new Promise((r) => setTimeout(r, 80));
+  const afterText = files["TLT/logs/" + D.slice(0, 7) + ".md"];
+  assert.notEqual(afterText, before, "拖动后应写回文件");
+
+  // 右键菜单
+  blk.dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true, clientX: 120, clientY: 320 }));
+  await new Promise((r) => setTimeout(r, 20));
+  const menu = [...document.querySelectorAll(".tlt-menu-i")].map((b) => b.textContent);
+  assert.ok(menu.some((x) => x.includes("调整时间")), `菜单应有调整时间，实际：${menu.join(" / ")}`);
+  assert.ok(menu.some((x) => x.includes("删除") || x.includes("取消排期")), `菜单应有删除/取消排期，实际：${menu.join(" / ")}`);
+});
+
+await t("两侧栏可折叠，折叠状态写进设置", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  assert.ok(document.querySelector(".tlt-side .tlt-fold-btn"), "左栏应有折叠按钮");
+  assert.ok(document.querySelector(".tlt-msgs .tlt-fold-btn"), "右栏应有折叠按钮");
+  document.querySelector(".tlt-side .tlt-fold-btn").click();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.ok(document.querySelector(".tlt-side.off"), "左栏应收起成竖条");
+  assert.equal(view.store.settings.sideCollapsed, true, "折叠状态应写进设置");
+  const reopen = document.querySelector(".tlt-side.off .tlt-fold-btn");
+  reopen.click();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.ok(!document.querySelector(".tlt-side.off"), "再点应展开");
+  view.store.settings.sideCollapsed = false;   // 还原，别污染别的用例
+});
+
 await t("切到人员：卡片 + 饱和度 45%", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
