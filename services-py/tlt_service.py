@@ -268,6 +268,7 @@ class Handler(BaseHTTPRequestHandler):
                     "fetchedAt": r["fetched_at"],
                     "id": (cache or {}).get("id") or r["name"] or r["url"],
                     "title": (cache or {}).get("title") or r["name"] or r["url"],
+                    "owner": (cache or {}).get("owner") or "",
                     "items": (cache or {}).get("items") or [],
                 })
             return self.send(200, {"feeds": feeds, "pulledAt": now_iso()})
@@ -283,8 +284,13 @@ class Handler(BaseHTTPRequestHandler):
             fid = str(data.get("id") or "").strip()
             if not fid:
                 return self.send(400, {"error": "id required"})
+            owner = str(data.get("owner") or "").strip()
             with DB_LOCK, db() as conn:
-                old = conn.execute("SELECT items FROM feeds WHERE id=?", (fid,)).fetchone()
+                old = conn.execute("SELECT items, owner FROM feeds WHERE id=?", (fid,)).fetchone()
+                # 别人已经用了这个 id：拒绝，别互相覆盖
+                if old and (old["owner"] or "") and owner and old["owner"] != owner:
+                    return self.send(409, {"error": "id taken by another publisher", "id": fid,
+                                           "owner": old["owner"]})
                 conn.execute(
                     "INSERT INTO feeds(id,title,desc,owner,items,updated) VALUES(?,?,?,?,?,?) "
                     "ON CONFLICT(id) DO UPDATE SET title=excluded.title, desc=excluded.desc, "

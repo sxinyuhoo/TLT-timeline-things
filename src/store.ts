@@ -9,10 +9,10 @@ import {
 /** 消息服务的线上格式（发布端 / 订阅代理），字段都可缺 */
 interface WireItem {
   mid?: string; date?: string; title?: string; kind?: string; place?: string;
-  who?: string[]; star?: boolean; state?: string; until?: string; body?: string;
+  who?: string[]; star?: boolean; state?: string; until?: string; ended?: string; body?: string;
 }
 interface WireFeed {
-  url?: string; ok?: boolean; error?: string; id?: string; title?: string; items?: WireItem[];
+  url?: string; ok?: boolean; error?: string; id?: string; title?: string; owner?: string; items?: WireItem[];
 }
 interface PullResponse { feeds?: WireFeed[]; pulledAt?: string }
 interface SubsResponse { subs?: { url?: string }[] }
@@ -31,6 +31,10 @@ export interface TLTSettings {
   defaultPeriod: Period;
   mineFeed: string;
   feedIds: Record<string, string>;   // 本地源 → 发布 ID
+  /** 发布者名：订阅别人时用来区分"这是谁的源"，默认取库名 */
+  publisherName?: string;
+  /** 每库一个随机盐：让不同人发布的同名源也不会撞 ID */
+  publisherSalt?: string;
   feedNames: Record<string, string>; // 本地源 → 上次用的发布名称
 }
 
@@ -46,6 +50,8 @@ export const DEFAULT_SETTINGS: TLTSettings = {
   mineFeed: "我的工作动态",
   feedIds: {},
   feedNames: {},
+  publisherName: "",
+  publisherSalt: "",
 };
 
 /**
@@ -697,9 +703,11 @@ export class Store {
     const rememberedId = (this.settings.feedIds || {})[from.id];
     const rememberedName = (this.settings.feedNames || {})[from.id];
     const remembered = rememberedId && rememberedName === name ? rememberedId : undefined;
-    const banned = new Set('\\/:*?"<>|#[]^'.split(""));
-    const clean = (t: string) => Array.from(t).map((c) => (banned.has(c) ? "-" : c)).join("");
-    let id = remembered || clean(name).replace(/\s+/g, "-").slice(0, 40) || "feed";
+    const clean = (t: string) => Array.from(t).map((c) => ('\\/:*?"<>|#[]^'.includes(c) ? "-" : c)).join("");
+    // 新 ID 一律 slug+短哈希（纯 ASCII）：中文名不再变成 %E4%B8%AA… 这种乱码，
+    // 而且不同人发布同名源时哈希不同，不会互相覆盖
+    let id = remembered || this.publishIdFor(name);
+    if (!remembered) id = clean(id);
     let target = normalizePath(`${this.settings.feedsFolder}/${id}.md`);
     if (!remembered) {
       let base = id, n = 2;
@@ -709,8 +717,9 @@ export class Store {
       }
     }
 
-    if (from.personal) {
-      // 个人源：就地转成已发布（不另存一份、不搬消息）
+    if (from.personal || !from.remote) {
+      // 本地源（个人源、以及自己建的草稿源）：就地转成已发布——
+      // 文件改名成它的发布 ID，不另存一份、也不把消息搬来搬去
       let pid = id;
       let target2 = normalizePath(`${this.settings.feedsFolder}/${pid}.md`);
       if (target2 !== from.file && this.app.vault.getAbstractFileByPath(target2)) {
@@ -781,6 +790,41 @@ export class Store {
     return { ok: true as const, path: target, moved, id };
   }
 
+  /** 6 位短哈希（FNV-1a，够用且无依赖） */
+  private shortHash(input: string): string {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < input.length; i++) {
+      h ^= input.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(36).padStart(6, "0").slice(0, 6);
+  }
+
+  /** 文件名/URL 友好的 slug：保留 ASCII 字母数字，其余折叠成 - */
+  private slug(text: string): string {
+    const ascii = text.normalize("NFKD").replace(/[^\x20-\x7E]/g, "");
+    return ascii.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+  }
+
+  /**
+   * 发布 ID：给订阅地址用，必须是纯 ASCII、短、且"我和别人同名也不会撞"。
+   * = slug(名字) + 短哈希(发布者名 + 名字 + 每库随机盐)。
+   * 同一个人同一个名字永远得到同一个 ID（重复发布会沿用）。
+   */
+  publishIdFor(name: string): string {
+    if (!this.settings.publisherSalt) {
+      this.settings.publisherSalt = Math.random().toString(36).slice(2, 10);
+    }
+    const who = this.settings.publisherName || "tlt";
+    const slug = this.slug(name) || "feed";
+    return `${slug}-${this.shortHash(`${who}|${name}|${this.settings.publisherSalt}`)}`;
+  }
+
+  /** 订阅地址里能不能安全使用的 ID（纯 ASCII、无空格/斜杠） */
+  static isCleanId(id: string): boolean {
+    return /^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$/.test(id);
+  }
+
   /** 取消发布：把内容并回个人源，然后把这个源文件删掉（进系统回收站） */
   /**
    * 取消发布：把「我发布的」源就地变回个人源（改名回 个人.md 并翻转标志）。
@@ -789,7 +833,7 @@ export class Store {
   async demoteToPersonal(feed: Feed, personalId: string) {
     const home = normalizePath(`${this.settings.feedsFolder}/${personalId}.md`);
     if (feed.file === home) {
-      await this.setFeedFlags(feed, { personal: true, mine: false, title: personalId });
+      await this.setFeedFlags(feed, { personal: true, mine: false, title: feed.name || personalId });
       return 0;
     }
     const file = await this.fileByPath(feed.file);
@@ -797,9 +841,10 @@ export class Store {
     const homeFile = this.asFile(this.app.vault.getAbstractFileByPath(home));
 
     if (!homeFile) {
-      // 个人源不在（发布时改名走了）：就地改名回个人，消息原样带回来
+      // 个人源不在（发布时改名走了）：就地改名回个人，消息原样带回来。
+      // 名字保持用户改过的那个（不强行改回「个人」）
       await this.app.fileManager.renameFile(file, home);
-      await this.setFeedFlags({ ...feed, file: home }, { personal: true, mine: false, title: personalId });
+      await this.setFeedFlags({ ...feed, file: home }, { personal: true, mine: false, title: feed.name || personalId });
       return 0;
     }
 
@@ -809,7 +854,7 @@ export class Store {
     if (homeMsgs === 0) {
       await this.app.fileManager.trashFile(homeFile);
       await this.app.fileManager.renameFile(file, home);
-      await this.setFeedFlags({ ...feed, file: home }, { personal: true, mine: false, title: personalId });
+      await this.setFeedFlags({ ...feed, file: home }, { personal: true, mine: false, title: feed.name || personalId });
       return 0;
     }
 
@@ -1130,17 +1175,40 @@ export class Store {
   }
 
   /** 把一个本地源的全部消息推给发布服务 */
+  /**
+   * 已发布但 ID 不干净（老版本用中文名当 ID）→ 换成 slug+哈希的新 ID。
+   * 返回最终使用的 ID；换过就顺手把文件改名，订阅地址也就跟着变干净。
+   */
+  async ensureCleanPublishId(feed: Feed): Promise<{ id: string; changed: boolean }> {
+    const current = (this.settings.feedIds || {})[feed.id] || feed.id;
+    if (Store.isCleanId(current)) return { id: current, changed: false };
+    const next = this.publishIdFor(feed.name);
+    const file = await this.fileByPath(feed.file);
+    if (file) {
+      const target = normalizePath(`${this.settings.feedsFolder}/${next}.md`);
+      if (!this.app.vault.getAbstractFileByPath(target)) {
+        try { await this.app.fileManager.renameFile(file, target); } catch { /* 改不动就沿用旧 ID */ }
+      }
+    }
+    const ids = { ...(this.settings.feedIds || {}) };
+    delete ids[feed.id];
+    ids[next] = next;                       // 已发布的源：文件名就是 ID
+    this.settings.feedIds = ids;
+    return { id: next, changed: true };
+  }
+
   async publishFeed(feed: Feed, hubUrl: string, publishId?: string) {
     const base = hubUrl.replace(/\/$/, "");
     const pid = publishId || (this.settings.feedIds || {})[feed.id] || feed.id;
+    const owner = this.settings.publisherName || "tlt";
     await this.httpJson<PublishResult>(`${base}/register`, {
       method: "POST",
-      body: { id: pid, title: feed.name, desc: feed.desc, owner: feed.owner },
+      body: { id: pid, title: feed.name, desc: feed.desc, owner },
     });
     const items = feed.items.map((m, i) => ({
       mid: `${pid}-${m.date}-${i}`,
       date: m.date, title: m.title, kind: m.kind, place: m.place, who: m.who,
-      star: m.star, state: m.state, until: m.until, body: m.body,
+      star: m.star, state: m.state, until: m.until, ended: m.ended, body: m.body,
     }));
     return await this.httpJson<PublishResult>(`${base}/publish`, {
       method: "POST",
@@ -1163,8 +1231,12 @@ export class Store {
       try { const x = new URL(u); return `${x.origin}${x.pathname}?${decodeURIComponent(x.search.replace(/^\?/, ""))}`; }
       catch { return u; }
     };
-    const mine = this.feeds.filter((f) => f.mine);
-    if (mine.some((f) => norm(feedUrl).includes(`id=${f.id}`) || norm(feedUrl).includes(`id=${encodeURIComponent(f.id)}`))) {
+    // 「这是不是我自己发布的」要比发布用的 ID，不能比本地文件名：
+    // 别人发布的源也可能起同样的名字，ID 不同但文件名可能一样
+    const myIds = new Set(Object.values(this.settings.feedIds || {}));
+    this.feeds.filter((f) => f.mine).forEach((f) => myIds.add(f.id));
+    const inUrl = /[?&]id=([^&]+)/.exec(decodeURIComponent(norm(feedUrl)))?.[1] ?? "";
+    if (inUrl && myIds.has(inUrl)) {
       return { ok: false, count: 0, existed: true, reason: "self" as const };
     }
     const cur = await this.httpJson<SubsResponse>(`${base}/subscriptions`).catch((): SubsResponse => ({ subs: [] }));
@@ -1195,14 +1267,22 @@ export class Store {
       const rawId = title;
       const id = rawId.replace(/[\\/:*?"<>|]/g, "-");
       // 远端源单独前缀，避免和本地同名源混在一起
+      const owner = asText(feed.owner) || "";
       const path = normalizePath(`${this.settings.feedsFolder}/远程-${id}.md`);
       let file = this.asFile(this.app.vault.getAbstractFileByPath(path));
       if (!file) {
         await this.ensureFolder(this.settings.feedsFolder);
         await this.createSafe(path,
-          `---\ntitle: ${title}\nremote: ${asText(feed.url)}\nown: false\n---\n\n# ${title}\n\n`);
+          `---\ntitle: ${title}\nremote: ${asText(feed.url)}${owner ? `\nowner: ${owner}` : ""}\nown: false\n---\n\n# ${title}\n\n`);
         file = this.asFile(this.app.vault.getAbstractFileByPath(path));
         if (!file) return;
+      }
+      const header = file ? `---\ntitle: ${title}\nremote: ${asText(feed.url)}${owner ? `\nowner: ${owner}` : ""}\nown: false\n---` : "";
+      if (header) {
+        await this.app.vault.process(file, (text) => {
+          const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+          return `${header}\n\n${body.replace(/^\s+/, "")}`;
+        });
       }
       await this.app.vault.process(file, (text) => {
         const lines = text.split(/\r?\n/);
@@ -1221,7 +1301,8 @@ export class Store {
             (it.place ? ` [place:: ${it.place}]` : "") +
             (it.who?.length ? ` [who:: ${it.who.join(", ")}]` : "") +
             (it.star ? ` [star:: true]` : "") +
-            (it.until ? ` [until:: ${it.until}]` : "") + stateField +
+            (it.until ? ` [until:: ${it.until}]` : "") +
+            (it.ended ? ` [ended:: ${it.ended}]` : "") + stateField +
             ` [mid:: ${mid}]`;
           const body = it.body ? [`  > ${String(it.body).replace(/\n/g, "\n  > ")}`] : [];
           lines.push(head, ...body);

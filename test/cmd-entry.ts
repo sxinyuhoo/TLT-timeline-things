@@ -33,6 +33,7 @@ export function makeApp() {
     createFolder: async (p: string) => { folders.add(p); },
     trashFile: async (f: TFile) => { delete fps.files[f.path]; },
     on: () => ({}),
+    getName: () => "测试库",
   };
   const fmOf = (path: string) => {
     const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fps.files[path] || "");

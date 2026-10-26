@@ -257,7 +257,7 @@ const plugin = {
   pingHub: async () => true,
   activateMessages: async () => {},
   refreshAll: () => {},
-  hubState: () => ({ publish: "http://127.0.0.1:8787", sync: "http://127.0.0.1:8788", lastSync: "", lastResult: "", lastError: "" }),
+  vaultName: () => "测试库", hubState: () => ({ publish: "http://127.0.0.1:8787", sync: "http://127.0.0.1:8788", lastSync: "", lastResult: "", lastError: "" }),
   setHubState: () => {},
 };
 
@@ -1054,7 +1054,8 @@ await t("发布个人源：从「个人」挪到「我发布的」（只留一�
   await view.store.load();
   const back = view.store.feeds.find((f) => f.personal);
   assert.ok(back, "取消发布后没回到「个人」");
-  assert.ok(!view.store.feeds.some((f) => f.name === "对外动态"), "「我发布的」里不该还在");
+  assert.ok(!view.store.feeds.some((f) => f.name === "对外动态" && f.mine && !f.personal), "「我发布的」里不该还在");
+  assert.equal(back.name, "对外动态", "取消发布后应保留改名后的名字（不再改回「个人」）");
   assert.equal(back.items.length, n, `消息数应保持 ${n}，实际 ${back.items.length}`);
 });
 

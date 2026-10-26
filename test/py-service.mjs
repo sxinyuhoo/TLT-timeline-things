@@ -73,6 +73,34 @@ await t("取消发布会从列表消失", async () => {
   assert.ok(!feeds.feeds.some((f) => f.id === "t1"));
 });
 
+await t("同名不同发布者：ID 被占用时返回 409，不互相覆盖", async () => {
+  await post("/register", { id: "dup-1", title: "A 的源", owner: "小王" });
+  const clash = await fetch(`http://127.0.0.1:${PORT}/register`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: "dup-1", title: "B 的同名源", owner: "小李" }),
+  });
+  assert.equal(clash.status, 409, `别人占用的 id 应返回 409，实际 ${clash.status}`);
+  const one = await get("/feed?id=dup-1");
+  assert.equal(one.title, "A 的源", "原来的源不该被覆盖");
+  assert.equal(one.owner, "小王", "owner 应保持");
+  // 同一个发布者再次注册同一个 id：允许（更新自己的源）
+  await post("/register", { id: "dup-1", title: "A 的源 v2", owner: "小王" });
+  const two = await get("/feed?id=dup-1");
+  assert.equal(two.title, "A 的源 v2", "同一个人可以更新自己的源");
+});
+
+await t("订阅回来的源带 owner（订阅方能看到来自谁）", async () => {
+  await post("/register", { id: "owned-1", title: "带作者", owner: "小王" });
+  await post("/publish", { id: "owned-1", title: "带作者", items: [
+    { mid: "m1", date: "2026-10-20", title: "一条", kind: "note", place: "", who: [], star: false, state: "live", until: "", body: "" },
+  ] });
+  await post("/subscribe", { url: `http://127.0.0.1:${PORT}/feed?id=owned-1`, name: "带作者" });
+  const pulled = await get("/pull");
+  const mine = (pulled.feeds || []).find((f) => f.id === "owned-1" || (f.title || "").includes("带作者"));
+  assert.ok(mine, "pull 结果里应有这个源");
+  assert.equal(mine.owner, "小王", `pull 应带回 owner，实际 ${JSON.stringify(mine.owner)}`);
+});
+
 proc.kill();
 src.close();
 fs.rmSync(dataDir, { recursive: true, force: true });

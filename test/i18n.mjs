@@ -157,7 +157,7 @@ await t2("工作台（英文数据）：界面无中文", async () => {
   setLanguage("en");
   englishVault();
   const { app, store } = await makeStore({ mineFeed: "Me" });
-  const view = new WorkbenchView({ app }, { app, store, settings: store.settings, isLight: () => true, toggleTheme: () => {}, activateWorkbench: async () => {}, activateMessages: async () => {}, hubState: () => ({ publish: "", sync: "", syncMin: 0, pushMin: 0, lastSync: "", lastResult: "", lastError: "" }), setHubState: () => {} });
+  const view = new WorkbenchView({ app }, { app, store, settings: store.settings, isLight: () => true, toggleTheme: () => {}, activateWorkbench: async () => {}, activateMessages: async () => {}, vaultName: () => "测试库", hubState: () => ({ publish: "", sync: "", syncMin: 0, pushMin: 0, lastSync: "", lastResult: "", lastError: "" }), setHubState: () => {} });
   view.containerEl = document.createElement("div");
   view.contentEl = document.createElement("div");
   view.containerEl.appendChild(view.contentEl);
@@ -192,7 +192,7 @@ await t2("设置页（英文）：标题与描述无中文", async () => {
   setLanguage("en");
   englishVault();
   const { app, store } = await makeStore({ mineFeed: "Me" });
-  const plugin = { app, store, settings: store.settings, manifest: { version: "0.7.0" }, saveSettings: async () => {}, applyTheme: () => {}, seedDemo: async () => {}, publishAll: async () => {}, syncAll: async () => {}, hubState: () => ({ publish: "", sync: "", lastSync: "", lastResult: "", lastError: "" }), versionLine: () => "", alignAndNotify: async () => {} };
+  const plugin = { app, store, settings: store.settings, manifest: { version: "0.7.0" }, vaultName: () => "Test vault", saveSettings: async () => {}, applyTheme: () => {}, seedDemo: async () => {}, publishAll: async () => {}, syncAll: async () => {}, hubState: () => ({ publish: "", sync: "", lastSync: "", lastResult: "", lastError: "" }), versionLine: () => "", alignAndNotify: async () => {} };
   const tab = new TLTSettingTab(app, plugin);
   tab.containerEl = document.createElement("div");
   document.body.appendChild(tab.containerEl);

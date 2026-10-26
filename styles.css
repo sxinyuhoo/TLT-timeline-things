@@ -1368,3 +1368,8 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 }
 .tlt-ms:hover .tlt-ms-edit { opacity: 1; }
 .tlt-ms-edit:hover { background: var(--tlt-surface3); color: var(--tlt-ink); }
+
+/* ---- 我发布的源：订阅地址（可全选 + 复制按钮） ---- */
+.tlt-urrow { display: flex; align-items: center; gap: 6px; margin: 4px 0 2px; }
+.tlt-input-url { flex: 1; min-width: 0; font-size: 9.5px; font-family: var(--font-monospace, monospace); }
+.tlt-input-url:focus { user-select: all; }

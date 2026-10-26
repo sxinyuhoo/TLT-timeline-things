@@ -661,17 +661,37 @@ export class MessagesView extends ItemView {
         } else if (f.mine) {
           const st = this.plugin.hubState();
           const pid = (this.cfg.feedIds || {})[f.id] || f.id;
-          s.appendChild(el("div", "tlt-d-body", T("订阅地址：{u}", { u: `${st.publish}/feed?id=${encodeURIComponent(pid)}` })));
+          const url = `${st.publish}/feed?id=${encodeURIComponent(pid)}`;
+          // 订阅地址放成只读输入框（能全选）+ 一个复制按钮：之前是一段文本，没法直接复制给别人
+          const urow = el("div", "tlt-urrow");
+          const uin = el("input", "tlt-input tlt-input-url");
+          uin.readOnly = true;
+          uin.value = url;
+          uin.title = T("选中复制，或点右边的「复制」");
+          const copy = el("button", "tlt-btn tiny", T("复制"));
+          copy.onclick = () => { void (async () => {
+            try {
+              if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(url);
+              else { uin.select(); }        // 没有剪贴板权限（老客户端）就退化成"帮你选中"
+              new Notice(T("订阅地址已复制"));
+            } catch { uin.select(); new Notice(T("复制失败，已帮你选中，按 ⌘C 复制"), 4000); }
+          })(); };
+          urow.append(uin, copy);
+          s.appendChild(el("div", "tlt-d-body", T("把这行地址发给别人，对方在「订阅」里粘贴即可")));
+          s.appendChild(urow);
           const push = el("button", "tlt-btn pri", T("手动推送"));
           push.onclick = () => { void (async () => {
             try {
-              const r = await this.store.publishFeed(f, st.publish, pid);
+              const clean = await this.store.ensureCleanPublishId(f);
+              if (clean.changed) new Notice(T("订阅地址已换成新的短 ID：{id}", { id: clean.id }), 5000);
+              const r = await this.store.publishFeed(f, st.publish, clean.id);
               new Notice(T("已推送 {n} 条", { n: r.count }));
             } catch (e) { new Notice(T("推送失败：") + errMsg(e)); }
           })(); };
           const unpub = el("button", "tlt-btn danger", T("取消发布"));
           unpub.onclick = () => { void (async () => {
             try { await this.store.unpublishFeed(pid, st.publish); } catch { /* 服务没起也不影响本地 */ }
+            if (!Store.isCleanId(pid)) { try { await this.store.unpublishFeed(f.id, st.publish); } catch { /* 同上 */ } }
             const back = f.personal ? 0 : await this.store.demoteToPersonal(f, "个人");
             this.selected.delete(f.id);
             await this.refresh();
@@ -841,6 +861,8 @@ class PublishFeedModal extends TltModal {
         new Notice(okRemote
           ? T("已发布并推送「{name}」· {n} 条 · 服务端已确认", { name, n: pushed.count ?? 0 })
           : T("已推送，但服务端没查到「{id}」，请检查服务地址：{hub}", { id: r.id, hub }), 8000);
+        // 顺手把订阅地址也告诉用户，省得再去右栏找
+        new Notice(T("订阅地址已生成，可在右栏「复制」后发给别人：{u}", { u: `${hub}/feed?id=${encodeURIComponent(r.id)}` }), 9000);
       } catch (e) {
         this.close(); void this.onDone();
         new Notice(T("源已建好，但推送失败：{msg}（可在右栏「手动推送」重试）", { msg: errMsg(e) }), 8000);

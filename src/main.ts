@@ -174,6 +174,11 @@ export class TLTPlugin extends Plugin {
       this.settings.appliedRoot = this.settings.root;   // 老数据没有这个字段：以当前根目录为准
       await this.saveSettings();
     }
+    if (!this.settings.publisherName) {
+      // 发布者名默认取库名：订阅的人能看出"这是谁的源"，也是自订阅判断的依据
+      this.settings.publisherName = this.vaultName();
+      await this.saveSettings();
+    }
     await this.migrateFolderDefaults();
     this.store.settings = this.settings;
     setLanguage(this.settings.language);
@@ -260,6 +265,12 @@ export class TLTPlugin extends Plugin {
     this.store.settings = this.settings;
     await this.store.load();
     this.refreshAll();
+  }
+
+  /** 库名：发布者名的默认值（拿不到就退回插件名） */
+  vaultName(): string {
+    const v = this.app.vault as unknown as { getName?: () => string };
+    try { return v.getName?.() || this.manifest.name || "tlt"; } catch { return this.manifest.name || "tlt"; }
   }
 
   /* ---------- 主题 ---------- */
@@ -836,6 +847,13 @@ export class TLTSettingTab extends PluginSettingTab {
 
     /* ---------- 消息服务 ---------- */
     new Setting(containerEl).setName(t("消息服务")).setHeading();
+    new Setting(containerEl)
+      .setName(t("发布者名称"))
+      .setDesc(t("订阅你消息源的人会看到这个名字，用来区分同名源。默认取库名。"))
+      .addText((tc) => tc
+        .setPlaceholder(p.vaultName())
+        .setValue(p.settings.publisherName || "")
+        .onChange((v) => { p.settings.publisherName = v.trim() || p.vaultName(); void p.saveSettings(); }));
     containerEl.createEl("p", {
       cls: "setting-item-description",
       text: T("服务是可选的：不填就完全离线，只用库内的 Markdown。发布端与订阅端可以是同一个地址（仓库里的 services-py 就是同进程同端口）。"),

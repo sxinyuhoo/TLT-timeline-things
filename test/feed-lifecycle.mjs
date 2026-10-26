@@ -84,10 +84,10 @@ await t("个人源被识别为 personal", async () => {
 await t("发布个人源：就地变成「我发布的」，消息不丢也不重复", async () => {
   const r = await store.publishSource(me(), { name: "部门动态", desc: "试试" });
   assert.equal(r.ok, true, "发布失败");
-  assert.equal(r.id, "部门动态", `id 应来自名称，实际 ${r.id}`);
-  assert.ok("TLT/feeds/部门动态.md" in vault.files, "文件没改名成发布 id");
+  assert.ok(/^[A-Za-z0-9._-]+$/.test(r.id), `id 应是干净的 ASCII（slug+短哈希），实际 ${r.id}`);
+  assert.ok(`TLT/feeds/${r.id}.md` in vault.files, "文件没改名成发布 id");
   assert.ok(!("TLT/feeds/个人.md" in vault.files), "个人源文件应已不在（不是另存一份）");
-  const text = vault.files["TLT/feeds/部门动态.md"];
+  const text = vault.files[`TLT/feeds/${r.id}.md`];
   assert.ok(/mine: true/.test(text), "应标记 mine");
   assert.ok(!/personal: true/.test(text), "不该还留着 personal");
   assert.ok(/title: 部门动态/.test(text), "标题应改成发布名");
@@ -104,17 +104,22 @@ await t("取消发布：就地回到「个人」，消息还在、不多出文�
   assert.equal(r, 0, "就地回迁应返回 0（不需要搬消息）");
   await store.load();
   assert.ok("TLT/feeds/个人.md" in vault.files, "文件应改名回 个人.md");
-  assert.ok(!byName("部门动态"), "「我发布的」里不该还在");
+  assert.ok(!store.feeds.some((f) => f.name === "部门动态" && f.mine && !f.personal), "「我发布的」里不该还在");
   assert.ok(me(), "「个人」里应回来了");
+  assert.equal(me().name, "部门动态", "取消发布后应保留发布时的名字");
   assert.equal(me().items.length, n, `消息数应保持 ${n}，实际 ${me().items.length}`);
   assert.ok(/personal: true/.test(vault.files["TLT/feeds/个人.md"]), "应标记 personal");
 });
 
-await t("发布名重复：自动加序号，不覆盖别人的源", async () => {
+await t("同名源：ID 由发布者+名字派生，不会互相覆盖", async () => {
+  // 先造一个"别人已经占了同名 id"的源
+  vault.files["TLT/feeds/我的工作动态.md"] = `---\ntitle: 我的工作动态\nowner: 别人\nmine: false\n---\n\n# 我的工作动态\n\n- ${D} 别人的消息\n`;
+  await store.load();
   const r = await store.publishSource(me(), { name: "我的工作动态" });
   assert.equal(r.ok, true, "同名发布不该被拒");
-  assert.equal(r.id, "我的工作动态-2", `应加序号，实际 ${r.id}`);
-  assert.ok("TLT/feeds/我的工作动态.md" in vault.files, "原来的同名源不能被覆盖");
+  assert.notEqual(r.id, "我的工作动态", "不该直接拿中文名当 id");
+  assert.ok(`TLT/feeds/${r.id}.md` in vault.files, "新源应写进自己的文件");
+  assert.ok(vault.files["TLT/feeds/我的工作动态.md"].includes("别人的消息"), "别人那份不能被覆盖");
 });
 
 await t("再次发布：不产生第二份文件", async () => {
@@ -145,7 +150,9 @@ await t("插件重启后不该补出空的个人源（否则取消发布会变�
   const back = store.feeds.find((f) => f.personal);
   assert.ok(back, "没回到个人");
   assert.ok((vault.files["TLT/feeds/个人.md"] || "").includes("test 2"), "test2 的消息应原样回到个人");
-  assert.ok(!store.feeds.some((f) => f.name === "test2"), "我发布的不该还留着 test2");
+  // 注意：个人源的 frontmatter 是 owner: me，所以 mine 也会是 true；
+  // 「我发布的」那一组的判据是 mine && !personal
+  assert.ok(!store.feeds.some((f) => f.name === "test2" && f.mine && !f.personal), "我发布的不该还留着 test2");
   // 个人源已是空壳（只有表头没消息）时，也同样替换而不是合并
   vault.files["TLT/feeds/个人.md"] = `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n# 个人\n`;
   vault.files["TLT/feeds/test3.md"] = `---\ntitle: test3\nowner: me\nmine: true\n---\n\n# test3\n\n- ${D} test3 内容\n`;

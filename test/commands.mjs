@@ -308,6 +308,88 @@ await t("定时任务：改成「关闭」后旧定时器被清掉", async () =>
   }
 });
 
+/* ---------------- 发布 ID / 订阅判定 / 取消发布保名 ---------------- */
+await t("发布 ID：纯 ASCII、同名稳定、跨库不撞", async () => {
+  const { store } = await NEW();
+  store.settings.publisherName = "小王的工作台";
+  const id1 = store.publishIdFor("个人");
+  const id2 = store.publishIdFor("个人");
+  assert.equal(id1, id2, "同一个人同一个名字应得到同一个 ID");
+  assert.ok(/^[A-Za-z0-9._-]+$/.test(id1), `ID 必须是 ASCII，实际：${id1}`);
+  assert.ok(!id1.includes("%"), "ID 里不该有编码字符");
+  assert.ok(id1.length <= 32, `ID 别太长：${id1}`);
+
+  // 另一个人（不同发布者名 / 不同库）发同名源 → ID 不同
+  const { store: other } = await NEW();
+  other.settings.publisherName = "小李的工作台";
+  other.settings.publisherSalt = "zzzz9999";
+  const otherId = other.publishIdFor("个人");
+  assert.notEqual(id1, otherId, "不同人发布同名源，ID 必须不同，否则会互相覆盖");
+});
+
+await t("发布一个中文名的源：文件与 ID 都是干净短 ID", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/feeds/部门通知.md"] = `---\ntitle: 部门通知\nowner: me\n---\n\n- 2026-10-20 一条消息\n`;
+  await store.load();
+  const src = store.feeds.find((f) => f.id === "部门通知");
+  assert.ok(src, "夹具里的草稿源应被读到");
+  const r = await store.publishSource(src, { name: "部门通知" });
+  assert.ok(r.ok, "发布应成功");
+  assert.ok(/^[A-Za-z0-9._-]+$/.test(r.id), `ID 应是干净的 ASCII：${r.id}`);
+  assert.ok(fps.files[`TLT/feeds/${r.id}.md`], `文件应改名成 ${r.id}.md，实际有：${Object.keys(fps.files).join(", ")}`);
+  assert.ok(!Object.keys(fps.files).some((k) => k.includes("部门通知")), "中文文件名不该留着");
+});
+
+await t("老的中文 ID：推送前会被换成短 ID（文件一起改名）", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/feeds/个人.md"] = `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n- 2026-10-20 草稿\n`;
+  await store.load();
+  const personal = store.feeds.find((f) => f.personal);
+  const pub = await store.publishSource(personal, { name: "我的动态" });
+  assert.ok(pub.ok);
+  // 模拟"老版本用中文当 ID"的留言：把映射与文件名都改回中文
+  fps.files["TLT/feeds/中文旧ID.md"] = fps.files[`TLT/feeds/${pub.id}.md`];
+  delete fps.files[`TLT/feeds/${pub.id}.md`];
+  store.settings.feedIds = { "个人": "中文旧ID" };
+  await store.load();
+  const feed = store.feeds.find((f) => f.mine);
+  const clean = await store.ensureCleanPublishId(feed);
+  assert.equal(clean.changed, true, "中文 ID 应被识别为需要迁移");
+  assert.ok(/^[A-Za-z0-9._-]+$/.test(clean.id), `迁移后的 ID 要干净：${clean.id}`);
+  assert.ok(fps.files[`TLT/feeds/${clean.id}.md`], "文件应改名到新 ID");
+  assert.ok(!fps.files["TLT/feeds/中文旧ID.md"], "旧的中文文件名应没了");
+});
+
+await t("订阅判定：别人的同名源不算「我自己的」", async () => {
+  const { store } = await NEW();
+  store.settings.feedIds = { "个人": "mine-abc123" };
+  // 别人发的源（ID 不同、名字相同）
+  store.httpJson = async () => ({ subs: [] });     // 只测判定，别真发请求
+  const other = await store.subscribeRemote("http://hub", "http://hub/feed?id=someone-else-999", "个人");
+  assert.notEqual(other.reason, "self", "别人发布的同名源不该被当成自己的");
+  // 自己发布的（ID 命中）
+  const mine = await store.subscribeRemote("http://hub", "http://hub/feed?id=mine-abc123", "我的动态");
+  assert.equal(mine.reason, "self", "自己发布的源应被识别出来");
+});
+
+await t("取消发布：保留改名后的名字（不再改回「个人」）", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/feeds/个人.md"] = `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n- 2026-10-20 草稿\n`;
+  await store.load();
+  const personal = store.feeds.find((f) => f.personal);
+  const pub = await store.publishSource(personal, { name: "我的工作动态" });
+  assert.ok(pub.ok);
+  await store.load();
+  const feed = store.feeds.find((f) => f.mine);
+  assert.equal(feed.name, "我的工作动态", "发布后名字是新名字");
+  const back = await store.demoteToPersonal(feed, "个人");
+  assert.equal(back, 0, "应就地回到个人源");
+  await store.load();
+  const home = store.feeds.find((f) => f.personal);
+  assert.ok(home, "应回到个人分组");
+  assert.equal(home.name, "我的工作动态", `取消发布后应保留改名后的名字，实际：${home.name}`);
+});
+
 /* ---------------- 市场可检索性（README / manifest 关键词） ---------------- */
 await t("manifest 描述：够短、且带上主要检索词", async () => {
   const m = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
