@@ -400,6 +400,24 @@ await t("manifest 描述：够短、且带上主要检索词", async () => {
   }
 });
 
+await t("manifest 合规：名字标点、描述结尾（目录会按这两条隐藏插件）", async () => {
+  const m = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
+  const name = m.name || "";
+  const bad = [...name].filter((c) => !/^[A-Za-z0-9 \-+()]$/.test(c));
+  assert.equal(bad.length, 0, `名字里只允许字母数字与 - + ( )，实际多了：${bad.join("")}（${name}）`);
+  assert.ok(!/obsidian/i.test(name), "名字里不能有 Obsidian");
+  assert.ok(!/plugin$/i.test(name.trim()), "名字不能以 Plugin 结尾");
+  const d = m.description || "";
+  assert.ok(!/obsidian/i.test(d), "描述里不能有 Obsidian");
+  assert.ok(/[.?!)]$/.test(d), `描述必须以 . ? ! ) 结尾，实际结尾：${JSON.stringify(d.slice(-1))}`);
+  assert.ok(d.length <= 250, `描述 ≤250 字符，实际 ${d.length}`);
+  assert.ok(!/\bthis plugin\b/i.test(d), "描述别写 this plugin");
+  const keys = Object.keys(m);
+  const ok = ["id", "name", "description", "author", "version", "minAppVersion", "isDesktopOnly", "authorUrl", "fundingUrl", "helpUrl"];
+  const extra = keys.filter((k) => !ok.includes(k));
+  assert.equal(extra.length, 0, `manifest 里出现目录不认的字段：${extra.join(", ")}`);
+});
+
 await t("README（中英）：有关键词对照表，且覆盖 tasks/timeline/schedule", async () => {
   for (const f of ["README.md", "README.en.md"]) {
     const s = readFileSync(join(root, f), "utf8").toLowerCase();

@@ -1,5 +1,11 @@
 # 更新日志
 
+## 0.8.2
+
+- 改：插件名 **`TLT - Timeline & Tasks` → `TLT - Timeline + Tasks`**。官方命名规范只允许 hyphen、plus、parenthesis 三种标点，`&` 不在其中，目录因此把插件隐藏了（`id` 仍是 `tlt-timeline-things`，已装用户不受影响）
+- 改：`manifest.json` 的描述收尾改成 ASCII 句点（目录要求描述以 `.` `?` `!` `)` 结尾），并去掉中英混排里的中文句号收尾
+
+
 ## 0.8.1
 
 **日历：排期从「现在」开始、日程可拖可删可改时间；两侧栏可折叠**
