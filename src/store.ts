@@ -93,7 +93,6 @@ export class Store {
   feeds: Feed[] = [];
   ideas: Idea[] = [];
   loaded = false;
-  private loading: Promise<void> | null = null;
 
   constructor(app: App, settings: TLTSettings) {
     this.app = app;
@@ -159,15 +158,24 @@ export class Store {
     await this.ensurePersonalFeed();
   }
 
-  /** 只加载一次；并发调用共用同一个 Promise（视图在插件 onload 完成前就恢复时会用到） */
+  /** 只加载一次（视图可能早于 onload 就恢复，那时数据还没读） */
   async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const pending: Promise<void> = this.loading ?? this.load().finally(() => { this.loading = null; });
-    this.loading = pending;
-    await pending;
+    await this.load();
   }
 
-  async load() {
+  /**
+   * 读盘。**必须排队串行**：两个 load 交错跑（一个已经清空、另一个还在 await 读文件）
+   * 会把同一份文件塞两遍 —— 界面上就是"每个源出现两次"。
+   */
+  private queue: Promise<void> = Promise.resolve();
+  async load(): Promise<void> {
+    const run = this.queue.then(() => this.doLoad());
+    this.queue = run.then(() => { /* 上一轮出错也不卡住后面的 */ }, () => { /* 同上 */ });
+    return run;
+  }
+
+  private async doLoad() {
     this.tasks = [];
     this.logs = [];
     this.staff = [];
@@ -264,6 +272,17 @@ export class Store {
     }
 
     await this.loadTags();
+
+    // 兜底去重：同一行/同一文件只留一条（保留先出现的）
+    const uniqBy = <T>(list: T[], key: (x: T) => string): T[] => {
+      const seen = new Set<string>();
+      return list.filter((x) => (seen.has(key(x)) ? false : (seen.add(key(x)), true)));
+    };
+    this.tasks = uniqBy(this.tasks, (t) => `${t.file}#${t.line}`);
+    this.logs = uniqBy(this.logs, (t) => `${t.file}#${t.line}`);
+    this.feeds = uniqBy(this.feeds, (f) => f.file);       // 一个源一个文件
+    this.staff = uniqBy(this.staff, (s) => s.file);
+
     this.loaded = true;
   }
 

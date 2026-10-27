@@ -390,6 +390,61 @@ await t("取消发布：保留改名后的名字（不再改回「个人」）",
   assert.equal(home.name, "我的工作动态", `取消发布后应保留改名后的名字，实际：${home.name}`);
 });
 
+/* ---------------- 并发读盘不该出现"同一个源两遍" ---------------- */
+await t("并发 load()：源不会出现两份", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/feeds/测试.md"] = `---\ntitle: 测试\nowner: me\nmine: true\n---\n\n- 2026-10-26 test\n`;
+  fps.files["TLT/feeds/个人.md"] = `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n- 2026-10-26 test 2\n`;
+  await store.load();
+  // 模拟真实场景：保存设置 + 文件变动几乎同时触发多次 load
+  await Promise.all([store.load(), store.load(), store.load(), store.load()]);
+  const ids = store.feeds.map((f) => f.id);
+  assert.equal(new Set(ids).size, ids.length, `源出现重复：${ids.join(", ")}`);
+  assert.equal(store.feeds.length, 2, `应恰好 2 个源（测试 + 个人），实际 ${store.feeds.length}：${store.feeds.map((f) => f.id).join(", ")}`);
+  const taskIds = store.tasks.map((t) => `${t.file}#${t.line}`);
+  assert.equal(new Set(taskIds).size, taskIds.length, "任务也不该重复");
+});
+
+await t("并发 load()：第二轮要等第一轮读完，不会交错读盘", async () => {
+  const { app, store } = await NEW();
+  fps.files["TLT/feeds/甲.md"] = `---\ntitle: 甲\nowner: me\n---\n\n- 2026-10-26 一\n`;
+  fps.files["TLT/feeds/乙.md"] = `---\ntitle: 乙\nowner: me\n---\n\n- 2026-10-26 二\n`;
+  await store.load();
+
+  // 记录读盘顺序：交错读 → 甲,甲,乙,乙…；排队读 → 甲,乙,甲,乙…（成组）
+  const seq = [];
+  const orig = app.vault.cachedRead;
+  app.vault.cachedRead = async (f) => {
+    seq.push(f.path.split("/").pop().replace(".md", ""));
+    await new Promise((r) => setTimeout(r, 1));      // 让出事件循环，制造交错机会
+    return orig(f);
+  };
+  const p1 = store.load();
+  const p2 = store.load();
+  await Promise.all([p1, p2]);
+  app.vault.cachedRead = orig;
+
+  const ids = seq.join(",");
+  const dupAdj = seq.some((x, i) => i > 0 && seq[i - 1] === x);
+  assert.ok(!dupAdj, `两个 load 交错读盘（同一文件连读两次）：${ids}`);
+  assert.equal(store.feeds.filter((f) => f.id === "甲").length, 1, "甲 不该出现两份");
+  assert.equal(store.feeds.filter((f) => f.id === "乙").length, 1, "乙 不该出现两份");
+});
+
+await t("并发 load() 时写入不丢：排队执行，最后一次能读到新内容", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/feeds/甲.md"] = `---\ntitle: 甲\npersonal: true\nowner: me\n---\n\n- 2026-10-26 一\n`;
+  await store.load();
+  const p1 = store.load();
+  fps.files["TLT/feeds/甲.md"] = `---\ntitle: 甲\npersonal: true\nowner: me\n---\n\n- 2026-10-26 一\n- 2026-10-26 二\n`;
+  const p2 = store.load();
+  await Promise.all([p1, p2]);
+  const jia = store.feeds.find((f) => f.id === "甲");
+  assert.ok(jia, "没读到 甲 这个源");
+  assert.equal(jia.items.length, 2, `最后一次 load 应读到两条，实际 ${jia.items.length}`);
+  assert.equal(store.feeds.filter((f) => f.id === "甲").length, 1, "源不该变两个");
+});
+
 /* ---------------- 市场可检索性（README / manifest 关键词） ---------------- */
 await t("manifest 描述：够短、且带上主要检索词", async () => {
   const m = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
