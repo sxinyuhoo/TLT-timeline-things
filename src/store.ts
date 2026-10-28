@@ -287,10 +287,63 @@ export class Store {
     this.feeds = uniqBy(this.feeds, (f) => f.file);       // 一个源一个文件
     this.staff = uniqBy(this.staff, (s) => s.file);
 
+    await this.detectMilestoneEvents();
     this.loaded = true;
   }
 
+  /** 里程碑完成状态快照（key: 项目::里程碑）——只在"这一轮刚变成完成"时记事件 */
+  private msDone: Record<string, boolean> = {};
+  private async detectMilestoneEvents() {
+    const seen: Record<string, boolean> = {};
+    for (const m of this.milestones()) {
+      const key = `${m.project}::${m.name}`;
+      const done = m.tasks.length > 0 && m.tasks.every((t) => t.done);
+      seen[key] = done;
+      if (done && this.msDone[key] === false) {
+        await this.appendEvent({ kind: "ms.done", project: m.project, milestone: m.name });
+      }
+    }
+    this.msDone = seen;
+  }
+
   /* ---------------- 快捷命令用的读写 ---------------- */
+
+  /** 事件流目录：<TLT>/events/YYYY-MM.md，一行一条，只追加（时间属性的底账） */
+  eventsDir(): string {
+    const dataDir = this.settings.tasksFolder.replace(/\/tasks\/?$/, "");
+    return normalizePath(`${dataDir}/events`);
+  }
+
+  /**
+   * 追加一条事件。同一分钟内的同一条事件不会重复写（重复触发只在第一次落一行）。
+   * 这是"时间属性"的底账：项目/里程碑/任务的产生与结束都记在这里，供将来的时间线图谱用。
+   */
+  async appendEvent(ev: { kind: string; project?: string; milestone?: string; task?: string; note?: string }): Promise<void> {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const day = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const stamp = `${day} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const parts = [stamp, ev.kind];
+    if (ev.project) parts.push(`project=${ev.project.replace(/\s+/g, "_")}`);
+    if (ev.milestone) parts.push(`milestone=${ev.milestone.replace(/\s+/g, "_")}`);
+    if (ev.task) parts.push(`task=${ev.task.replace(/\s+/g, "_")}`);
+    if (ev.note) parts.push(`note=${ev.note.replace(/\s+/g, "_")}`);
+    const line = `- ${parts.join(" ")}`;
+
+    await this.ensureFolder(this.eventsDir());
+    const path = normalizePath(`${this.eventsDir()}/${day.slice(0, 7)}.md`);
+    let file = this.asFile(this.app.vault.getAbstractFileByPath(path));
+    if (!file) {
+      await this.createSafe(path, `# 事件 ${day.slice(0, 7)}\n\n`);
+      file = this.asFile(this.app.vault.getAbstractFileByPath(path));
+      if (!file) return;
+    }
+    await this.app.vault.process(file, (data) => {
+      // 同一分钟里的同一条事件只留一行（重复触发不会写两遍）
+      if (data.split("\n").some((l) => l.trim() === line.trim())) return data;
+      return data.replace(/\s*$/, "") + `\n${line}\n`;
+    });
+  }
 
   /** 归档目录：和 tasks 同一个 TLT 目录下的 archive/（跟着任务目录走，不额外加设置项） */
   archiveDir(): string {
@@ -353,6 +406,7 @@ export class Store {
       n++;
     }
     await this.app.fileManager.renameFile(file, target);
+    await this.appendEvent({ kind: "project.restored", project: file.basename });
     return target;
   }
 
@@ -364,6 +418,7 @@ export class Store {
     await this.ensureFolder(this.settings.tasksFolder);
     if (this.app.vault.getAbstractFileByPath(path)) return false;
     await this.createSafe(path, `# ${clean}\n\n## 第一个里程碑\n\n- [ ] 示例任务，改成你自己的 🛫 ${todayISO()} 📅 ${todayISO()} [pri:: 1]\n`);
+    await this.appendEvent({ kind: "project.created", project: clean });
     return true;
   }
 
@@ -401,6 +456,7 @@ export class Store {
       lines.push("", `## ${clean}`, "");
       return lines.join("\n");
     });
+    await this.appendEvent({ kind: "ms.created", project, milestone: clean });
     return true;
   }
 
@@ -447,6 +503,89 @@ export class Store {
     return ok;
   }
 
+  /* ---------------- 子项（两格缩进的 checklist，只有内容与完成态） ---------------- */
+
+  /** 在项目文件里定位某个任务行（行号可能过期，按标题兜底一次） */
+  private findTaskLine(lines: string[], t: Task): number {
+    if (t.line >= 0 && t.line < lines.length && lines[t.line]?.includes(t.title)) return t.line;
+    return lines.findIndex((l) => /^\s*[-*+]\s+\[[ xX]\]/.test(l) && l.includes(t.title));
+  }
+
+  /** 任务行下面那串缩进 checklist 的范围 [start, end) */
+  private stepRange(lines: string[], taskLine: number): { start: number; end: number } {
+    let end = taskLine + 1;
+    while (end < lines.length && /^\s{2,}[-*+]\s+\[[ xX]\]/.test(lines[end])) end++;
+    return { start: taskLine + 1, end };
+  }
+
+  /** 加一条子项（插在这条任务已有子项之后；没有就直接跟在任务行后） */
+  async addStep(t: Task, text: string): Promise<boolean> {
+    const clean = text.trim();
+    if (!clean) return false;
+    const file = await this.fileByPath(t.file);
+    if (!file) return false;
+    let ok = false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const at = this.findTaskLine(lines, t);
+      if (at < 0) return data;
+      const { end } = this.stepRange(lines, at);
+      lines.splice(end, 0, `  - [ ] ${clean}`);
+      ok = true;
+      return lines.join("\n");
+    });
+    return ok;
+  }
+
+  /** 勾 / 取消勾某一条子项 */
+  async setStepDone(t: Task, index: number, done: boolean): Promise<boolean> {
+    return this.patchStep(t, index, (ln) => ln.replace(/^(\s*[-*+]\s+\[).(\])/, `$1${done ? "x" : " "}$2`));
+  }
+
+  /** 改子项文字 */
+  async setStepText(t: Task, index: number, text: string): Promise<boolean> {
+    const clean = text.trim();
+    if (!clean) return false;
+    return this.patchStep(t, index, (ln) => ln.replace(/^(\s*[-*+]\s+\[[ xX]\]\s+).*$/, `$1${clean}`));
+  }
+
+  /** 删掉某一条子项 */
+  async deleteStep(t: Task, index: number): Promise<boolean> {
+    const file = await this.fileByPath(t.file);
+    if (!file) return false;
+    let ok = false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const at = this.findTaskLine(lines, t);
+      if (at < 0) return data;
+      const { start, end } = this.stepRange(lines, at);
+      const target = start + index;
+      if (target < start || target >= end) return data;
+      lines.splice(target, 1);
+      ok = true;
+      return lines.join("\n");
+    });
+    return ok;
+  }
+
+  private async patchStep(t: Task, index: number, fn: (line: string) => string): Promise<boolean> {
+    const file = await this.fileByPath(t.file);
+    if (!file) return false;
+    let ok = false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const at = this.findTaskLine(lines, t);
+      if (at < 0) return data;
+      const { start, end } = this.stepRange(lines, at);
+      const target = start + index;
+      if (target < start || target >= end) return data;
+      lines[target] = fn(lines[target]);
+      ok = true;
+      return lines.join("\n");
+    });
+    return ok;
+  }
+
   async deleteTask(t: Task) {
     const file = await this.fileByPath(t.file);
     if (!file) return false;
@@ -466,7 +605,17 @@ export class Store {
   }
 
   async toggleTask(t: Task) {
-    await this.patchLine(t.file, t.line, toggleTaskLine);
+    const today = todayISO();
+    const willBeDone = !t.done;
+    // 勾上：补 [done:: 日期]；取消勾选：把 [done::] 去掉（重开就重开，别留旧完成时间）
+    await this.patchLine(t.file, t.line, (raw) => {
+      const next = toggleTaskLine(raw);
+      return setTaskField(next, "done", willBeDone ? today : null);
+    });
+    await this.appendEvent({
+      kind: willBeDone ? "task.done" : "task.reopen",
+      project: t.project, task: t.title,
+    });
   }
 
   async setDue(t: Task, due: string) {
@@ -555,6 +704,8 @@ export class Store {
   /** 追加任务到项目文件；若里程碑段落不存在则补 H2 */
   async addTask(project: string, milestone: string | undefined, t: Partial<Task> & { title: string }) {
     await this.ensureFolder(this.settings.tasksFolder);
+    if (!t.created) t = { ...t, created: todayISO() };      // 生命周期时间：创建
+    await this.appendEvent({ kind: "task.created", project, task: t.title, milestone });
     const path = normalizePath(`${this.settings.tasksFolder}/${project}.md`);
     let file = await this.fileByPath(path);
     const line = newTaskLine(t);

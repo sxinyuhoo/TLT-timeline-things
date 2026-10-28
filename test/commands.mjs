@@ -445,6 +445,122 @@ await t("并发 load() 时写入不丢：排队执行，最后一次能读到新
   assert.equal(store.feeds.filter((f) => f.id === "甲").length, 1, "源不该变两个");
 });
 
+
+/* ---------------- 子项：只有内容与完成态（0.9.0） ---------------- */
+const STEPS_FIX = `---
+tlt: project
+status: active
+---
+# 伽马
+
+## 一期
+
+- [ ] 收数据 [pri:: 2]
+  - [x] 导出清单
+  - [ ] 核对口径
+- [ ] 另一条
+`;
+
+await t("子项：加 / 勾 / 改 / 删都写回原来那一行", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/tasks/伽马.md"] = STEPS_FIX;
+  await store.load();
+  const task = store.tasks.find((x) => x.title === "收数据");
+  assert.ok(task, "夹具任务没解析出来");
+  assert.equal(task.steps.length, 2, `应解析出 2 个子项，实际 ${task.steps.length}`);
+  assert.equal(task.steps[0].done, true, "第一条应是已完成");
+  assert.equal(task.steps[1].done, false);
+
+  await store.addStep(task, "与标注组对齐");
+  let text = fps.files["TLT/tasks/伽马.md"];
+  assert.ok(/^  - \[ \] 与标注组对齐$/m.test(text), `新子项应缩进两格：\n${text}`);
+  const lines = text.split("\n");
+  assert.ok(lines.findIndex((l) => l.includes("与标注组对齐")) < lines.findIndex((l) => l.trim() === "- [ ] 另一条"),
+    "子项不能插到下一条任务下面");
+
+  await store.load();
+  const t2 = store.tasks.find((x) => x.title === "收数据");
+  await store.setStepDone(t2, 1, true);
+  await store.setStepText(t2, 1, "核对口径（含口径表）");
+  text = fps.files["TLT/tasks/伽马.md"];
+  assert.ok(/^  - \[x\] 核对口径（含口径表）$/m.test(text), `勾选与改文字应落在同一行：\n${text}`);
+
+  await store.load();
+  const t3 = store.tasks.find((x) => x.title === "收数据");
+  await store.deleteStep(t3, 0);
+  text = fps.files["TLT/tasks/伽马.md"];
+  assert.ok(!/导出清单/.test(text), "删掉的子项应从文件里消失");
+  assert.ok(/核对口径（含口径表）/.test(text), "其它子项要留着");
+  assert.ok(/- \[ \] 另一条/.test(text), "下一条任务不能受影响");
+});
+
+/* ---------------- 时间戳：创建 / 完成（0.9.0） ---------------- */
+const todayYmd = () => { const d = new Date(); const p2 = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; };
+
+await t("时间戳：新建写 [created::]，勾选写 [done::]，取消勾选去掉", async () => {
+  const { store } = await NEW();
+  await store.createProject("贝塔");
+  await store.load();
+  await store.addTask("贝塔", undefined, { title: "写一版接口文档" });
+  const ymd = todayYmd();
+  let text = fps.files["TLT/tasks/贝塔.md"];
+  assert.ok(text.includes(`[created:: ${ymd}]`), `新建任务应带创建日：\n${text}`);
+
+  await store.load();
+  const task = store.tasks.find((x) => x.title === "写一版接口文档");
+  assert.equal(task.created, ymd, "created 应被解析出来");
+  await store.toggleTask(task);
+  text = fps.files["TLT/tasks/贝塔.md"];
+  assert.ok(text.includes(`[done:: ${ymd}]`), `勾完应补完成日：\n${text}`);
+
+  await store.load();
+  const done = store.tasks.find((x) => x.title === "写一版接口文档");
+  assert.equal(done.doneAt, ymd, "doneAt 应被解析出来");
+  await store.toggleTask(done);
+  text = fps.files["TLT/tasks/贝塔.md"];
+  assert.ok(!text.includes("[done::"), `取消勾选应去掉完成日：\n${text}`);
+  assert.ok(text.includes(`[created:: ${ymd}]`), "创建日不能被顺手抹掉");
+});
+
+/* ---------------- 事件流：TLT/events/YYYY-MM.md（0.9.0） ---------------- */
+const evKey = () => Object.keys(fps.files).find((k) => /^TLT\/events\/\d{4}-\d{2}\.md$/.test(k));
+
+await t("事件流：建项目 / 建任务 / 完成 / 重开各留一行", async () => {
+  const { store } = await NEW();
+  await store.createProject("伽马");
+  await store.load();
+  await store.addTask("伽马", "一期", { title: "写文档" });
+  await store.load();
+  const tk = store.tasks.find((x) => x.title === "写文档");
+  await store.toggleTask(tk);
+  await store.load();
+  const tk2 = store.tasks.find((x) => x.title === "写文档");
+  await store.toggleTask(tk2);          // 重开
+
+  const key = evKey();
+  assert.ok(key, `应建出事件文件，实际文件：${Object.keys(fps.files).join(", ")}`);
+  const txt = fps.files[key];
+  for (const kind of ["project.created", "task.created", "task.done", "task.reopen"]) {
+    assert.ok(txt.includes(kind), `缺 ${kind}：\n${txt}`);
+  }
+  assert.ok(/^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} /m.test(txt), `行首应是「日期 时:分」：\n${txt}`);
+  const dup = txt.trim().split("\n").filter((l) => l.includes("task.done"));
+  assert.equal(dup.length, 1, `同一条事件不该写两遍：\n${txt}`);
+});
+
+await t("里程碑：刚做完那一刻才记 ms.done（不伪造历史）", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/tasks/德尔塔.md"] = `---\ntlt: project\nstatus: active\n---\n# 德尔塔\n\n## 一期\n\n- [ ] 收尾 [pri:: 1]\n`;
+  await store.load();                                   // 第一次读盘＝基线
+  assert.ok(!evKey(), `第一次读盘不该凭空写事件，实际：${evKey()}`);
+  const tk = store.tasks.find((x) => x.title === "收尾");
+  await store.toggleTask(tk);
+  await store.load();                                   // 这一轮才观察到"刚变成完成"
+  const key = evKey();
+  assert.ok(key, "应写出事件文件");
+  assert.ok(fps.files[key].includes("ms.done"), `应记一次 ms.done：\n${fps.files[key]}`);
+});
+
 /* ---------------- 订阅来的源：只能起别名，不能改发布者的名字 ---------------- */
 await t("订阅别人的源：改名只写本地别名，对方 title 不动", async () => {
   const { store } = await NEW();

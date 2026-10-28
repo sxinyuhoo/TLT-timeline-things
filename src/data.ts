@@ -29,6 +29,9 @@ export interface Task {
   project: string;
   milestone?: string;
   steps: Step[];
+  /** 生命周期时间：创建 / 完成（写回文件，界面默认不显示） */
+  created?: string;
+  doneAt?: string;
   extra?: boolean;
   kind: "task" | "log";
   files: string[];
@@ -196,6 +199,8 @@ export function parseTaskLine(
     project: ctx.project,
     milestone: ctx.milestone,
     steps: ctx.steps || [],
+    created: f["created"] || undefined,
+    doneAt: f["done"] || undefined,
     extra: f["extra"] === "true",
     kind: (f["kind"] as "task" | "log") === "log" ? "log" : "task",
     files: links(f["out"] || ""),
@@ -216,6 +221,8 @@ export function newTaskLine(t: Partial<Task> & { title: string }): string {
   if (t.scope === "个人") s += ` [scope:: 个人]`;
   if (t.st) s += ` [st:: ${t.st}]`;
   if (t.en) s += ` [en:: ${t.en}]`;
+  if (t.created) s += ` [created:: ${t.created}]`;
+  if (t.doneAt) s += ` [done:: ${t.doneAt}]`;
   if (t.extra) s += ` [extra:: true]`;
   if (t.files && t.files.length) s += ` [out:: ${t.files.map((o) => `[[${o}]]`).join(", ")}]`;
   return s;

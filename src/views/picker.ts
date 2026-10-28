@@ -1,5 +1,7 @@
 import { App } from "obsidian";
-import { TltModal, el } from "./modals";
+import { TltModal, el, ConfirmModal } from "./modals";
+
+export { ConfirmModal };
 import { t as T } from "../i18n";
 
 /**
@@ -98,48 +100,6 @@ export class PickerModal<T> extends TltModal {
 
   private mark() {
     Array.from(this.listEl.children).forEach((c, i) => c.classList.toggle("on", i === this.cursor));
-  }
-
-  onClose() { this.contentEl.empty(); }
-}
-
-/** 只有两个出口的确认框：确认 / 取消 */
-export class ConfirmModal extends TltModal {
-  titleText: string;
-  body: string;
-  okText: string;
-  danger: boolean;
-  onDone: (ok: boolean) => void | Promise<void>;
-
-  constructor(app: App, opts: { title: string; body: string; ok?: string; danger?: boolean }, onDone: (ok: boolean) => void | Promise<void>) {
-    super(app);
-    this.titleText = opts.title;
-    this.body = opts.body;
-    this.okText = opts.ok || T("确认");
-    this.danger = opts.danger !== false;
-    this.onDone = onDone;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", this.titleText));
-    const b = el("div", "tlt-confirm-body");
-    this.body.split("\n").forEach((ln) => b.appendChild(el("div", "", ln)));
-    contentEl.appendChild(b);
-    const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", T("取消"));
-    cancel.onclick = () => this.finish(false);
-    const ok = el("button", "tlt-btn " + (this.danger ? "danger" : "pri"), this.okText);
-    ok.onclick = () => this.finish(true);
-    foot.append(cancel, ok);
-    contentEl.appendChild(foot);
-    window.setTimeout(() => ok.focus(), 40);
-  }
-
-  private finish(ok: boolean) {
-    this.close();
-    void this.onDone(ok);
   }
 
   onClose() { this.contentEl.empty(); }

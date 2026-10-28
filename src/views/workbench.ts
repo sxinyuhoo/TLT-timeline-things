@@ -8,6 +8,7 @@ import {
 } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, PromptModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
+import { ConfirmModal } from "./picker";
 import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
@@ -42,6 +43,7 @@ export class WorkbenchView extends ItemView {
   private rhythmView: "bars" | "star" = "star";
   private taskDim: TaskDim = "m";
   private showArchived = false;
+  private expandedSteps = new Set<string>();
   private get sideOff() { return !!this.cfg.sideCollapsed; }
   private get railOff() { return !!this.cfg.railCollapsed; }
   private taskTag: string | null = null;
@@ -747,6 +749,58 @@ export class WorkbenchView extends ItemView {
     };
   }
 
+  /** 子项进度环：只有带子项的任务才画；点一下就地展开子项 */
+  private stepRing(t: Task): HTMLElement {
+    const total = t.steps.length;
+    const done = t.steps.filter((x) => x.done).length;
+    const pct = total ? done / total : 0;
+    const R = 5.5, C = 2 * Math.PI * R;
+    const ring = el("span", "tlt-stepring" + (t.done ? " all" : done === total ? " ready" : ""));
+    ring.dataset.steps = t.id;
+    ring.title = T("子项 {a}/{b}，点一下展开", { a: done, b: total });
+    const svg = createSvg("svg");
+    svg.setAttribute("viewBox", "0 0 14 14");
+    svg.setAttribute("width", "14");
+    svg.setAttribute("height", "14");
+    svg.setAttribute("aria-hidden", "true");
+    const circle = (cls: string) => {
+      const c = createSvg("circle");
+      c.setAttribute("cx", "7");
+      c.setAttribute("cy", "7");
+      c.setAttribute("r", String(R));
+      c.setAttribute("class", cls);
+      return c;
+    };
+    const fg = circle("tlt-sr-fg");
+    fg.setAttribute("stroke-dasharray", C.toFixed(2));
+    fg.setAttribute("stroke-dashoffset", (C * (1 - pct)).toFixed(2));
+    svg.append(circle("tlt-sr-bg"), fg);
+    ring.appendChild(svg);
+    return ring;
+  }
+
+  /** 就地展开的子项块：勾选 / 点文字改 / 删 / 回车加一条 */
+  private stepBlock(t: Task): HTMLElement {
+    const box = el("div", "tlt-steps");
+    t.steps.forEach((st, i) => {
+      const row = el("div", "tlt-step");
+      const cb = el("i", "tlt-scb" + (st.done ? " on" : ""));
+      cb.dataset.step = `${t.id}|${i}`;
+      const txt = el("span", "tlt-step-t", st.text);
+      txt.dataset.steptext = `${t.id}|${i}`;
+      const del = el("button", "tlt-step-del", "×");
+      del.dataset.stepdel = `${t.id}|${i}`;
+      del.title = T("删掉这条子项");
+      row.append(cb, txt, del);
+      box.appendChild(row);
+    });
+    const add = el("input", "tlt-step-add");
+    add.dataset.stepadd = t.id;
+    add.placeholder = T("加一条子项，回车");
+    box.appendChild(add);
+    return box;
+  }
+
   /** 项目菜单：新建里程碑 / 归档项目 / 打开文件 */
   private projectMenu(anchor: HTMLElement, p: string, at?: { x: number; y: number }) {
     const file = this.app.vault.getAbstractFileByPath(`${this.cfg.tasksFolder}/${p}.md`);
@@ -825,6 +879,14 @@ export class WorkbenchView extends ItemView {
     if (!(file instanceof TFile)) return;
     popMenu(anchor ?? this.contentEl, [
       { label: T("打开详情"), onClick: () => new TaskModal(this.app, this.store, t, () => this.render()).open() },
+      { label: T("标记完成（连同子项）"), onClick: () => { void (async () => {
+        for (let i = 0; i < t.steps.length; i++) {
+          if (!t.steps[i].done) await this.store.setStepDone(t, i, true);
+        }
+        const fresh = this.findTask(t.id);
+        if (fresh && !fresh.done) await this.store.toggleTask(fresh);
+        await this.refresh();
+      })(); } },
       { label: T("删除任务"), danger: true, onClick: () => confirmDeleteTask(this.app, this.store, { file, line: t.line, title: t.title, milestone: t.milestone, done: t.done }, () => this.render()) },
     ], "right", at);
   }
@@ -852,8 +914,10 @@ export class WorkbenchView extends ItemView {
     (t.tags || []).forEach((tg) => meta.appendChild(el("span", "tlt-tag", tg)));
     if (t.owners.length) meta.appendChild(el("span", "", t.owners.join(T("、"))));
     if (t.files.length) meta.appendChild(el("span", "", `▤ ${t.files.length}`));
+    if (t.steps.length) meta.appendChild(this.stepRing(t));
     body.appendChild(meta);
     r.appendChild(body);
+    if (this.expandedSteps.has(t.id)) r.appendChild(this.stepBlock(t));
     r.addEventListener("contextmenu", (ev) => {
       ev.preventDefault();
       this.taskMenu(t, { x: ev.clientX, y: ev.clientY }, r);
@@ -1108,6 +1172,22 @@ export class WorkbenchView extends ItemView {
   /* ---------- 交互 ---------- */
 
   private bindInputs(root: HTMLElement) {
+    // 就地加子项：回车落盘
+    root.querySelectorAll<HTMLInputElement>("[data-stepadd]").forEach((input) => {
+      input.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        const v = input.value.trim();
+        if (!v) return;
+        const task = this.findTask(input.dataset.stepadd ?? "");
+        if (!task) return;
+        input.value = "";
+        void (async () => {
+          await this.store.addStep(task, v);
+          await this.refresh();
+        })();
+      });
+    });
+
     const search = root.querySelector<HTMLInputElement>("[data-search]");
     if (search) {
       let composing = false;
@@ -1220,7 +1300,15 @@ export class WorkbenchView extends ItemView {
     if (ck) {
       ev.stopPropagation();
       const task = this.findTask(ck.dataset.ck ?? "");
-      if (task) { await this.store.toggleTask(task); await this.refresh(); }
+      if (task) {
+        // 勾完成时如果还有没勾的子项，只提醒、不拦着
+        if (!task.done && task.steps.length) {
+          const open = task.steps.filter((x) => !x.done).length;
+          if (open) new Notice(T("还有 {n} 个子项没勾（这次先记完成）", { n: open }), 4000);
+        }
+        await this.store.toggleTask(task);
+        await this.refresh();
+      }
       return;
     }
 
@@ -1282,6 +1370,40 @@ export class WorkbenchView extends ItemView {
       if (t) new TaskPeekModal(this.app, this.store, t, () => {
         new TaskModal(this.app, this.store, t, () => this.refresh()).open();
       }).open();
+      return;
+    }
+
+    // 子项：先处理，别落到"打开任务详情"上
+    const ring = pick("[data-steps]");
+    if (ring) {
+      const id = ring.dataset.steps ?? "";
+      if (this.expandedSteps.has(id)) this.expandedSteps.delete(id); else this.expandedSteps.add(id);
+      await this.render();
+      return;
+    }
+    const scb = pick("[data-step]");
+    if (scb) {
+      ev.stopPropagation();
+      const [tid, idx] = (scb.dataset.step ?? "").split("|");
+      const tk = this.findTask(tid);
+      if (tk && tk.steps[Number(idx)]) {
+        await this.store.setStepDone(tk, Number(idx), !tk.steps[Number(idx)].done);
+        await this.refresh();
+      }
+      return;
+    }
+    const sdel = pick("[data-stepdel]");
+    if (sdel) {
+      ev.stopPropagation();
+      const [tid, idx] = (sdel.dataset.stepdel ?? "").split("|");
+      const tk = this.findTask(tid);
+      if (tk) await this.confirmDeleteStep(tk, Number(idx));
+      return;
+    }
+    const stext = pick("[data-steptext]");
+    if (stext) {
+      ev.stopPropagation();
+      this.editStepText(stext);
       return;
     }
 
@@ -1460,6 +1582,45 @@ export class WorkbenchView extends ItemView {
     this.scrollToMin = start;
     await this.refresh();
     new Notice(T("已排入 {a}–{b}", { a: minToHHMM(start), b: minToHHMM(end) }));
+  }
+
+  private async confirmDeleteStep(t: Task, index: number) {
+    const st = t.steps[index];
+    if (!st) return;
+    new ConfirmModal(this.app, {
+      title: T("删掉这条子项"),
+      body: `${st.text}\n\n${T("只删子项，任务本身不动。")}`,
+      ok: T("删除"),
+    }, async (ok) => {
+      if (!ok) return;
+      await this.store.deleteStep(t, index);
+      await this.refresh();
+    }).open();
+  }
+
+  /** 点文字就地改：换成输入框，回车保存、Esc 取消 */
+  private editStepText(span: HTMLElement) {
+    const [tid, idxRaw] = (span.dataset.steptext ?? "").split("|");
+    const task = this.findTask(tid);
+    if (!task) return;
+    const idx = Number(idxRaw);
+    const input = el("input", "tlt-step-edit");
+    input.value = span.textContent ?? "";
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const commit = (save: boolean) => { void (async () => {
+      if (done) return;
+      done = true;
+      if (save) await this.store.setStepText(task, idx, input.value);
+      await this.refresh();
+    })(); };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(true); }
+      if (e.key === "Escape") { e.preventDefault(); commit(false); }
+    });
+    input.addEventListener("blur", () => commit(true));
   }
 
   private findTask(id: string): Task | undefined {

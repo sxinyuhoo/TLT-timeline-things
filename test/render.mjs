@@ -1373,6 +1373,39 @@ await t("里程碑视图：点一下展开任务", async () => {
   assert.ok(document.querySelectorAll(".tlt-ms.open .tlt-task").length > 0, "展开后没有任务");
 });
 
+await t("任务行：只有带子项的任务才画进度环", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  await view.render();
+  const rings = [...document.querySelectorAll(".tlt-stepring")];
+  assert.equal(rings.length, 1, `夹具里只有一条任务带子项，应只画 1 个环，实际 ${rings.length}`);
+  assert.ok(rings[0].title.includes("0/2"), `悬停要写清进度：${rings[0].title}`);
+  assert.ok(rings[0].querySelector("svg circle.tlt-sr-fg"), "环应是 svg 画的");
+});
+
+await t("子项：点进度环就地展开，勾一条写回文件", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  await view.render();
+  const ring = document.querySelector(".tlt-stepring");
+  ring.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const steps = [...document.querySelectorAll(".tlt-step")];
+  assert.equal(steps.length, 2, `展开后应有 2 条子项，实际 ${steps.length}`);
+  assert.ok(steps[0].textContent.includes("汇总场景数据"), `第一条应是夹具里的子项：${steps[0].textContent}`);
+  assert.ok(document.querySelector(".tlt-step-add"), "应有一个加一条的输入框");
+
+  document.querySelector(".tlt-scb").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  assert.ok(files["TLT/tasks/示例项目.md"].includes("  - [x] 汇总场景数据"), `勾选应写回文件：\n${files["TLT/tasks/示例项目.md"]}`);
+  const after = document.querySelector(".tlt-stepring");
+  assert.ok(after && after.title.includes("1/2"), `环应跟着更新：${after?.title}`);
+});
+
 await t("独立消息中心渲染", async () => {
   document.body.empty();
   const mv = mount(MessagesView);

@@ -48,6 +48,48 @@ export class TltModal extends Modal {
   }
 }
 
+/** 只有两个出口的确认框：确认 / 取消 */
+export class ConfirmModal extends TltModal {
+  titleText: string;
+  body: string;
+  okText: string;
+  danger: boolean;
+  onDone: (ok: boolean) => void | Promise<void>;
+
+  constructor(app: App, opts: { title: string; body: string; ok?: string; danger?: boolean }, onDone: (ok: boolean) => void | Promise<void>) {
+    super(app);
+    this.titleText = opts.title;
+    this.body = opts.body;
+    this.okText = opts.ok || T("确认");
+    this.danger = opts.danger !== false;
+    this.onDone = onDone;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", this.titleText));
+    const b = el("div", "tlt-confirm-body");
+    this.body.split("\n").forEach((ln) => b.appendChild(el("div", "", ln)));
+    contentEl.appendChild(b);
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", T("取消"));
+    cancel.onclick = () => this.finish(false);
+    const ok = el("button", "tlt-btn " + (this.danger ? "danger" : "pri"), this.okText);
+    ok.onclick = () => this.finish(true);
+    foot.append(cancel, ok);
+    contentEl.appendChild(foot);
+    window.setTimeout(() => ok.focus(), 40);
+  }
+
+  private finish(ok: boolean) {
+    this.close();
+    void this.onDone(ok);
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 /**
  * 改了目录、旧目录里还有文件时问一句。
  * 动用户的文件必须先问：可以搬，也可以只改路径（文件留在原地）。
@@ -307,6 +349,7 @@ export class TaskModal extends TltModal {
   store: Store;
   task: Task;
   onChange: () => void | Promise<void>;
+  showTimeline = false;
   draft: {
     title: string; project?: string; milestone?: string; tags: string[];
     start?: string; due?: string; est?: number; wl: number; pw: Period; pri: Pri; owners: string[];
@@ -327,6 +370,27 @@ export class TaskModal extends TltModal {
       pri: task.pri,
       owners: [...task.owners],
     };
+  }
+
+  /** 就地改子项文字（回车保存，Esc 取消） */
+  private editStep(span: HTMLElement, index: number) {
+    const input = el("input", "tlt-step-edit");
+    input.value = span.textContent ?? "";
+    span.replaceWith(input);
+    input.focus(); input.select();
+    let done = false;
+    const commit = (save: boolean) => { void (async () => {
+      if (done) return;
+      done = true;
+      if (save) await this.store.setStepText(this.task, index, input.value);
+      this.contentEl.empty();
+      void this.onOpen();
+    })(); };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(true); }
+      if (e.key === "Escape") { e.preventDefault(); commit(false); }
+    });
+    input.addEventListener("blur", () => commit(true));
   }
 
   onOpen() {
@@ -384,6 +448,59 @@ export class TaskModal extends TltModal {
     const whoRowD = row(contentEl, T("负责人"));
     ownerSelect(this.store, whoRowD, this.draft);
 
+    // 子项：只有内容与完成态；改动即时写回，不参与"保存"
+    const stepRow = row(contentEl, T("子项"));
+    const stepBox = el("div", "tlt-steps in-modal");
+    const refreshSteps = () => { this.contentEl.empty(); void this.onOpen(); };
+    if (!this.task.steps.length) {
+      stepBox.appendChild(el("div", "tlt-hint", T("还没有子项。加一条就有关键步骤，任务行上会出现进度环。")));
+    }
+    this.task.steps.forEach((st, i) => {
+      const line = el("div", "tlt-step");
+      const cb = el("i", "tlt-scb" + (st.done ? " on" : ""));
+      cb.onclick = () => { void (async () => { await this.store.setStepDone(this.task, i, !st.done); refreshSteps(); })(); };
+      const txt = el("span", "tlt-step-t", st.text);
+      txt.onclick = () => this.editStep(txt, i);
+      const del = el("button", "tlt-step-del", "×");
+      del.title = T("删掉这条子项");
+      del.onclick = () => { new ConfirmModal(this.app, {
+        title: T("删掉这条子项"),
+        body: `${st.text}\n\n${T("只删子项，任务本身不动。")}`,
+        ok: T("删除"),
+      }, async (ok) => { if (ok) { await this.store.deleteStep(this.task, i); refreshSteps(); } }).open(); };
+      line.append(cb, txt, del);
+      stepBox.appendChild(line);
+    });
+    const stepAdd = el("input", "tlt-step-add");
+    stepAdd.placeholder = T("加一条子项，回车");
+    stepAdd.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const v = stepAdd.value.trim();
+      if (!v) return;
+      void (async () => { await this.store.addStep(this.task, v); refreshSteps(); })();
+    });
+    stepBox.appendChild(stepAdd);
+    stepRow.appendChild(stepBox);
+
+    // 时间线：创建 / 完成 / 子项进度。默认收着，想看再点开
+    const tlRow = row(contentEl, T("时间线"));
+    const tl = el("div", "tlt-tl");
+    const tlItems: [string, string][] = [
+      [T("创建"), this.task.created || T("未记录")],
+      [T("完成"), this.task.doneAt || T("未完成")],
+      [T("进度"), this.task.steps.length ? T("{a}/{b}", { a: this.task.steps.filter((x) => x.done).length, b: this.task.steps.length }) : T("无子项")],
+    ];
+    tlItems.forEach(([k, v]) => {
+      const r = el("div", "tlt-tl-r");
+      r.append(el("span", "tlt-tl-k", k), el("span", "tlt-tl-v", v));
+      tl.appendChild(r);
+    });
+    const tlToggle = el("button", "tlt-btn tiny", this.showTimeline ? T("收起") : T("展开"));
+    tlToggle.onclick = () => { this.showTimeline = !this.showTimeline; refreshSteps(); };
+    if (!this.showTimeline) tl.addClass("tlt-hidden");
+    tlRow.querySelector(".tlt-row-l")?.appendChild(tlToggle);
+    tlRow.appendChild(tl);
+
     const foot = el("div", "tlt-m-foot");
     const save = el("button", "tlt-btn pri", T("保存"));
     save.onclick = () => { void (async () => {
@@ -409,7 +526,12 @@ export class TaskModal extends TltModal {
       new Notice(moved ? T("已保存，任务已移动") : T("已写回任务行"));
     })(); };
     const done = el("button", "tlt-btn", t.done ? T("标为未完成") : T("标记完成"));
-    done.onclick = () => { void (async () => { await this.store.toggleTask(t); this.close(); void this.onChange(); })(); };
+    done.onclick = () => { void (async () => {
+      const open = t.steps.filter((x) => !x.done).length;
+      if (!t.done && open) new Notice(T("还有 {n} 个子项没勾（这次先记完成）", { n: open }), 4000);
+      await this.store.toggleTask(t);
+      this.close(); void this.onChange();
+    })(); };
     const del = el("button", "tlt-btn danger", T("删除任务"));
     del.onclick = () => { void (async () => {
       await this.store.deleteTask(t);

@@ -23,6 +23,10 @@ EP.empty = function () { while (this.firstChild) this.removeChild(this.firstChil
 EP.addClass = function (...c: string[]) { c.forEach((x) => this.classList.add(x)); return this; };
 EP.removeClass = function (...c: string[]) { c.forEach((x) => this.classList.remove(x)); return this; };
 EP.toggleClass = function (c: string, on: boolean) { this.classList.toggle(c, on); return this; };
+EP.setCssProps = function (obj: Record<string, unknown>) {
+  Object.entries(obj || {}).forEach(([k, v]) => (this as HTMLElement).style.setProperty(k, String(v)));
+  return this;
+};
 EP.createEl = function (tag: string, o: any = {}) {
   const e = document.createElement(tag);
   if (o.text) e.textContent = o.text;

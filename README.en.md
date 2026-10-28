@@ -19,7 +19,8 @@ People find this plugin by many names — **tasks, timeline, schedule, task mana
 | Gantt | **No gantt bars.** Milestone view shows the schedule and the star chart spreads tasks by due date — enough to answer "which weeks are packed" |
 | Kanban / Board | **No drag-and-drop board.** Tasks are grouped by state (the state *is* the column); drag-to-reorder isn't there yet |
 | Workload / Capacity / Effort | Tasks carry person-day estimates; the team view computes each person's load (open person-days ÷ capacity) |
-| Checklist / Sub-task | A task can carry indented sub-steps; ticking a step doesn't tick the parent |
+| Checklist / Sub-task | A task can carry indented sub-tasks (content + done state only). **A small ring at the end of the task row shows the done ratio** — click it to expand in place and tick / rename / delete / add |
+| Progress / Timeline | Every task keeps its own created & done dates (`[created::]` / `[done::]`, hidden by default); project, milestone and task lifecycle events are appended to the stream in `TLT/events/` — the raw material for a timeline graph |
 | Daily note / Log / Weekly review | Entries are filed under `## date` into `TLT/logs/YYYY-MM.md` — copy from it when writing your weekly report |
 | Messages / Notifications / Inbox / Feeds | A separate message center: feeds, timeline (cards / axis / lanes / heatmap), publish and subscribe |
 
