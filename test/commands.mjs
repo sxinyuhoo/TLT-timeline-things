@@ -445,6 +445,56 @@ await t("并发 load() 时写入不丢：排队执行，最后一次能读到新
   assert.equal(store.feeds.filter((f) => f.id === "甲").length, 1, "源不该变两个");
 });
 
+/* ---------------- 订阅来的源：只能起别名，不能改发布者的名字 ---------------- */
+await t("订阅别人的源：改名只写本地别名，对方 title 不动", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/feeds/远程-部门通知.md"] =
+    `---\ntitle: 部门通知\nremote: http://hub/feed?id=dept-123\nowner: 小王\nown: false\n---\n\n# 部门通知\n\n- 2026-10-26 一条\n`;
+  await store.load();
+  const f = store.feeds.find((x) => x.id === "远程-部门通知");
+  assert.ok(f && f.remote, "夹具里的订阅源应被识别为 remote");
+  const r = await store.renameFeed(f, "部门动态（我看的）");
+  assert.equal(r.alias, true, "订阅源改名应走别名");
+  const text = fps.files["TLT/feeds/远程-部门通知.md"];
+  assert.ok(/^title: 部门通知$/m.test(text), `发布者的 title 不该被改：\n${text}`);
+  assert.ok(/^alias: 部门动态（我看的）$/m.test(text), `应写入本地别名：\n${text}`);
+  await store.load();
+  const after = store.feeds.find((x) => x.id === "远程-部门通知");
+  assert.equal(after.name, "部门动态（我看的）", "界面名用别名");
+  assert.equal(after.remoteTitle, "部门通知", "原名要留着对照");
+});
+
+await t("拉取时：发布者改名不多出一个源，别名也不丢", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/feeds/远程-部门通知.md"] =
+    `---\ntitle: 部门通知\nremote: http://hub/feed?id=dept-123\nowner: 小王\nalias: 部门动态\nown: false\n---\n\n# 部门通知\n\n`;
+  await store.load();
+  store.httpJson = async () => ({
+    feeds: [{
+      url: "http://hub/feed?id=dept-123", ok: true, id: "dept-123", title: "部门通知（新版）", owner: "小王",
+      items: [{ mid: "m1", date: "2026-10-26", title: "一条", kind: "note", place: "", who: [], star: false, state: "live", until: "", body: "" }],
+    }],
+  });
+  await store.pullFromHub("http://hub");
+  await store.load();
+  const feeds = store.feeds.filter((f) => f.remote);
+  assert.equal(feeds.length, 1, `不该多出一个源，实际 ${feeds.length}：${feeds.map((f) => f.id).join(", ")}`);
+  assert.equal(feeds[0].id, "远程-部门通知", "应写回原来那个文件");
+  assert.equal(feeds[0].remoteTitle, "部门通知（新版）", "原名应更新成发布者的新名字");
+  assert.equal(feeds[0].name, "部门动态", "本地别名要保留");
+  assert.equal(feeds[0].items.length, 1, "消息应写进来");
+});
+
+await t("自己的源：改名就是改 title（照旧）", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/feeds/个人.md"] = `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n- 2026-10-26 草稿\n`;
+  await store.load();
+  const f = store.feeds.find((x) => x.personal);
+  const r = await store.renameFeed(f, "我的草稿本");
+  assert.equal(r.alias, false, "自己的源不该走别名");
+  assert.ok(/^title: 我的草稿本$/m.test(fps.files["TLT/feeds/个人.md"]), "应改 title");
+});
+
 /* ---------------- 市场可检索性（README / manifest 关键词） ---------------- */
 await t("manifest 描述：够短、且带上主要检索词", async () => {
   const m = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));

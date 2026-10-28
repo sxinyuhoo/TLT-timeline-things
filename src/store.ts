@@ -235,10 +235,14 @@ export class Store {
         if (m) items.push(m);
         i = j - 1;
       }
+      const title = asText(fm["title"]) || file.basename;
+      const alias = asText(fm["alias"]);
       this.feeds.push({
         id: file.basename,
         file: file.path,
-        name: asText(fm["title"]) || file.basename,
+        name: alias || title,
+        alias: alias || undefined,
+        remoteTitle: alias ? title : undefined,
         desc: asText(fm["desc"]) || asText(fm["description"]),
         cadence: asText(fm["cadence"]),
         owner: asText(fm["owner"]),
@@ -622,11 +626,32 @@ export class Store {
   }
 
   /** 改源名称：只改 frontmatter 的 title，文件名与 id 不动 */
-  async renameFeed(feed: Feed, name: string) {
+  /**
+   * 改源名称。
+   * - 自己的源（个人 / 我发布的）：改的就是 title，发布出去的也叫这个名
+   * - 订阅别人的源：**只写本地别名 `alias`**，对方的名称不动；界面显示别名，详情里能看到原名
+   */
+  async renameFeed(feed: Feed, name: string): Promise<{ ok: boolean; alias: boolean }> {
     const n = name.trim();
-    if (!n) return false;
+    if (!n) return { ok: false, alias: false };
     const file = await this.fileByPath(feed.file);
-    if (!file) return false;
+    if (!file) return { ok: false, alias: false };
+    if (feed.remote) {
+      await this.app.vault.process(file, (data) => {
+        const stripped = data.replace(/^alias:.*\r?\n/m, "");
+        if (/^---\r?\n/.test(stripped)) {
+          const end = stripped.indexOf("\n---", 3);
+          const head = end > 0 ? stripped.slice(0, end) : stripped;
+          const rest = end > 0 ? stripped.slice(end) : "";
+          return `${head}\nalias: ${n}${rest}`;
+        }
+        return `---\nalias: ${n}\n---\n\n${stripped}`;
+      });
+      feed.alias = n;
+      feed.remoteTitle = feed.remoteTitle || feed.name;
+      feed.name = n;
+      return { ok: true, alias: true };
+    }
     await this.app.vault.process(file, (data) => {
       if (/^---\r?\n/.test(data)) {
         const end = data.indexOf("\n---", 3);
@@ -640,7 +665,7 @@ export class Store {
       return `---\ntitle: ${n}\n---\n\n${data}`;
     });
     feed.name = n;   // 缓存可能滞后，界面先按新名字走
-    return true;
+    return { ok: true, alias: false };
   }
 
   /** 从一个源里搬走若干条消息（连同正文续行） */
@@ -1309,8 +1334,15 @@ export class Store {
       const id = rawId.replace(/[\\/:*?"<>|]/g, "-");
       // 远端源单独前缀，避免和本地同名源混在一起
       const owner = asText(feed.owner) || "";
-      const path = normalizePath(`${this.settings.feedsFolder}/远程-${id}.md`);
+      const url = asText(feed.url);
+      // 先按订阅地址找（发布者改了名字也不会多出一个源），找不到再用「远程-<名字>.md」
+      const known = this.feeds.find((x) => x.remote && url && x.remote === url);
+      const localId = known ? known.id : `远程-${id}`;
+      const path = known ? known.file : normalizePath(`${this.settings.feedsFolder}/远程-${id}.md`);
       let file = this.asFile(this.app.vault.getAbstractFileByPath(path));
+      if (!file && known) {                 // 文件被挪走了：按标题那套兜底
+        file = this.asFile(this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.feedsFolder}/远程-${id}.md`)));
+      }
       if (!file) {
         await this.ensureFolder(this.settings.feedsFolder);
         await this.createSafe(path,
@@ -1318,7 +1350,11 @@ export class Store {
         file = this.asFile(this.app.vault.getAbstractFileByPath(path));
         if (!file) return;
       }
-      const header = file ? `---\ntitle: ${title}\nremote: ${asText(feed.url)}${owner ? `\nowner: ${owner}` : ""}\nown: false\n---` : "";
+      const cur = file ? await this.app.vault.cachedRead(file) : "";
+      const alias = /^alias:\s*(.+)$/m.exec(cur)?.[1]?.trim() || "";
+      const header = file
+        ? `---\ntitle: ${title}\nremote: ${url}${owner ? `\nowner: ${owner}` : ""}${alias ? `\nalias: ${alias}` : ""}\nown: false\n---`
+        : "";
       if (header) {
         await this.app.vault.process(file, (text) => {
           const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
@@ -1328,7 +1364,7 @@ export class Store {
       await this.app.vault.process(file, (text) => {
         const lines = text.split(/\r?\n/);
         for (const it of items) {
-          const mid = asText(it.mid) || `${id}-${asText(it.date)}-${asText(it.title)}`;
+          const mid = asText(it.mid) || `${localId}-${asText(it.date)}-${asText(it.title)}`;
           const idx = lines.findIndex((l) => l.includes(`[mid:: ${mid}]`));
           const stateField = it.state === "ended" ? " [state:: ended]" : "";
           if (idx >= 0) {

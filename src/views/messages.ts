@@ -618,7 +618,8 @@ export class MessagesView extends ItemView {
         const tw = el("div", "tlt-d-titlewrap");
         const tEl = el("div", "tlt-d-title", f.name);
         const pen = el("button", "tlt-rename", "✎");
-        pen.title = T("改源名称");
+        // 订阅别人的源只能设"别名"（只改你看到的叫法），发布者的名称在对方那边
+        pen.title = f.remote ? T("设置别名（只改你看到的名称）") : T("改源名称");
         pen.onclick = () => {
           const inp = el("input", "tlt-input");
           inp.value = f.name;
@@ -632,8 +633,10 @@ export class MessagesView extends ItemView {
             done = true;
             const v = inp.value.trim();
             if (v && v !== f.name) {
-              await this.store.renameFeed(f, v);
-              new Notice(T("已改名为「{n}」", { n: v }));
+              const r = await this.store.renameFeed(f, v);
+              new Notice(r.alias
+                ? T("已设为你这边的别名「{n}」（对方的源名不变）", { n: v })
+                : T("已改名为「{n}」", { n: v }));
             }
             await this.refresh();
           })(); };
@@ -647,6 +650,10 @@ export class MessagesView extends ItemView {
         s.appendChild(tw);
         s.appendChild(el("div", "tlt-d-meta",
           T("{k} · {n} 条", { k: f.personal ? T("个人源") : f.mine ? T("我发布的源") : T("我订阅的源"), n: f.items.length })));
+        if (f.remote && f.remoteTitle) {
+          // 有别名时把"对方的原名"放在下面，免得对不上号
+          s.appendChild(el("div", "tlt-d-meta", T("原名：{n}{owner}", { n: f.remoteTitle, owner: f.owner ? T(" · 来自 {o}", { o: f.owner }) : "" })));
+        }
 
         const act = el("div", "tlt-d-act");
         if (f.personal) {
