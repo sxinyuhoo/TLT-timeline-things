@@ -160,5 +160,24 @@ try {
   process.exitCode = 1;
 }
 
+/* 日记块：拿真数据渲染一次，确认真能用 */
+try {
+  const cb = (inst.codeBlocks || []).find((x) => x.lang === "tlt-daily");
+  if (!cb) { console.error("没有注册 tlt-daily 代码块 ✗"); process.exitCode = 1; }
+  else {
+    const host = w.document.createElement("div");
+    w.document.body.appendChild(host);
+    const diaryDate = process.env.TLT_DIARY_DATE || "20261029";
+    cb.fn(process.env.TLT_DIARY_OPTS || "date: auto", host, { sourcePath: `70-生活/diary/2026/${diaryDate}.md` });
+    const rows = host.querySelectorAll(".tlt-daily-row").length;
+    const heads = [...host.querySelectorAll(".tlt-daily-h")].map((h) => h.textContent).join(" / ");
+    console.log(`日记块 ✓  ${rows} 条（分组：${heads || "无"}）`);
+    if (!rows && !host.querySelector(".tlt-daily-empty")) { console.error("日记块既没内容也没空状态 ✗"); process.exitCode = 1; }
+  }
+} catch (e) {
+  console.error("日记块渲染抛错 ✗ →", e && e.message ? e.message : e);
+  process.exitCode = 1;
+}
+
 /* 完事就退出：onload 里注册的定时器会把进程挂住 */
 process.exit(process.exitCode ?? 0);

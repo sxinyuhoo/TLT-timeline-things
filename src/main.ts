@@ -13,6 +13,7 @@ import {
 import { todayISO, asText, type Period } from "./data";
 import { t, t as T, setLanguage, LANGUAGE_LABELS, type Language } from "./i18n";
 import { attachFolderSuggest } from "./views/folder-suggest";
+import { registerDailyBlocks } from "./views/daily";
 
 type ThemeMode = "auto" | "light" | "dark";
 
@@ -55,6 +56,14 @@ export class TLTPlugin extends Plugin {
   /** 已注册的命令 + 取名字的函数：切语言时原地改名，不用重载插件 */
   private cmdNames: { cmd: { name: string }; full: () => string }[] = [];
   private settingTab?: TLTSettingTab;
+  /** 日记里 tlt-daily 块的渲染函数（数据一变就整体重画） */
+  dailyBlocks = new Set<() => void>();
+
+  refreshDailyBlocks() {
+    [...this.dailyBlocks].forEach((fn) => {
+      try { fn(); } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
+    });
+  }
 
   /**
    * 注册命令。注意：Obsidian 的 addCommand 会就地改写传入对象的 name（加上插件名前缀），
@@ -217,6 +226,8 @@ export class TLTPlugin extends Plugin {
 
     this.settingTab = new TLTSettingTab(this.app, this);
     this.addSettingTab(this.settingTab);
+
+    registerDailyBlocks(this);
 
     this.applyTheme();
     await this.store.ensureVault();
@@ -404,6 +415,7 @@ export class TLTPlugin extends Plugin {
     };
     draw(VIEW_TYPE_WORKBENCH);
     draw(VIEW_TYPE_MESSAGES);
+    this.refreshDailyBlocks();
   }
 
   /* ---------- 示例数据 ---------- */

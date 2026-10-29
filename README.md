@@ -149,6 +149,26 @@ python3 services-py/tlt_service.py --port 8787 --data ./data --seed
 | （设置 → 维护）生成示例数据 | 在 `TLT/` 下写一份虚构样例（已存在的不覆盖） |
 | 推送到发布服务 / 从拉取服务同步 | 手动同步消息 |
 
+## 日记里嵌任务（`tlt-daily` 块）
+
+不想切视图？在日记里写一个代码块，今天的任务直接渲染在正文里，勾选写回 TLT：
+
+````markdown
+```tlt-daily
+date: auto      # auto = 用文件名里的日期（补记历史日记也对）
+overdue: true   # 过期未完成的单列一组
+tree: true      # 展开子步骤
+who: true       # 显示负责人
+scope: all      # all | work | personal
+```
+````
+
+渲染成四组：**逾期 / 今日待做 / 今天计划做 / 今日已完成**，每条带「项目 · 里程碑 · 人天 · 负责人」。
+点方块即勾选（写回项目文件里的 `[done:: 日期]`），条目当场在两组之间移动。
+不依赖 Tasks 或 Dataview 插件——它读的是 TLT 自己的数据。
+
+配套脚本：`tools/migrate-diary-queries.py`（把日记里旧的 ```tasks 查询批量换成 `tlt-daily`）。
+
 ## 工作台里的归档入口
 
 - **项目卡右键**（或悬停出现 `⋯`）：新建里程碑 / 归档项目 / 打开项目文件

@@ -146,6 +146,26 @@ Every list filters as you type, ↑↓ to move, Enter to confirm, Esc to cancel.
 | 切换明暗 | Toggle dark / light |
 | 推送到发布服务 / 从拉取服务同步 | Manual message sync |
 
+## Tasks inside your daily notes (`tlt-daily` block)
+
+Drop a code block into a note and today's tasks render right there; ticking writes back to TLT:
+
+````markdown
+```tlt-daily
+date: auto      # auto = date from the file name (so back-dated notes still work)
+overdue: true   # list overdue tasks in their own group
+tree: true      # expand sub-steps
+who: true       # show owners
+scope: all      # all | work | personal
+```
+````
+
+Four groups: **Overdue / Due today / Planned for today / Done today**, each line carrying project · milestone · effort · owner.
+Ticking a box writes `[done:: date]` into the project file and the line moves between groups immediately.
+No Tasks or Dataview plugin needed — it reads TLT's own data.
+
+Helper: `tools/migrate-diary-queries.py` (batch-replace old ```tasks queries with `tlt-daily`).
+
 ## Archiving from the workbench
 
 - **Right-click a project card** (or the `⋯` on hover): new milestone / archive project / open file

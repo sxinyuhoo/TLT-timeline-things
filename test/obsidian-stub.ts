@@ -50,6 +50,9 @@ export class Plugin {
   async loadData() { return {}; }
   async saveData(_d: any) {}
   registerView(_t: string, _f: any) {}
+  /** 记录代码块处理器，供冒烟测试直接调用 */
+  codeBlocks: { lang: string; fn: any }[] = [];
+  registerMarkdownCodeBlockProcessor(lang: string, fn: any) { this.codeBlocks.push({ lang, fn }); }
   registerEvent(_e: any) {}
   addRibbonIcon() { return document.createElement("div"); }
   commands: any[] = [];
