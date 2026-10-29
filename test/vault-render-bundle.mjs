@@ -448,6 +448,7 @@ var Store = class _Store {
     this.queue = Promise.resolve();
     /** 里程碑完成状态快照（key: 项目::里程碑）——只在"这一轮刚变成完成"时记事件 */
     this.msDone = {};
+    this.projectDescs = {};
     /* ---------- 标签库（TLT/tags.md，一行一个） ---------- */
     this.tags = [];
     this.app = app;
@@ -536,9 +537,12 @@ owner: me
     this.feeds = [];
     this.ideas = [];
     this.tags = [];
+    this.projectDescs = {};
     for (const file of this.filesIn(this.settings.tasksFolder)) {
       const text = await this.app.vault.cachedRead(file);
       const project = file.basename;
+      const pfm = this.app.metadataCache.getFileCache(file)?.frontmatter || {};
+      this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]);
       let milestone;
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
@@ -753,6 +757,60 @@ ${line}
     await this.app.fileManager.renameFile(file, target);
     await this.appendEvent({ kind: "project.restored", project: file.basename });
     return target;
+  }
+  /** 项目描述（存在项目文件 frontmatter 的 desc 里） */
+  projectDesc(name) {
+    return this.projectDescs[name] || "";
+  }
+  /**
+   * 项目信息：改名称（= 改文件名）与描述。
+   * 改名会顺带把日志里的 [proj:: 旧名] 一起改掉，否则原来记的"做了什么"会对不上项目。
+   */
+  async setProjectInfo(from, to, desc) {
+    const clean = to.trim().replace(/[\\/:*?"<>|]/g, "");
+    if (!clean) return { ok: false, renamed: false, logs: 0 };
+    let file = await this.fileByPath(`${this.settings.tasksFolder}/${from}.md`);
+    if (!file) return { ok: false, renamed: false, logs: 0 };
+    const wantDesc = desc.trim();
+    await this.app.vault.process(file, (data) => {
+      const stripped = data.replace(/^desc:.*\r?\n/m, "");
+      const hasFm = /^---\r?\n/.test(stripped);
+      const end = hasFm ? stripped.indexOf("\n---", 3) : -1;
+      const head = hasFm && end > 0 ? stripped.slice(0, end) : "";
+      const rest = hasFm && end > 0 ? stripped.slice(end) : stripped;
+      if (!wantDesc) return hasFm ? `${head}${rest}` : rest;
+      const fmLine = `desc: ${wantDesc.replace(/\r?\n/g, " ")}`;
+      return hasFm ? `${head}
+${fmLine}${rest}` : `---
+${fmLine}
+---
+
+${stripped}`;
+    });
+    this.projectDescs[clean] = wantDesc;
+    if (clean === from) return { ok: true, renamed: false, logs: 0 };
+    let target = normalizePath(`${this.settings.tasksFolder}/${clean}.md`);
+    if (this.asFile(this.app.vault.getAbstractFileByPath(target))) {
+      let i = 2;
+      while (this.asFile(this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`)))) i++;
+      target = normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`);
+    }
+    await this.app.fileManager.renameFile(file, target);
+    let logs = 0;
+    for (const lf of this.filesIn(this.settings.logsFolder)) {
+      let touched = false;
+      await this.app.vault.process(lf, (data) => {
+        const next = data.replace(new RegExp(`\\[proj::\\s*${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`, "g"), `[proj:: ${clean}]`);
+        if (next !== data) {
+          touched = true;
+          return next;
+        }
+        return data;
+      });
+      if (touched) logs++;
+    }
+    await this.appendEvent({ kind: "project.renamed", project: clean, note: from });
+    return { ok: true, renamed: true, logs };
   }
   /** 新建项目文件 */
   async createProject(name) {
@@ -1944,6 +2002,16 @@ var EN = {
   "\u53D1\u5E03": "Publish",
   "\u786E\u5B9A": "OK",
   "\u672A\u77E5\u9519\u8BEF": "Unknown error",
+  "\u9879\u76EE\u4FE1\u606F": "Project info",
+  "\u63CF\u8FF0": "Description",
+  "\u9879\u76EE\u4FE1\u606F\uFF08\u540D\u79F0 / \u63CF\u8FF0\uFF09": "Project info (name / description)",
+  "\u8FD9\u4E2A\u9879\u76EE\u662F\u505A\u4EC0\u4E48\u7684\u3001\u4EA4\u4ED8\u4EC0\u4E48\u3001\u6709\u8C01\u5728\u53C2\u4E0E\u2026\uFF08\u4F1A\u5199\u8FDB\u9879\u76EE\u6587\u4EF6\u7684 desc\uFF09": "What this project is for, what it delivers, who is on it\u2026 (saved as `desc` in the project file)",
+  "\u6539\u540D\u79F0\u4F1A\u8FDE\u6587\u4EF6\u4E00\u8D77\u6539\u540D\uFF0C\u65E5\u5FD7\u91CC\u8BB0\u7684\u300C[proj:: \u65E7\u540D]\u300D\u4E5F\u4F1A\u8DDF\u7740\u6539\u3002": "Renaming also renames the file, and any `[proj:: old name]` in your logs is updated too.",
+  "\u6CA1\u4FDD\u5B58\uFF1A\u540D\u5B57\u4E0D\u80FD\u4E3A\u7A7A": "Not saved: the name can't be empty",
+  "\u5DF2\u6539\u540D\u4E3A\u300C{n}\u300D{logs}": "Renamed to \u201C{n}\u201D{logs}",
+  "\uFF0C{n} \u6761\u65E5\u5FD7\u91CC\u7684\u9879\u76EE\u540D\u4E5F\u6539\u4E86": "; project name updated in {n} log file(s)",
+  "\u5DF2\u4FDD\u5B58\u9879\u76EE\u4FE1\u606F": "Project info saved",
+  "\u6539\u5DE5\u4F5C\u91CF\u4F1A\u81EA\u52A8\u628A\u622A\u6B62\u6392\u5230\u5F00\u59CB + \u5DE5\u4F5C\u91CF \u5929\uFF08\u624B\u52A8\u6539\u8FC7\u622A\u6B62\u540E\u5C31\u4E0D\u518D\u52A8\uFF09": "Changing the workload moves the due date to start + workload days (stops once you edit the due date yourself)",
   "\u6392\u5E8F": "Sort",
   "\u540D\u79F0": "Name",
   "\u6309\u540D\u79F0": "By name",
@@ -2759,7 +2827,37 @@ function tagPicker(store, parent, draft) {
 function ownerSelect(store, parent, draft) {
   const wrap = el("div", "tlt-ownerbox");
   const line = el("div", "tlt-quick");
-  const pop = el("div", "tlt-pickpop tlt-hidden");
+  const pop = el("div", "tlt-pickpop inline tlt-hidden");
+  const draw = () => {
+    pop.empty();
+    const search = el("input", "tlt-input tlt-picksearch");
+    search.placeholder = t("\u641C\u540D\u5B57\u6216\u5C97\u4F4D");
+    const list = el("div", "tlt-picklist");
+    const fill = () => {
+      list.empty();
+      const q = search.value.trim();
+      const rows = store.staff.filter((x) => !q || x.name.includes(q) || (x.role || "").includes(q));
+      if (!rows.length) list.appendChild(el("div", "tlt-hint", t("\u6CA1\u6709\u5339\u914D\u7684\u4EBA")));
+      rows.forEach((st) => {
+        const on = draft.owners.includes(st.name);
+        const r = el("div", "tlt-pickrow" + (on ? " on" : ""));
+        r.append(
+          el("span", "tlt-pickck" + (on ? " on" : "")),
+          el("span", "tlt-pickname", st.name),
+          el("span", "tlt-pickrole", st.role || "")
+        );
+        r.onclick = () => {
+          draft.owners = on ? draft.owners.filter((y) => y !== st.name) : [...draft.owners, st.name];
+          paint();
+          fill();
+        };
+        list.appendChild(r);
+      });
+    };
+    search.oninput = fill;
+    fill();
+    pop.append(search, list);
+  };
   const paint = () => {
     line.empty();
     if (!draft.owners.length) line.appendChild(el("span", "tlt-owner-none", t("\u672A\u6307\u6D3E")));
@@ -2777,71 +2875,75 @@ function ownerSelect(store, parent, draft) {
       chip.appendChild(x);
       line.appendChild(chip);
     });
-    const btn = el("button", "tlt-btn tiny", draft.owners.length ? t("\u9009\u62E9\u2026") : t("\u9009\u62E9\u8D1F\u8D23\u4EBA\u2026"));
-    btn.onclick = () => {
-      openPanel(btn);
+    const open = !pop.classList.contains("tlt-hidden");
+    const btn = el("button", "tlt-btn tiny", !draft.owners.length ? t("\u9009\u62E9\u8D1F\u8D23\u4EBA\u2026") : open ? t("\u6536\u8D77") : t("\u9009\u62E9\u2026"));
+    btn.dataset.ownerpick = "1";
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const isOpen = !pop.classList.contains("tlt-hidden");
+      if (isOpen) pop.addClass("tlt-hidden");
+      else {
+        draw();
+        pop.removeClass("tlt-hidden");
+      }
+      paint();
+      if (!isOpen) {
+        const box = pop.querySelector(".tlt-picksearch");
+        window.setTimeout(() => box?.focus(), 20);
+      }
     };
     line.appendChild(btn);
   };
-  const openPanel = (anchorEl) => {
-    pop.empty();
-    const search = el("input", "tlt-input tlt-picksearch");
-    search.placeholder = t("\u641C\u540D\u5B57\u6216\u5C97\u4F4D");
-    const list = el("div", "tlt-picklist");
-    const draw = () => {
-      list.empty();
-      const q = search.value.trim();
-      const rows = store.staff.filter((x) => !q || x.name.includes(q) || (x.role || "").includes(q));
-      if (!rows.length) list.appendChild(el("div", "tlt-hint", t("\u6CA1\u6709\u5339\u914D\u7684\u4EBA")));
-      rows.forEach((st) => {
-        const on = draft.owners.includes(st.name);
-        const r2 = el("div", "tlt-pickrow" + (on ? " on" : ""));
-        r2.append(
-          el("span", "tlt-pickck" + (on ? " on" : "")),
-          el("span", "tlt-pickname", st.name),
-          el("span", "tlt-pickrole", st.role || "")
-        );
-        r2.onclick = () => {
-          draft.owners = on ? draft.owners.filter((y) => y !== st.name) : [...draft.owners, st.name];
-          paint();
-          draw();
-        };
-        list.appendChild(r2);
-      });
-    };
-    search.oninput = draw;
-    draw();
-    pop.append(search, list);
-    pop.removeClass("tlt-hidden");
-    const r = anchorEl.getBoundingClientRect();
-    const width = Math.max(300, Math.min(420, window.innerWidth - r.left - 16));
-    const below = window.innerHeight - r.bottom - 12;
-    const above = r.top - 12;
-    const openUp = below < 220 && above > below;
-    pop.style.width = `${width}px`;
-    pop.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - width - 12))}px`;
-    pop.style.maxHeight = `${Math.max(180, Math.min(420, openUp ? above : below))}px`;
-    pop.style.top = openUp ? `${Math.max(12, r.top - Math.min(420, above) - 6)}px` : `${r.bottom + 6}px`;
-    window.setTimeout(() => search.focus(), 20);
-  };
-  const onDoc = (ev) => {
-    if (pop.classList.contains("tlt-hidden")) return;
-    const t2 = ev.target;
-    if (!pop.contains(t2) && !line.contains(t2)) {
-      pop.addClass("tlt-hidden");
-    }
-  };
-  window.setTimeout(() => document.addEventListener("click", onDoc), 0);
-  const onScroll = (ev) => {
-    if (pop.classList.contains("tlt-hidden")) return;
-    if (pop.contains(ev.target)) return;
-    pop.addClass("tlt-hidden");
-  };
-  window.setTimeout(() => document.addEventListener("scroll", onScroll, true), 0);
   paint();
   wrap.append(line, pop);
   parent.appendChild(wrap);
 }
+var ProjectInfoModal = class extends TltModal {
+  constructor(app, store, from, onDone) {
+    super(app);
+    this.store = store;
+    this.from = from;
+    this.onDone = onDone;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", t("\u9879\u76EE\u4FE1\u606F")));
+    const nameRow = row(contentEl, t("\u540D\u79F0"));
+    const name = el("input", "tlt-input wide");
+    name.value = this.from;
+    name.setAttribute("data-projname", "1");
+    nameRow.appendChild(name);
+    const descRow = row(contentEl, t("\u63CF\u8FF0"));
+    const desc = el("textarea", "tlt-input tlt-textarea");
+    desc.value = this.store.projectDesc(this.from);
+    desc.placeholder = t("\u8FD9\u4E2A\u9879\u76EE\u662F\u505A\u4EC0\u4E48\u7684\u3001\u4EA4\u4ED8\u4EC0\u4E48\u3001\u6709\u8C01\u5728\u53C2\u4E0E\u2026\uFF08\u4F1A\u5199\u8FDB\u9879\u76EE\u6587\u4EF6\u7684 desc\uFF09");
+    desc.setAttribute("data-projdesc", "1");
+    descRow.appendChild(desc);
+    const hint = el("div", "tlt-hint", t("\u6539\u540D\u79F0\u4F1A\u8FDE\u6587\u4EF6\u4E00\u8D77\u6539\u540D\uFF0C\u65E5\u5FD7\u91CC\u8BB0\u7684\u300C[proj:: \u65E7\u540D]\u300D\u4E5F\u4F1A\u8DDF\u7740\u6539\u3002"));
+    contentEl.appendChild(hint);
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", t("\u53D6\u6D88"));
+    cancel.onclick = () => this.close();
+    const save = el("button", "tlt-btn pri", t("\u4FDD\u5B58"));
+    save.onclick = () => {
+      void (async () => {
+        const to = name.value.trim();
+        const r = await this.store.setProjectInfo(this.from, to || this.from, desc.value);
+        if (!r.ok) {
+          new Notice(t("\u6CA1\u4FDD\u5B58\uFF1A\u540D\u5B57\u4E0D\u80FD\u4E3A\u7A7A"));
+          return;
+        }
+        await this.store.load();
+        this.close();
+        void this.onDone();
+        new Notice(r.renamed ? t("\u5DF2\u6539\u540D\u4E3A\u300C{n}\u300D{logs}", { n: to, logs: r.logs ? t("\uFF0C{n} \u6761\u65E5\u5FD7\u91CC\u7684\u9879\u76EE\u540D\u4E5F\u6539\u4E86", { n: r.logs }) : "" }) : t("\u5DF2\u4FDD\u5B58\u9879\u76EE\u4FE1\u606F"));
+      })();
+    };
+    foot.append(cancel, save);
+    contentEl.appendChild(foot);
+  }
+};
 var TaskModal = class extends TltModal {
   constructor(app, store, task, onChange) {
     super(app);
@@ -3265,24 +3367,39 @@ var QuickTaskModal = class extends TltModal {
     };
     paintTags();
     tagRow.appendChild(tagWrap);
+    let dueTouched = false;
     const dateRow = row(contentEl, t("\u65F6\u95F4"));
     const dline = el("div", "tlt-dline");
     const start = el("input", "tlt-input date");
     start.type = "date";
     start.value = this.draft.start;
     start.title = t("\u5F00\u59CB");
-    start.onchange = () => this.draft.start = start.value;
     const due = el("input", "tlt-input date");
     due.type = "date";
     due.value = this.draft.due;
     due.title = t("\u622A\u6B62");
-    due.onchange = () => this.draft.due = due.value;
+    const syncDue = () => {
+      if (dueTouched) return;
+      const days = Math.max(0, Math.ceil(this.draft.est || 1) - 1);
+      this.draft.due = addDays(this.draft.start, days);
+      due.value = this.draft.due;
+    };
+    start.onchange = () => {
+      this.draft.start = start.value;
+      syncDue();
+    };
+    due.onchange = () => {
+      this.draft.due = due.value;
+      dueTouched = true;
+    };
     dline.append(start, el("span", "tlt-darrow", "\u2192"), due);
     dateRow.appendChild(dline);
     const estRow = row(contentEl, t("\u5DE5\u4F5C\u91CF"));
+    estRow.querySelector(".tlt-row-l")?.setAttribute("title", t("\u6539\u5DE5\u4F5C\u91CF\u4F1A\u81EA\u52A8\u628A\u622A\u6B62\u6392\u5230\u5F00\u59CB + \u5DE5\u4F5C\u91CF \u5929\uFF08\u624B\u52A8\u6539\u8FC7\u622A\u6B62\u540E\u5C31\u4E0D\u518D\u52A8\uFF09"));
     seg(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + t(" \u5929") })), this.draft.est, (v) => {
       this.draft.est = v;
-      estInput.value = String(v);
+      estInput.value = "";
+      syncDue();
     });
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number";
@@ -3294,6 +3411,7 @@ var QuickTaskModal = class extends TltModal {
       const v = Number(estInput.value);
       this.draft.est = Number.isFinite(v) && v > 0 ? v : 1;
       estRow.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
+      syncDue();
     };
     estRow.appendChild(estInput);
     const priRow = row(contentEl, t("\u4F18\u5148\u7EA7"));
@@ -5560,7 +5678,10 @@ var WorkbenchView = class extends ItemView {
       const row2 = el("div", "tlt-prow");
       const sw = el("span", "tlt-sw");
       sw.setCssProps({ "--tlt-sw": this.projColor(p) });
-      row2.append(sw, el("span", "tlt-pname", p), el("span", "tlt-ppct", pct + "%"));
+      const nameEl = el("span", "tlt-pname", p);
+      const pdesc = this.store.projectDesc(p);
+      if (pdesc) nameEl.title = pdesc;
+      row2.append(sw, nameEl, el("span", "tlt-ppct", pct + "%"));
       const more = el("button", "tlt-pmore", "\u22EF");
       more.title = t("\u65B0\u5EFA\u91CC\u7A0B\u7891 / \u5F52\u6863\u9879\u76EE");
       more.dataset.projmenu = p;
@@ -6195,6 +6316,7 @@ var WorkbenchView = class extends ItemView {
   projectMenu(anchor, p, at) {
     const file = this.app.vault.getAbstractFileByPath(`${this.cfg.tasksFolder}/${p}.md`);
     popMenu(anchor, [
+      { label: t("\u9879\u76EE\u4FE1\u606F\uFF08\u540D\u79F0 / \u63CF\u8FF0\uFF09"), onClick: () => new ProjectInfoModal(this.app, this.store, p, () => this.render()).open() },
       { label: t("\u65B0\u5EFA\u91CC\u7A0B\u7891"), onClick: () => this.promptMilestone(p) },
       { label: t("\u5F52\u6863\u9879\u76EE"), onClick: () => {
         if (file instanceof TFile) confirmArchiveProject(this.app, this.store, file, () => this.render());
@@ -6232,6 +6354,7 @@ var WorkbenchView = class extends ItemView {
   /** 里程碑菜单：重命名 / 打开详情 / 展开收起 */
   milestoneMenu(anchor, m, at) {
     popMenu(anchor, [
+      { label: t("\u9879\u76EE\u4FE1\u606F\uFF08\u540D\u79F0 / \u63CF\u8FF0\uFF09"), onClick: () => new ProjectInfoModal(this.app, this.store, m.project, () => this.render()).open() },
       { label: t("\u91CD\u547D\u540D\u91CC\u7A0B\u7891"), onClick: () => this.promptRenameMilestone(m) },
       { label: t("\u6253\u5F00\u8BE6\u60C5"), onClick: () => new MilestonePeekModal(this.app, this.store, m, () => {
         this.tab = "ms";

@@ -65,7 +65,7 @@ await esbuild.build({
       export { TLTSettingTab, TLTPlugin } from "./src/main";
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
-      export { TaskModal, QuickTaskModal } from "./src/views/modals";
+      export { TaskModal, QuickTaskModal, ProjectInfoModal } from "./src/views/modals";
       export { MessagesView as MsgViewForPublish } from "./src/views/messages";
       export { setLanguage, t as tr } from "./src/i18n";
     `,
@@ -80,7 +80,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 
 /* ---------- 3) 假 vault ---------- */
@@ -1529,6 +1529,83 @@ await t("排序：侧栏有入口；空库时也能新建项目", async () => {
   const modal = document.querySelector(".modal");
   assert.ok(modal, "点了应弹新建项目表单");
   assert.ok(/新建项目/.test(modal.textContent || ""), `表单标题应是新建项目：${(modal.textContent || "").slice(0, 40)}`);
+});
+
+await t("负责人：候选就地展开（不是浮动面板），再点收起", async () => {
+  document.body.empty();
+  const modal = new QuickTaskModal(leaf.app ?? plugin.app, store, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const pick = modal.contentEl.querySelector("[data-ownerpick]");
+  assert.ok(pick, "新建任务里应有选择负责人的按钮");
+  pick.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
+  const pop = modal.contentEl.querySelector(".tlt-pickpop");
+  assert.ok(pop && !pop.classList.contains("tlt-hidden"), "点了应就地展开候选");
+  assert.ok(pop.classList.contains("inline"), "候选面板应是就地展开的那一种");
+  assert.ok(pop.querySelectorAll(".tlt-pickrow").length >= 2, "应列出人员");
+  // 就地展开：面板必须是 static 定位（真机上浮动面板会被弹窗裁掉，看着像点了没反应）
+  const cssInline = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  const rule = /\.tlt-pickpop\.inline \{([^}]*)\}/.exec(cssInline)?.[1] ?? "";
+  assert.ok(/position:\s*static/.test(rule), `就地面板必须是 static：${rule}`);
+  const again = modal.contentEl.querySelector("[data-ownerpick]");
+  again.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
+  assert.ok(modal.contentEl.querySelector(".tlt-pickpop").classList.contains("tlt-hidden"), "再点一次应收起");
+});
+
+await t("新建任务：改工作量会把截止排到「开始 + 工作量」", async () => {
+  document.body.empty();
+  const modal = new QuickTaskModal(leaf.app ?? plugin.app, store, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const dueEl = () => modal.contentEl.querySelector(".tlt-dline input[type=date]:last-of-type");
+  const startEl = modal.contentEl.querySelector(".tlt-dline input[type=date]");
+  const addDays = (iso, n) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d + n);
+    const p2 = (x) => String(x).padStart(2, "0");
+    return `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())}`;
+  };
+  const today = startEl.value;
+  assert.equal(dueEl().value, today, "默认 1 天：开始＝截止＝今天");
+
+  const segBtn = (label) => [...modal.contentEl.querySelectorAll(".tlt-seg-b")].find((b) => b.textContent.trim() === label);
+  segBtn("2 天").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  assert.equal(dueEl().value, addDays(today, 1), "选 2 天：截止应排到次日");
+
+  const custom = modal.contentEl.querySelector(".tlt-est-custom");
+  custom.value = "5";
+  custom.dispatchEvent(new custom.ownerDocument.defaultView.Event("change", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  assert.equal(dueEl().value, addDays(today, 4), "自定义 5 天：截止应是开始 + 4");
+
+  // 手动改过截止之后，再动工作量就不该自动改它了
+  const manual = addDays(today, 10);
+  const due2 = dueEl();
+  due2.value = manual;
+  due2.dispatchEvent(new due2.ownerDocument.defaultView.Event("change", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  segBtn("3 天").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  assert.equal(dueEl().value, manual, "手动定过截止之后就不该被工作量覆盖");
+});
+
+await t("项目信息：看得到、改得动名称与描述", async () => {
+  document.body.empty();
+  const modal = new ProjectInfoModal(leaf.app ?? plugin.app, store, "示例项目", () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const nameEl = modal.contentEl.querySelector("[data-projname]");
+  const descEl = modal.contentEl.querySelector("[data-projdesc]");
+  assert.ok(nameEl && descEl, "项目信息里应有名称与描述");
+  assert.equal(nameEl.value, "示例项目", "名称应预填当前项目名");
+  descEl.value = "示例项目：演示用的假项目";
+  clickModal("保存");
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.ok(/desc:\s*示例项目：演示用的假项目/.test(files["TLT/tasks/示例项目.md"]), `描述应写进 frontmatter：\n${files["TLT/tasks/示例项目.md"].slice(0, 200)}`);
+  assert.equal(store.projectDesc("示例项目"), "示例项目：演示用的假项目", "重新读盘后描述应读得到");
 });
 
 await t("独立消息中心渲染", async () => {

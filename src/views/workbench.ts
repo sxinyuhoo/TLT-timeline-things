@@ -6,7 +6,7 @@ import {
   Task, Msg, Period, todayISO, addDays,
   hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, ideaTags, ideaFilterTags,
 } from "../data";
-import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, PromptModal, popMenu, el } from "./modals";
+import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
 import { setSvgMarkup } from "./dom";
@@ -254,7 +254,10 @@ export class WorkbenchView extends ItemView {
       const row = el("div", "tlt-prow");
       const sw = el("span", "tlt-sw");
       sw.setCssProps({ "--tlt-sw": this.projColor(p) });
-      row.append(sw, el("span", "tlt-pname", p), el("span", "tlt-ppct", pct + "%"));
+      const nameEl = el("span", "tlt-pname", p);
+      const pdesc = this.store.projectDesc(p);
+      if (pdesc) nameEl.title = pdesc;      // 描述挂在名字的 tooltip 上，侧栏窄，不再占一行
+      row.append(sw, nameEl, el("span", "tlt-ppct", pct + "%"));
       // 项目级动作：悬停出现「…」，右键也可以
       const more = el("button", "tlt-pmore", "⋯");
       more.title = T("新建里程碑 / 归档项目");
@@ -903,6 +906,7 @@ export class WorkbenchView extends ItemView {
   private projectMenu(anchor: HTMLElement, p: string, at?: { x: number; y: number }) {
     const file = this.app.vault.getAbstractFileByPath(`${this.cfg.tasksFolder}/${p}.md`);
     popMenu(anchor, [
+      { label: T("项目信息（名称 / 描述）"), onClick: () => new ProjectInfoModal(this.app, this.store, p, () => this.render()).open() },
       { label: T("新建里程碑"), onClick: () => this.promptMilestone(p) },
       { label: T("归档项目"), onClick: () => { if (file instanceof TFile) confirmArchiveProject(this.app, this.store, file, () => this.render()); } },
       { label: T("打开项目文件"), onClick: () => {
@@ -939,6 +943,7 @@ export class WorkbenchView extends ItemView {
   /** 里程碑菜单：重命名 / 打开详情 / 展开收起 */
   private milestoneMenu(anchor: HTMLElement, m: { name: string; project: string; tasks: Task[] }, at?: { x: number; y: number }) {
     popMenu(anchor, [
+      { label: T("项目信息（名称 / 描述）"), onClick: () => new ProjectInfoModal(this.app, this.store, m.project, () => this.render()).open() },
       { label: T("重命名里程碑"), onClick: () => this.promptRenameMilestone(m) },
       { label: T("打开详情"), onClick: () => new MilestonePeekModal(this.app, this.store, m, () => {
         this.tab = "ms"; this.proj = m.project; void this.render();

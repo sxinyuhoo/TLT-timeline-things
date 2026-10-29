@@ -21,6 +21,7 @@ People find this plugin by many names — **tasks, timeline, schedule, task mana
 | Workload / Capacity / Effort | Tasks carry person-day estimates; the team view computes each person's load (open person-days ÷ capacity) |
 | Checklist / Sub-task | A task can carry indented sub-tasks (content + done state only). **A small ring at the end of the task row shows the done ratio** — click it to expand in place and tick / rename / delete / add |
 | Progress / Timeline | Every task keeps its own created & done dates (`[created::]` / `[done::]`, hidden by default); project, milestone and task lifecycle events are appended to the stream in `TLT/events/` — the raw material for a timeline graph |
+| Project description | Project card `⋯` → “Project info”: rename the project (file and log references follow) and write a description (kept as `desc` in the project file, shown on hover) |
 | Sort / Order by date | Projects, milestones and tasks all sort by **name / created / due** — pick the same one again to flip direction (↑ / ↓); the choice is remembered per vault |
 | Daily note / Log / Weekly review | Entries are filed under `## date` into `TLT/logs/YYYY-MM.md` — copy from it when writing your weekly report |
 | Messages / Notifications / Inbox / Feeds | A separate message center: feeds, timeline (cards / axis / lanes / heatmap), publish and subscribe |

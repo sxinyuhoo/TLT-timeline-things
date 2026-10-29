@@ -65,11 +65,11 @@ const files: Record<string, string> = {
 
 - [ ] 处理 100 份 🛫 ${D} 📅 ${D} [wl:: 40] [pw:: w] [owner:: [[王五]]]
 `,
-  "TLT/team/我.md": `---\ntlt: staff\nrole: 实验室负责人\ncapacity: 100\ndays: 5\nskills: [决策]\nstatus: active\n---\n`,
-  "TLT/team/张三.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [评测]\nstatus: active\n---\n`,
-  "TLT/team/李四.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 90\ndays: 5\nskills: [仿真]\nstatus: active\n---\n`,
-  "TLT/team/王五.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [解析]\nstatus: active\n---\n`,
-  "TLT/team/赵六.md": `---\ntlt: staff\nrole: 产品经理\ncapacity: 100\ndays: 5\nskills: [需求]\nstatus: active\n---\n`,
+  "TLT/crew/我.md": `---\ntlt: staff\nrole: 实验室负责人\ncapacity: 100\ndays: 5\nskills: [决策]\nstatus: active\n---\n`,
+  "TLT/crew/张三.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [评测]\nstatus: active\n---\n`,
+  "TLT/crew/李四.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 90\ndays: 5\nskills: [仿真]\nstatus: active\n---\n`,
+  "TLT/crew/王五.md": `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: [解析]\nstatus: active\n---\n`,
+  "TLT/crew/赵六.md": `---\ntlt: staff\nrole: 产品经理\ncapacity: 100\ndays: 5\nskills: [需求]\nstatus: active\n---\n`,
   "TLT/feeds/个人.md": `---\ntitle: 个人\npersonal: true\nowner: me\n---\n\n- ${D} 记一下周报自动化\n  > 从 tasks 聚合 + 模板渲染。\n`,
   "TLT/feeds/我的动态.md": `---\ntitle: 我的动态\nowner: me\nmine: true\ncadence: 随手发\n---\n\n- ${D} 示例口径 V2 定稿 [kind:: note]\n`,
   "TLT/feeds/部门通知.md": `---\ntitle: 部门通知\nowner: 示例同事\ncadence: 每周 2–3 条\n---\n\n- ${D} 部门宣贯 [kind:: ask] [place:: 三楼] [star:: true]\n  > 覆盖全员\n- ${T} 团建 [kind:: event]\n`,
@@ -119,7 +119,7 @@ const app = {
 };
 
 const store = new Store(app as any, {
-  tasksFolder: "TLT/tasks", teamFolder: "TLT/team", feedsFolder: "TLT/feeds",
+  tasksFolder: "TLT/tasks", teamFolder: "TLT/crew", feedsFolder: "TLT/feeds",
   logsFolder: "TLT/logs", ideasFile: "TLT/ideas.md", defaultPeriod: "m", mineFeed: "我的动态",
 } as any);
 

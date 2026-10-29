@@ -1526,3 +1526,12 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   background: none; color: var(--tlt-ink4); font-size: 12px; line-height: 1; cursor: pointer; }
 .tlt-padd:hover { background: color-mix(in srgb, var(--tlt-acc) 16%, transparent); color: var(--tlt-acc); }
 .tlt-pempty { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 10px; color: var(--tlt-ink5); }
+
+/* 负责人候选：就地展开（不浮动），跟着弹窗走，真机上不会被裁掉 */
+.tlt-pickpop.inline {
+  position: static; width: 100%; max-height: 240px;
+  box-shadow: none; background: color-mix(in srgb, var(--tlt-bg2) 70%, transparent);
+  margin-top: 2px;
+}
+.tlt-ownerbox { display: flex; flex-direction: column; gap: 6px; }
+.tlt-textarea { min-height: 74px; resize: vertical; line-height: 1.6; font-family: inherit; }

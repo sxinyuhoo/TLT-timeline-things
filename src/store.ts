@@ -190,9 +190,12 @@ export class Store {
     this.tags = [];
 
     // 任务：一个项目一个文件，H2 = 里程碑，缩进 checklist = 步骤
+    this.projectDescs = {};
     for (const file of this.filesIn(this.settings.tasksFolder)) {
       const text = await this.app.vault.cachedRead(file);
       const project = file.basename;
+      const pfm = (this.app.metadataCache.getFileCache(file)?.frontmatter || {}) as Record<string, unknown>;
+      this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]);
       let milestone: string | undefined;
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
@@ -414,6 +417,59 @@ export class Store {
     await this.app.fileManager.renameFile(file, target);
     await this.appendEvent({ kind: "project.restored", project: file.basename });
     return target;
+  }
+
+  /** 项目描述（存在项目文件 frontmatter 的 desc 里） */
+  projectDesc(name: string): string {
+    return this.projectDescs[name] || "";
+  }
+  private projectDescs: Record<string, string> = {};
+
+  /**
+   * 项目信息：改名称（= 改文件名）与描述。
+   * 改名会顺带把日志里的 [proj:: 旧名] 一起改掉，否则原来记的"做了什么"会对不上项目。
+   */
+  async setProjectInfo(from: string, to: string, desc: string): Promise<{ ok: boolean; renamed: boolean; logs: number }> {
+    const clean = to.trim().replace(/[\\/:*?"<>|]/g, "");
+    if (!clean) return { ok: false, renamed: false, logs: 0 };
+    let file = await this.fileByPath(`${this.settings.tasksFolder}/${from}.md`);
+    if (!file) return { ok: false, renamed: false, logs: 0 };
+
+    // 先写描述（写在自己这个文件里，改名前后都一样）
+    const wantDesc = desc.trim();
+    await this.app.vault.process(file, (data) => {
+      const stripped = data.replace(/^desc:.*\r?\n/m, "");
+      const hasFm = /^---\r?\n/.test(stripped);
+      const end = hasFm ? stripped.indexOf("\n---", 3) : -1;
+      const head = hasFm && end > 0 ? stripped.slice(0, end) : "";
+      const rest = hasFm && end > 0 ? stripped.slice(end) : stripped;
+      if (!wantDesc) return hasFm ? `${head}${rest}` : rest;
+      const fmLine = `desc: ${wantDesc.replace(/\r?\n/g, " ")}`;
+      return hasFm ? `${head}\n${fmLine}${rest}` : `---\n${fmLine}\n---\n\n${stripped}`;
+    });
+    this.projectDescs[clean] = wantDesc;
+    if (clean === from) return { ok: true, renamed: false, logs: 0 };
+
+    // 改名：项目文件改名 + 日志里的 [proj::] 跟过来
+    let target = normalizePath(`${this.settings.tasksFolder}/${clean}.md`);
+    if (this.asFile(this.app.vault.getAbstractFileByPath(target))) {
+      let i = 2;
+      while (this.asFile(this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`)))) i++;
+      target = normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`);
+    }
+    await this.app.fileManager.renameFile(file, target);
+    let logs = 0;
+    for (const lf of this.filesIn(this.settings.logsFolder)) {
+      let touched = false;
+      await this.app.vault.process(lf, (data) => {
+        const next = data.replace(new RegExp(`\\[proj::\\s*${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`, "g"), `[proj:: ${clean}]`);
+        if (next !== data) { touched = true; return next; }
+        return data;
+      });
+      if (touched) logs++;
+    }
+    await this.appendEvent({ kind: "project.renamed", project: clean, note: from });
+    return { ok: true, renamed: true, logs };
   }
 
   /** 新建项目文件 */

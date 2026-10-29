@@ -2,7 +2,7 @@ import { App, Modal, Notice, TFile } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, saturation, ideaFilterTags, errMsg } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, addDays, minToHHMM, saturation, ideaFilterTags, errMsg } from "../data";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, cls?: string, text?: string
@@ -260,7 +260,36 @@ function tagPicker(store: Store, parent: HTMLElement, draft: { tags: string[] })
 function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[] }) {
   const wrap = el("div", "tlt-ownerbox");
   const line = el("div", "tlt-quick");
-  const pop = el("div", "tlt-pickpop tlt-hidden");
+  // 就地展开的候选面板：不做浮动定位（真机上浮动面板会被弹窗裁掉/盖住，看着像点了没反应）
+  const pop = el("div", "tlt-pickpop inline tlt-hidden");
+
+  const draw = () => {
+    pop.empty();
+    const search = el("input", "tlt-input tlt-picksearch");
+    search.placeholder = T("搜名字或岗位");
+    const list = el("div", "tlt-picklist");
+    const fill = () => {
+      list.empty();
+      const q = search.value.trim();
+      const rows = store.staff.filter((x) => !q || x.name.includes(q) || (x.role || "").includes(q));
+      if (!rows.length) list.appendChild(el("div", "tlt-hint", T("没有匹配的人")));
+      rows.forEach((st) => {
+        const on = draft.owners.includes(st.name);
+        const r = el("div", "tlt-pickrow" + (on ? " on" : ""));
+        r.append(el("span", "tlt-pickck" + (on ? " on" : "")), el("span", "tlt-pickname", st.name),
+          el("span", "tlt-pickrole", st.role || ""));
+        r.onclick = () => {
+          draft.owners = on ? draft.owners.filter((y) => y !== st.name) : [...draft.owners, st.name];
+          paint();
+          fill();
+        };
+        list.appendChild(r);
+      });
+    };
+    search.oninput = fill;
+    fill();
+    pop.append(search, list);
+  };
 
   const paint = () => {
     line.empty();
@@ -275,68 +304,22 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
       chip.appendChild(x);
       line.appendChild(chip);
     });
-    const btn = el("button", "tlt-btn tiny", draft.owners.length ? T("选择…") : T("选择负责人…"));
-    btn.onclick = () => { openPanel(btn); };
+    const open = !pop.classList.contains("tlt-hidden");
+    const btn = el("button", "tlt-btn tiny", !draft.owners.length ? T("选择负责人…") : open ? T("收起") : T("选择…"));
+    btn.dataset.ownerpick = "1";
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const isOpen = !pop.classList.contains("tlt-hidden");
+      if (isOpen) pop.addClass("tlt-hidden");
+      else { draw(); pop.removeClass("tlt-hidden"); }
+      paint();
+      if (!isOpen) {
+        const box = pop.querySelector<HTMLInputElement>(".tlt-picksearch");
+        window.setTimeout(() => box?.focus(), 20);
+      }
+    };
     line.appendChild(btn);
   };
-
-  const openPanel = (anchorEl: HTMLElement) => {
-    pop.empty();
-    const search = el("input", "tlt-input tlt-picksearch");
-    search.placeholder = T("搜名字或岗位");
-    const list = el("div", "tlt-picklist");
-    const draw = () => {
-      list.empty();
-      const q = search.value.trim();
-      const rows = store.staff.filter((x) => !q || x.name.includes(q) || (x.role || "").includes(q));
-      if (!rows.length) list.appendChild(el("div", "tlt-hint", T("没有匹配的人")));
-      rows.forEach((st) => {
-        const on = draft.owners.includes(st.name);
-        const r = el("div", "tlt-pickrow" + (on ? " on" : ""));
-        r.append(el("span", "tlt-pickck" + (on ? " on" : "")), el("span", "tlt-pickname", st.name),
-          el("span", "tlt-pickrole", st.role || ""));
-        r.onclick = () => {
-          draft.owners = on ? draft.owners.filter((y) => y !== st.name) : [...draft.owners, st.name];
-          paint();
-          draw();
-        };
-        list.appendChild(r);
-      });
-    };
-    search.oninput = draw;
-    draw();
-    pop.append(search, list);
-    pop.removeClass("tlt-hidden");
-    // 面板是 fixed 定位：按触发按钮的位置摆，宽度至少 300、最多到弹窗右边界
-    const r = anchorEl.getBoundingClientRect();
-    const width = Math.max(300, Math.min(420, window.innerWidth - r.left - 16));
-    const below = window.innerHeight - r.bottom - 12;
-    const above = r.top - 12;
-    const openUp = below < 220 && above > below;
-    pop.style.width = `${width}px`;
-    pop.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - width - 12))}px`;
-    pop.style.maxHeight = `${Math.max(180, Math.min(420, openUp ? above : below))}px`;
-    pop.style.top = openUp
-      ? `${Math.max(12, r.top - Math.min(420, above) - 6)}px`
-      : `${r.bottom + 6}px`;
-    window.setTimeout(() => search.focus(), 20);
-  };
-
-  // 点外面收起
-  const onDoc = (ev: MouseEvent) => {
-    if (pop.classList.contains("tlt-hidden")) return;
-    const t = ev.target as Node;
-    if (!pop.contains(t) && !line.contains(t)) {
-      pop.addClass("tlt-hidden");
-    }
-  };
-  window.setTimeout(() => document.addEventListener("click", onDoc), 0);
-  const onScroll = (ev: Event) => {
-    if (pop.classList.contains("tlt-hidden")) return;
-    if (pop.contains(ev.target as Node)) return;      // 面板自己滚动不收起
-    pop.addClass("tlt-hidden");
-  };
-  window.setTimeout(() => document.addEventListener("scroll", onScroll, true), 0);
 
   paint();
   wrap.append(line, pop);
@@ -344,6 +327,60 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
 }
 
 
+
+/**
+ * 项目信息：看/改项目名称（= 文件名）与一段描述。
+ * 改名会同步日志里的 [proj:: 旧名]，描述写进项目文件的 frontmatter。
+ */
+export class ProjectInfoModal extends TltModal {
+  store: Store;
+  from: string;
+  onDone: () => void | Promise<void>;
+
+  constructor(app: App, store: Store, from: string, onDone: () => void | Promise<void>) {
+    super(app); this.store = store; this.from = from; this.onDone = onDone;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", T("项目信息")));
+
+    const nameRow = row(contentEl, T("名称"));
+    const name = el("input", "tlt-input wide");
+    name.value = this.from;
+    name.setAttribute("data-projname", "1");
+    nameRow.appendChild(name);
+
+    const descRow = row(contentEl, T("描述"));
+    const desc = el("textarea", "tlt-input tlt-textarea");
+    desc.value = this.store.projectDesc(this.from);
+    desc.placeholder = T("这个项目是做什么的、交付什么、有谁在参与…（会写进项目文件的 desc）");
+    desc.setAttribute("data-projdesc", "1");
+    descRow.appendChild(desc);
+
+    const hint = el("div", "tlt-hint", T("改名称会连文件一起改名，日志里记的「[proj:: 旧名]」也会跟着改。"));
+    contentEl.appendChild(hint);
+
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", T("取消"));
+    cancel.onclick = () => this.close();
+    const save = el("button", "tlt-btn pri", T("保存"));
+    save.onclick = () => { void (async () => {
+      const to = name.value.trim();
+      const r = await this.store.setProjectInfo(this.from, to || this.from, desc.value);
+      if (!r.ok) { new Notice(T("没保存：名字不能为空")); return; }
+      await this.store.load();
+      this.close();
+      void this.onDone();
+      new Notice(r.renamed
+        ? T("已改名为「{n}」{logs}", { n: to, logs: r.logs ? T("，{n} 条日志里的项目名也改了", { n: r.logs }) : "" })
+        : T("已保存项目信息"));
+    })(); };
+    foot.append(cancel, save);
+    contentEl.appendChild(foot);
+  }
+}
 
 export class TaskModal extends TltModal {
   store: Store;
@@ -742,22 +779,31 @@ export class QuickTaskModal extends TltModal {
     paintTags();
     tagRow.appendChild(tagWrap);
 
-    // 开始 / 截止：同一行
+    // 开始 / 截止：同一行。截止会跟着「工作量」排（手动改过截止之后就不再自动动它）
+    let dueTouched = false;
     const dateRow = row(contentEl, T("时间"));
     const dline = el("div", "tlt-dline");
     const start = el("input", "tlt-input date");
     start.type = "date"; start.value = this.draft.start; start.title = T("开始");
-    start.onchange = () => (this.draft.start = start.value);
     const due = el("input", "tlt-input date");
     due.type = "date"; due.value = this.draft.due; due.title = T("截止");
-    due.onchange = () => (this.draft.due = due.value);
+    /** 截止 = 开始 + 工作量（含开始当天：1 天 ⇒ 当天，2 天 ⇒ 次日） */
+    const syncDue = () => {
+      if (dueTouched) return;
+      const days = Math.max(0, Math.ceil(this.draft.est || 1) - 1);
+      this.draft.due = addDays(this.draft.start, days);
+      due.value = this.draft.due;
+    };
+    start.onchange = () => { this.draft.start = start.value; syncDue(); };
+    due.onchange = () => { this.draft.due = due.value; dueTouched = true; };
     dline.append(start, el("span", "tlt-darrow", "→"), due);
     dateRow.appendChild(dline);
 
-    // 人天
+    // 人天（改了会顺手把截止排到「开始 + 工作量」）
     const estRow = row(contentEl, T("工作量"));
+    estRow.querySelector(".tlt-row-l")?.setAttribute("title", T("改工作量会自动把截止排到开始 + 工作量 天（手动改过截止后就不再动）"));
     seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") })), this.draft.est, (v) => {
-      this.draft.est = v; estInput.value = String(v);
+      this.draft.est = v; estInput.value = ""; syncDue();
     });
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0";
@@ -767,6 +813,7 @@ export class QuickTaskModal extends TltModal {
       const v = Number(estInput.value);
       this.draft.est = Number.isFinite(v) && v > 0 ? v : 1;
       estRow.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
+      syncDue();
     };
     estRow.appendChild(estInput);
 
