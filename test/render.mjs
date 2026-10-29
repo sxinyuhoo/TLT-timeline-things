@@ -1807,7 +1807,6 @@ await t("概览面板：读数与 store 对得上，且跟着当前项目过滤"
   assert.equal(num("逾期"), open.filter((t) => t.due && t.due < iso).length, "逾期数不对");
   assert.equal(num("未指派"), open.filter((t) => !t.owners.length).length, "未指派数不对");
   assert.equal(num("未排期"), open.filter((t) => !t.due).length, "未排期数不对");
-  assert.ok(v.contentEl.querySelector(".tlt-pn-staff"), "应有人员饱和度一块");
   assert.ok(v.contentEl.querySelector(".tlt-pn-done"), "应有完成度一块");
 
   // 切到某个项目：数字跟着变小
@@ -1940,7 +1939,7 @@ await t("输入法合成中的回车不提交（改源名不会被打断）", as
   assert.ok(!document.querySelector(".tlt-d-titlewrap input"), "合成结束后的回车才提交");
 });
 
-await t("概览面板：指标更全（里程碑 / 子项 / 近期完成），不再列明细", async () => {
+await t("概览面板：完成度以下是 紧急 / 饱和人员 / 空闲人员，不再列明细", async () => {
   document.body.empty();
   plugin.activeProject = null;
   const v = new OverviewPanelView(leaf, plugin);
@@ -1950,14 +1949,16 @@ await t("概览面板：指标更全（里程碑 / 子项 / 近期完成），�
   document.body.appendChild(v.containerEl);
   await v.onOpen();
   const txt = v.contentEl.textContent;
-  assert.ok(/里程碑/.test(txt), "应有里程碑指标");
-  assert.ok(/开展中 \d+ · 已完成 \d+/.test(txt), `里程碑应写清开展中/已完成：${txt.slice(0, 120)}`);
-  assert.ok(/近期完成/.test(txt), "应有近 7 天完成");
-  assert.ok(!v.contentEl.querySelector(".tlt-pn-item"), "不该再列 未指派/未排期 的明细");
-  // 里程碑数字与 store 对得上
-  const ms = store.milestones();
-  const card = [...v.contentEl.querySelectorAll(".tlt-pn-block")].find((b) => b.textContent.includes("里程碑"));
-  assert.ok(card.querySelector(".tlt-pn-val").textContent === String(ms.length), "里程碑数应等于 store 里的数量");
+  // 完成度以下换成三张卡：紧急 / 饱和人员 / 空闲人员
+  const card = (label) => [...v.contentEl.querySelectorAll(".tlt-pn-card")].find((c) => c.textContent.includes(label));
+  assert.ok(card("紧急"), "应有「紧急」卡");
+  assert.ok(card("饱和人员"), "应有「饱和人员」卡");
+  assert.ok(card("空闲人员"), "应有「空闲人员」卡");
+  assert.ok(!/里程碑/.test(txt) && !/近期完成/.test(txt), `里程碑/近期完成 应已移除：${txt.slice(0, 160)}`);
+  assert.ok(!v.contentEl.querySelector(".tlt-pn-item"), "不该再列明细");
+  // 数字对得上
+  const urgent = store.tasks.filter((t) => t.kind === "task" && !t.done && t.pri >= 3).length;
+  assert.equal(Number(card("紧急").querySelector(".tlt-pn-val").textContent), urgent, "紧急数应等于未完成且优先级=紧急的条数");
 });
 
 await t("个人消息源能删；发布过的/订阅来的不给删", async () => {

@@ -47,11 +47,11 @@ EP.createEl = function (tag, o = {}) {
 };
 
 await esbuild.build({
-  stdin: { contents: `export { WorkbenchView } from "./src/views/workbench"; export { MessagesView } from "./src/views/messages"; export { Store } from "./src/store"; export { TFile } from "obsidian"; export { TLTSettingTab } from "./src/main";`, resolveDir: process.cwd(), sourcefile: "p.ts", loader: "ts" },
+  stdin: { contents: `export { WorkbenchView } from "./src/views/workbench"; export { MessagesView } from "./src/views/messages"; export { OverviewPanelView } from "./src/views/panel"; export { renderDaily } from "./src/views/daily"; export { Store } from "./src/store"; export { TFile } from "obsidian"; export { TLTSettingTab } from "./src/main";`, resolveDir: process.cwd(), sourcefile: "p.ts", loader: "ts" },
   bundle: true, format: "esm", platform: "node", outfile: "test/bundle.mjs",
   alias: { obsidian: "./test/obsidian-stub.ts" }, logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TLTSettingTab } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, OverviewPanelView, renderDaily, Store, TFile, TLTSettingTab } = await import("./bundle.mjs?" + Date.now());
 
 const now = new Date();
 const pad = (n) => String(n).padStart(2, "0");
@@ -68,7 +68,7 @@ const files = {
   - [ ] 汇总 10 月场景数据
   - [ ] 与赵六对口径
 - [ ] 汇总场景数据 📅 ${T} [wl:: 10] [owner:: [[我]]]
-- [x] 示例任务：周报 📅 ${D} [wl:: 0] [owner:: [[我]]]
+- [x] 示例任务：周报 📅 ${D} [wl:: 0] [owner:: [[我]]] [done:: ${D}]
 
 ## 10 月场景推广
 
@@ -239,6 +239,45 @@ await shot("month", "light", "preview-month-light");
 
 document.body.empty();
 document.body.className = "theme-dark";
+
+// 右侧栏概览面板（360px 宽）
+{
+  document.body.empty();
+  document.body.className = "theme-dark";
+  const v = new OverviewPanelView({ app }, plugin);
+  v.containerEl = document.createElement("div");
+  v.contentEl = document.createElement("div");
+  v.containerEl.appendChild(v.contentEl);
+  await v.onOpen();
+  const cssP = fs.readFileSync("styles.css", "utf8");
+  fs.writeFileSync("test/preview-panel.html", `<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;height:100%;background:#07070A} body{padding:16px}
+  .frame{width:360px;height:768px;border-radius:12px;overflow:hidden;border:1px solid #26262E}
+  ${cssP}
+</style></head><body class="theme-dark"><div class="frame">${v.containerEl.innerHTML}</div></body></html>`);
+  console.log("wrote test/preview-panel.html");
+}
+
+// 日记块 tlt-daily（写在日记里的样子）
+{
+  document.body.empty();
+  document.body.className = "theme-dark";
+  const host = document.createElement("div");
+  const dp = {
+    store, settings: store.settings, app,
+    dailyBlocks: new Set(), refreshDailyBlocks() {},
+    hubState: () => ({ publish: "", sync: "" }), saveSettings: async () => {}, refreshAll: () => {},
+  };
+  renderDaily(dp, host, "date: auto", `${D.replace(/-/g, "")}.md`);
+  const cssD = fs.readFileSync("styles.css", "utf8");
+  fs.writeFileSync("test/preview-daily.html", `<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;height:100%;background:#1A1A1E} body{padding:22px}
+  .note{width:760px;padding:22px 26px;border-radius:10px;background:var(--background-primary,#1E1E24)}
+  body.theme-dark{--background-primary:#1E1E24;--text-normal:#DCDDDE}
+  ${cssD}
+</style></head><body class="theme-dark"><div class="note">${host.innerHTML}</div></body></html>`);
+  console.log("wrote test/preview-daily.html");
+}
 
 async function msgShot(mode, theme, out) {
   document.body.empty();

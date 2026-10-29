@@ -1650,3 +1650,4 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-pickadd { flex: none; width: 100%; text-align: left; font-size: 10px; color: var(--tlt-ink3);
   background: none; border: 1px dashed var(--tlt-line2); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
 .tlt-pickadd:hover { color: var(--tlt-acc); border-color: var(--tlt-acc); }
+.tlt-daily-note { font-size: 9.5px; color: var(--tlt-ink5); margin-top: 6px; line-height: 1.6; }

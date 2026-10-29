@@ -103,82 +103,18 @@ export class OverviewPanelView extends ItemView {
     doneCard.appendChild(el("div", "tlt-pn-sub", T("已完成 {a} / 共 {b} 条", { a: doneN, b: all.length })));
     body.appendChild(doneCard);
 
-    /* ---- 三、人员饱和度（未完成人天 ÷ 产能）---- */
-    const rows = this.staffLoad(proj);
-    if (rows.length) {
-      const staffBox = el("div", "tlt-pn-block");
-      const sh = el("div", "tlt-pn-blockrow");
-      sh.append(el("span", "tlt-pn-lab", T("人员（未完成人天 / 产能）")), el("span", "tlt-pn-sub", T("点开人员页")));
-      staffBox.dataset.pngoto = "staff";
-      staffBox.appendChild(sh);
-      rows.slice(0, 6).forEach((r) => {
-        const line = el("div", "tlt-pn-staff");
-        line.append(el("span", "tlt-pn-name", r.name));
-        const b = el("span", "tlt-pn-mini");
-        const f = el("i");
-        f.style.width = `${Math.min(100, Math.round(r.pct))}%`;
-        if (r.pct > 100) f.addClass("over");
-        b.appendChild(f);
-        line.append(b, el("span", "tlt-pn-pct", `${Math.round(r.pct)}%`));
-        staffBox.appendChild(line);
-      });
-      if (rows.length > 6) {
-        const rest = el("div", "tlt-pn-sub", T("还有 {n} 位", { n: rows.length - 6 }));
-        rest.dataset.pngoto = "staff";
-        staffBox.appendChild(rest);
-      }
-      body.appendChild(staffBox);
-    }
-
-    /* ---- 三、里程碑：开展中 / 已完成 ---- */
-    const msList = this.store.milestones(proj || undefined);
-    const msDone = msList.filter((m) => m.tasks.length > 0 && m.tasks.every((t) => t.done));
-    const msBox = el("div", "tlt-pn-block");
-    msBox.dataset.pngoto = "ms";
-    const mr = el("div", "tlt-pn-blockrow");
-    mr.append(el("span", "tlt-pn-lab", T("里程碑")), el("span", "tlt-pn-val", String(msList.length)));
-    msBox.appendChild(mr);
-    const mbar = el("div", "tlt-pn-bar");
-    const mfill = el("i");
-    mfill.style.width = `${msList.length ? Math.round((msDone.length / msList.length) * 100) : 0}%`;
-    mbar.appendChild(mfill);
-    msBox.appendChild(mbar);
-    msBox.appendChild(el("div", "tlt-pn-sub",
-      T("开展中 {a} · 已完成 {b}", { a: msList.length - msDone.length, b: msDone.length })));
-    body.appendChild(msBox);
-
-    /* ---- 四、子项进度（有子项的任务才计）---- */
-    const stepTasks = all.filter((t) => t.steps.length);
-    const stepTotal = stepTasks.reduce((n, t) => n + t.steps.length, 0);
-    const stepDone = stepTasks.reduce((n, t) => n + t.steps.filter((x) => x.done).length, 0);
-    if (stepTotal) {
-      const stBox = el("div", "tlt-pn-block");
-      const sr = el("div", "tlt-pn-blockrow");
-      sr.append(el("span", "tlt-pn-lab", T("子项")), el("span", "tlt-pn-val", `${stepDone}/${stepTotal}`));
-      stBox.appendChild(sr);
-      const sbar = el("div", "tlt-pn-bar");
-      const sfill = el("i");
-      sfill.style.width = `${Math.round((stepDone / stepTotal) * 100)}%`;
-      sbar.appendChild(sfill);
-      stBox.appendChild(sbar);
-      stBox.appendChild(el("div", "tlt-pn-sub", T("{n} 条任务拆了子项", { n: stepTasks.length })));
-      body.appendChild(stBox);
-    }
-
-    /* ---- 五、最近完成（近 7 天）---- */
-    const week = new Date();
-    week.setDate(week.getDate() - 6);
-    const p2d = (n: number) => String(n).padStart(2, "0");
-    const from = `${week.getFullYear()}-${p2d(week.getMonth() + 1)}-${p2d(week.getDate())}`;
-    const recent = all.filter((t) => t.done && t.doneAt && t.doneAt >= from);
-    const rBox = el("div", "tlt-pn-block");
-    rBox.dataset.pngoto = "month";
-    const rr = el("div", "tlt-pn-blockrow");
-    rr.append(el("span", "tlt-pn-lab", T("近期完成（7 天）")), el("span", "tlt-pn-val", String(recent.length)));
-    rBox.appendChild(rr);
-    rBox.appendChild(el("div", "tlt-pn-sub",
-      recent.length ? T("最近一条：{t}", { t: recent[recent.length - 1].title.slice(0, 18) }) : T("这 7 天还没有完成的")));
-    body.appendChild(rBox);
+    /* ---- 三、紧急 / 饱和人员 / 空闲人员 ---- */
+    const urgent = open.filter((t) => t.pri >= 3);
+    const load = this.staffLoad(proj);
+    const busy = load.filter((r) => r.pct >= 100);
+    const idle = load.filter((r) => r.pct < 60);
+    const grid2 = el("div", "tlt-pn-grid");
+    grid2.append(
+      this.numCard(T("紧急"), String(urgent.length), urgent.length ? "late" : "", { goto: { tab: "month", dim: "all" } }),
+      this.numCard(T("饱和人员"), String(busy.length), busy.length ? "warn" : "", { goto: { tab: "staff", dim: "all" } }),
+      this.numCard(T("空闲人员"), String(idle.length), "", { goto: { tab: "staff", dim: "all" } }),
+    );
+    body.appendChild(grid2);
 
     // 点块跳工作台
     body.addEventListener("click", (ev) => {

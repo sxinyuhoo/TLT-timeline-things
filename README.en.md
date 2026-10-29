@@ -159,6 +159,7 @@ overdue: true   # list overdue tasks in their own group
 tree: true      # expand sub-steps
 who: true       # show owners
 scope: all      # all | work | personal
+approx: true    # older tasks have no completion date → file them by due date
 ```
 ````
 
@@ -167,6 +168,61 @@ Ticking a box writes `[done:: date]` into the project file and the line moves be
 No Tasks or Dataview plugin needed — it reads TLT's own data.
 
 Helper: `tools/migrate-diary-queries.py` (batch-replace old ```tasks queries with `tlt-daily`).
+
+## Overview panel (right sidebar)
+
+Command palette → “Open/close the TLT overview panel (right sidebar)”, or the `▤` button in the workbench header. TLT isn't a file view, so Obsidian's usual outline/backlinks spot is empty for it — this panel fills that space with readings:
+
+- Project count + four number cards: **overdue / due this month / unassigned / unscheduled** (click any card to jump to that tab)
+- **Completion**: a bar plus “x of y done”
+- **Urgent / at capacity / with room**: urgent = open tasks at highest priority; at capacity = people at ≥ 100% load; with room = below 60% (same thresholds as the people tab)
+- **Follows the project selected in the workbench** — the chip in the top-left goes back to “all work”
+- `⟳` refreshes; task edits refresh it automatically
+
+## Sub-items and the progress ring
+
+An indented checklist under a task is a sub-item — content and done state, nothing else:
+
+````markdown
+- [ ] Collect data for the three task types 📅 2026-10-30
+  - [x] Export October list
+  - [ ] Check definitions
+````
+
+- A task with sub-items shows a **small ring** at the end of its row (done ÷ total)
+- **Click the ring to expand in place**: tick on the left (hollow = open, filled + struck through = done), click the text to edit, `×` to delete, Enter to add another
+- All sub-items ticked but the task itself not → the ring turns into a reminder colour
+- Ticking the parent with open sub-items only warns, it never blocks you
+
+## Task times: created / done, and the event stream
+
+- A new task gets `[created:: 2026-10-29]`; ticking it adds `[done:: 2026-10-29]`; unticking removes it
+- Both stay **invisible in the UI** (rows stay clean). Finished rows carry a small “done 10-29”, and the task's timeline section shows created / done / sub-item progress
+- Project, milestone and task lifecycle events are appended to `TLT/events/YYYY-MM.md` (one line each, append-only) — that's the raw material for a future timeline graph:
+
+````markdown
+- 2026-10-29 18:46 task.done project=mvlab_ops task=organise the task list
+- 2026-10-29 18:47 ms.done project=mvlab_omniwise milestone=knowledge-base-vectorisation
+````
+
+Older tasks have no such fields (recording started in 0.9.0). The plugin **never guesses** — the UI says “not recorded”, and the daily block files them by due date with a visible marker.
+
+## Projects: pin, description, sorting
+
+| What you want | How |
+| --- | --- |
+| **Pin** | Project card `⋯` → “Pin project”: pinned projects float to the top of the sidebar and take the first sector in the star map (`pin: true` in the project file) |
+| **See / edit name and description** | Click the `✎` next to the project name: rename it (file, heading and log references follow) and write a description (`desc` in frontmatter, shown as a line on the card) |
+| **Filter** | Click the card itself: calendar / tasks / milestones filter to that project; the breadcrumb clears it |
+| **Sort** | Right side of the toolbar (the sidebar uses `⇅`): name / created / due — pick the same one again to reverse |
+
+## Feeds: publishing, subscribing, cleaning up
+
+- **Publish**: personal feed → “Publish feed…” gives a subscription URL (`http://server/feed?id=…`) to hand out
+- **Subscribe**: paste the URL someone gives you. **Only the feed you subscribed to is pulled** — the server's subscription table is shared by everyone, so the plugin trusts its own list and filters the response again
+- **Alias**: a subscribed feed can only be aliased (your own label); the publisher's name stays, and the details show “original name: …”
+- **Cleanup**: a personal feed can be deleted (its messages go to the trash with it); **a published one must be unpublished first** (unpublishing also deletes it server-side; whatever subscribers already pulled stays in their vaults); subscribed feeds use “Unsubscribe”
+- **New feed**: the `＋` on the “Personal” group header in the message centre
 
 ## Archiving from the workbench
 

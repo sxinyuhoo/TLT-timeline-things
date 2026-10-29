@@ -268,7 +268,7 @@ function ownerSelect(app: App, store: Store, parent: HTMLElement, draft: { owner
   const draw = () => {
     pop.empty();
     const search = el("input", "tlt-input tlt-picksearch");
-    search.placeholder = T("搜名字或岗位，没有就回车新建");
+    search.placeholder = T("搜名字或岗位");
     search.setAttribute("data-ownersearch", "1");
     const list = el("div", "tlt-picklist");
     const fill = () => {

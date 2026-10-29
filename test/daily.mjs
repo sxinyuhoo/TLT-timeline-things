@@ -133,6 +133,48 @@ await t("日期基准：补记历史日记时按文件名算，不看今天", as
   assert.ok(!text.includes("今天做完的活"), "10-28 那天不该看到 10-29 完成的活");
 });
 
+await t("已完成：那天到期、后来才勾的照样列出来，并写出实际完成日", async () => {
+  fixture();
+  // 10-28 到期、10-29 才勾掉的那条
+  fps.files["TLT/tasks/交通核心算法研发.md"] = fps.files["TLT/tasks/交通核心算法研发.md"].replace(
+    "- [ ] 明天的事 📅 2026-10-30",
+    "- [x] 拖到第二天才勾的活 📅 2026-10-28 [done:: 2026-10-29]\n- [ ] 明天的事 📅 2026-10-30");
+  const { store } = await makeStore();
+  const host = document.createElement("div");
+  renderDaily(fakePlugin(store), host, "date: auto", "70-生活/diary/2026/20261028.md");
+  const text = host.textContent.replace(/\s+/g, " ");
+  assert.ok(/今日已完成/.test(text), `10-28 的日记该有「今日已完成」：${text.slice(0, 200)}`);
+  assert.ok(/拖到第二天才勾的活/.test(text), "那天到期的活不该消失");
+  assert.ok(/完成 2026-10-29/.test(text), `行里要写清实际完成日期：${text.slice(0, 220)}`);
+  assert.ok(/有 1 条是那天到期、之后才勾掉的/.test(text), "要给一句脚注说明");
+});
+
+await t("已完成：没有完成时间的旧任务按截止日归入，并标注", async () => {
+  fixture();
+  fps.files["TLT/tasks/交通核心算法研发.md"] = fps.files["TLT/tasks/交通核心算法研发.md"].replace(
+    "- [ ] 明天的事 📅 2026-10-30",
+    "- [x] 很早以前做完的活 📅 2026-10-28\n- [ ] 明天的事 📅 2026-10-30");
+  const { store } = await makeStore();
+  const host = document.createElement("div");
+  renderDaily(fakePlugin(store), host, "date: auto", "70-生活/diary/2026/20261028.md");
+  const text = host.textContent.replace(/\s+/g, " ");
+  assert.ok(/很早以前做完的活/.test(text), `旧任务该按截止日归入：${text.slice(0, 200)}`);
+  assert.ok(/按截止日归入/.test(text), "要标出这是按截止日归入的");
+  assert.ok(/完成时间从 0\.9\.0 才开始记/.test(text), "脚注要说明原因");
+});
+
+await t("approx: false 时不做按截止日归入", async () => {
+  fixture();
+  fps.files["TLT/tasks/交通核心算法研发.md"] = fps.files["TLT/tasks/交通核心算法研发.md"].replace(
+    "- [ ] 明天的事 📅 2026-10-30",
+    "- [x] 很早以前做完的活 📅 2026-10-28\n- [ ] 明天的事 📅 2026-10-30");
+  const { store } = await makeStore();
+  const host = document.createElement("div");
+  renderDaily(fakePlugin(store), host, "date: auto\napprox: false", "70-生活/diary/2026/20261028.md");
+  const text = host.textContent.replace(/\s+/g, " ");
+  assert.ok(!/很早以前做完的活/.test(text), "关掉之后不该再按截止日归入");
+});
+
 await t("勾选写回文件，并触发整体重画", async () => {
   fixture();
   const { app, store } = await makeStore();

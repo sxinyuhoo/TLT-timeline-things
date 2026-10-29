@@ -13,6 +13,7 @@ import { el } from "./modals";
  *   tree: true        # 展开任务的子步骤，点子步骤也能勾
  *   who: true         # 显示负责人
  *   scope: all        # all | work | personal
+ *   approx: true      # 早期任务没有完成时间 → 按截止日归入那天的「已完成」
  *   ```
  *
  * 不依赖 Tasks / Dataview 插件：数据来自 TLT 自己的 store，勾选走 store.toggleTask / setStepDone。
@@ -24,10 +25,12 @@ export interface DailyOptions {
   tree: boolean;
   who: boolean;
   scope: "all" | "work" | "personal";
+  /** 早期任务没有完成时间：按截止日把它们归到那天的「已完成」（默认开） */
+  approx: boolean;
 }
 
 export function parseDailyOptions(source: string): DailyOptions {
-  const o: DailyOptions = { date: "auto", overdue: true, tree: true, who: true, scope: "all" };
+  const o: DailyOptions = { date: "auto", overdue: true, tree: true, who: true, scope: "all", approx: true };
   for (const raw of source.split("\n")) {
     const line = raw.trim();
     if (!line || line.startsWith("#") || line.startsWith("//")) continue;
@@ -40,6 +43,7 @@ export function parseDailyOptions(source: string): DailyOptions {
     else if (key === "tree") o.tree = val !== "false" && val !== "no";
     else if (key === "who") o.who = val !== "false" && val !== "no";
     else if (key === "scope") o.scope = val === "work" || val === "personal" ? val : "all";
+    else if (key === "approx") o.approx = val !== "false" && val !== "no";
   }
   return o;
 }
@@ -61,14 +65,24 @@ function pick(tasks: Task[], o: DailyOptions, date: string) {
   const overdue = pool.filter((t) => !t.done && t.due && t.due < date);
   const planned = pool.filter((t) => !t.done && !t.due && t.start === date);
   const todo = pool.filter((t) => !t.done && t.due === date);
-  const done = pool.filter((t) => t.done && t.doneAt === date);
+  // 「已完成」有两类：
+  //  ① 那天真的勾掉的（doneAt === date）；
+  //  ② **那天到期、后来才勾掉的**（due === date，但完成时间不是那天）——旧日记翻回去，
+  //     那天该做的事不能凭空消失，所以照样列进来，行里会写清「完成 X」。
+  // 早期任务（0.9.0 之前）根本没有完成时间，按截止日归入并标注。
+  const done = pool.filter((t) =>
+    t.done && (t.doneAt === date || (o.approx && t.due === date)));
+  const approxIds = new Set(done.filter((t) => !t.doneAt && t.due === date).map((t) => t.id));
+  const lateDone = new Map(done.filter((t) => t.doneAt && t.doneAt !== date).map((t) => [t.id, t.doneAt]));
   const rank = (a: Task, b: Task) =>
     (a.due || "9999").localeCompare(b.due || "9999") || b.pri - a.pri || (b.est || 0) - (a.est || 0);
   return {
     overdue: overdue.sort(rank),
     planned: planned.sort(rank),
     todo: todo.sort(rank),
-    done: done.sort((a, b) => (a.doneAt || "").localeCompare(b.doneAt || "")),
+    done: done.sort((a, b) => (a.doneAt || a.due || "").localeCompare(b.doneAt || b.due || "")),
+    approxIds,
+    lateDone,
   };
 }
 
@@ -100,6 +114,8 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
     if (t.est !== undefined) bits.push(`${t.est} ${T("人天")}`);
     if (t.pri >= 2) bits.push(t.pri >= 3 ? T("紧急") : T("高"));
     if (o.who && t.owners.length) bits.push(t.owners.join(T("、")));
+    if (kind === "done" && !t.doneAt) bits.push(T("按截止日归入"));
+    if (kind === "done" && t.doneAt && t.doneAt !== date) bits.push(T("完成 {d}", { d: t.doneAt }));
     body.appendChild(el("div", "tlt-daily-m", bits.join(" · ")));
     if (o.tree && t.steps.length) {
       const steps = el("div", "tlt-daily-steps");
@@ -131,6 +147,12 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
 
   if ((!o.overdue || !g.overdue.length) && !g.todo.length && !g.planned.length && !g.done.length) {
     box.appendChild(el("div", "tlt-daily-empty", T("这天没有待办，也没有完成的记录")));
+  } else if (g.approxIds.size) {
+    box.appendChild(el("div", "tlt-daily-note",
+      T("带「按截止日归入」的几条：完成时间从 0.9.0 才开始记，早于它的按截止日算。")));
+  } else if (g.lateDone.size) {
+    box.appendChild(el("div", "tlt-daily-note",
+      T("有 {n} 条是那天到期、之后才勾掉的（行里写了实际完成日期）。", { n: g.lateDone.size })));
   }
 }
 
