@@ -174,7 +174,6 @@ try {
     // 「宿主还没挂到文档上」也要先画出来（Obsidian 有时离屏渲染，曾经因此显示空白）
     const off = w.document.createElement("div");
     cb.fn("date: auto", off, { sourcePath: `70-生活/diary/2026/${diaryDate}.md` });
-    console.log("DEBUG off 子节点:", off.childNodes.length, "| dailyBlocks:", inst.dailyBlocks?.size, "| innerHTML:", JSON.stringify(off.innerHTML.slice(0, 80)));
     if (!off.querySelector(".tlt-daily-row") && !off.querySelector(".tlt-daily-empty") && !off.querySelector(".tlt-daily-warn")) {
       console.error("离屏渲染时块是空的 ✗（Obsidian 会先离屏渲染再挂载）");
       console.error("   离屏 DOM:", JSON.stringify(off.innerHTML.slice(0, 200)), "| 子节点", off.childNodes.length);
