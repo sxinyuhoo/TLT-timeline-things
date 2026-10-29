@@ -31,7 +31,6 @@ export const EN: Record<string, string> = {
   "今日已完成": "Done today",
   "今天到期": "due today",
   "这天没有待办，也没有完成的记录": "Nothing due and nothing finished on this day",
-  "只看这个项目": "Only this project",
   "{m} 个里程碑 · {n} 条任务 · 完成 {p}%": "{m} milestones · {n} tasks · {p}% done",
   "这个项目是做什么的、交付什么、有谁在参与…（存进项目文件的 frontmatter：desc）": "What this project is for, what it delivers, who is on it… (stored as `desc` in the project file's frontmatter)",
   "项目信息": "Project info",

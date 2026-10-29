@@ -841,7 +841,7 @@ await t("切到本月：四组 + 任务行", async () => {
   assert.ok(document.querySelectorAll(".tlt-task").length >= 3);
 });
 
-await t("点侧栏项目＝看项目信息；点「只看这个项目」才筛日历/任务/里程碑", async () => {
+await t("项目卡：点整体＝筛选；点名字边的小笔＝项目信息", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
   await view.onOpen();
@@ -849,26 +849,29 @@ await t("点侧栏项目＝看项目信息；点「只看这个项目」才筛�
   await view.render();
   const total = document.querySelectorAll(".tlt-task").length;
 
-  // 点侧栏的项目卡：先弹项目信息（名称 + 描述），不再直接筛
+  // 点卡片整体：筛视图（老行为回来了）
   const card = document.querySelector('.tlt-proj[data-proj="示例项目"]');
   assert.ok(card, "侧栏没有示例项目卡片");
+  assert.ok(card.querySelector("[data-projedit]"), "名字边上应有一个小笔");
   card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 80));
-  const info = document.querySelector(".tlt-host");
-  assert.ok(info, "点项目卡应弹出项目信息");
-  assert.equal(info.querySelector("[data-projname]").value, "示例项目", "弹窗里应是这个项目");
-  assert.ok(info.querySelector("[data-projdesc]"), "弹窗里应有描述框");
-  assert.equal(document.querySelectorAll(".tlt-proj.on").length, 0, "这时候还不该筛");
-
-  // 弹窗里的「只看这个项目」才把视图筛过去
-  info.querySelector("[data-projfocus]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 60));
+  await new Promise((r) => window.setTimeout(r, 40));
   const shown = [...document.querySelectorAll(".tlt-task")].map((e) => e.dataset.task || "");
-  assert.ok(shown.length > 0, "筛选后没有任务");
-  assert.ok(shown.length < total, `筛选没生效：${shown.length} / ${total}`);
+  assert.ok(shown.length > 0 && shown.length < total, `点卡片应筛视图：${shown.length} / ${total}`);
   assert.ok(shown.every((id) => id.includes("示例项目")), `混进了别的项目：${shown.join(" / ")}`);
   assert.equal(document.querySelectorAll(".tlt-proj.on").length, 1, "侧栏没标出选中项目");
   assert.ok(document.querySelector(".tlt-crumb-proj"), "面包屑没显示项目名");
+  assert.ok(!document.querySelector(".tlt-host"), "点卡片不该弹项目信息");
+
+  // 点小笔：弹项目信息（名称 + 描述），里面不再有「只看这个项目」
+  document.querySelector('.tlt-proj[data-proj="示例项目"] [data-projedit]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const info = document.querySelector(".tlt-host");
+  assert.ok(info, "点小笔应弹出项目信息");
+  assert.equal(info.querySelector("[data-projname]").value, "示例项目");
+  assert.ok(info.querySelector("[data-projdesc]"), "应有描述框");
+  const labels = [...info.querySelectorAll("button")].map((b) => b.textContent.trim());
+  assert.ok(!labels.some((l) => l.includes("只看这个项目")), `弹窗里不该再有只看这个项目：${labels.join("|")}`);
+  assert.ok(labels.includes("保存"), `弹窗按钮应是 取消/保存：${labels.join("|")}`);
 
   // 日历视图同样受限
   const day = "2026-10-25";
@@ -877,19 +880,26 @@ await t("点侧栏项目＝看项目信息；点「只看这个项目」才筛�
   // 里程碑视图
   view.tab = "ms";
   await view.render();
-  const names = [...document.querySelectorAll(".tlt-ms")].map((e) => e.dataset.ms || "");
-  const allowed = new Set(view.store.milestones("示例项目").map((m) => m.name));
-  assert.ok(names.length > 0, "里程碑视图空了");
-  assert.ok(names.every((n) => allowed.has(n)), `里程碑没筛：${names.join(" / ")}`);
-
-  // 点面包屑上的项目名 → 回到全部
-  document.querySelector(".tlt-crumb-proj").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 30));
-  view.tab = "month";
-  await view.render();
-  assert.equal(document.querySelectorAll(".tlt-task").length, total, "清除筛选后应回到全部");
+  const msProjects = [...document.querySelectorAll(".tlt-ms-p")].map((e) => e.textContent.trim());
+  assert.ok(msProjects.length > 0 && msProjects.every((p) => p === "示例项目"), `里程碑没按项目筛：${msProjects.join(" / ")}`);
 });
 
+await t("项目菜单：只剩置顶/里程碑/归档/打开文件；菜单不会伸出窗口", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  const more = document.querySelector(".tlt-pmore");
+  assert.ok(more, "项目卡应有 ⋯");
+  more.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 30));
+  const items = [...document.querySelectorAll(".tlt-menu button")].map((b) => b.textContent.trim());
+  assert.deepEqual(items, ["置顶项目", "新建里程碑", "归档项目", "打开项目文件"], `菜单项不对：${items.join(" | ")}`);
+  // jsdom 不做布局（rect 恒为 0），所以读它写下的定位值
+  const menu = document.querySelector(".tlt-menu");
+  assert.ok(parseFloat(menu.style.top) >= 8, `菜单不能伸出窗口上沿，实际 top=${menu.style.top}`);
+  assert.ok(parseFloat(menu.style.left) >= 8, `菜单不能伸出窗口左沿，实际 left=${menu.style.left}`);
+});
 await t("任务详情：字段与新建对齐（可直接改标题/项目/里程碑/标签/开始/人天）", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);

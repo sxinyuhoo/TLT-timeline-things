@@ -1588,3 +1588,12 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 }
 .tlt-proj.pin .tlt-pname { color: var(--tlt-ink); }
 .tlt-doneat { color: #4FB59A; opacity: .85; }
+
+/* 项目卡：名字边上的小笔（改名称/描述），点卡片本身仍是筛选 */
+.tlt-pedit {
+  flex: none; width: 17px; height: 17px; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: none; border: 0; border-radius: 5px; cursor: pointer;
+  color: var(--tlt-ink5); font-size: 10px; line-height: 1; opacity: 0; transition: opacity .12s ease;
+}
+.tlt-proj:hover .tlt-pedit { opacity: 1; }
+.tlt-pedit:hover { background: var(--tlt-surface3); color: var(--tlt-ink); }

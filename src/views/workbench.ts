@@ -284,7 +284,11 @@ export class WorkbenchView extends ItemView {
       const nameEl = el("span", "tlt-pname", p);
       const pdesc = this.store.projectDesc(p);
       if (pdesc) nameEl.title = pdesc;
-      row.append(sw, nameEl, el("span", "tlt-ppct", pct + "%"));
+      // 名称边上一个小笔：改名称 / 写描述（点卡片整体仍然是筛选）
+      const edit = el("button", "tlt-pedit", "✎");
+      edit.title = T("项目信息（名称 / 描述）");
+      edit.dataset.projedit = p;
+      row.append(sw, nameEl, edit, el("span", "tlt-ppct", pct + "%"));
       // 项目级动作：悬停出现「…」，右键也可以
       const more = el("button", "tlt-pmore", "⋯");
       more.title = T("新建里程碑 / 归档项目");
@@ -946,8 +950,6 @@ export class WorkbenchView extends ItemView {
   private projectMenu(anchor: HTMLElement, p: string, at?: { x: number; y: number }) {
     const file = this.app.vault.getAbstractFileByPath(`${this.cfg.tasksFolder}/${p}.md`);
     popMenu(anchor, [
-      { label: T("项目信息（名称 / 描述）"), onClick: () => new ProjectInfoModal(this.app, this.store, p, () => this.render()).open() },
-      { label: T("只看这个项目"), onClick: () => { this.proj = this.proj === p ? null : p; void this.render(); } },
       { label: this.store.isPinned(p) ? T("取消置顶") : T("置顶项目"), onClick: () => { void (async () => {
         await this.store.setProjectPin(p, !this.store.isPinned(p));
         await this.store.load();
@@ -989,7 +991,6 @@ export class WorkbenchView extends ItemView {
   /** 里程碑菜单：重命名 / 打开详情 / 展开收起 */
   private milestoneMenu(anchor: HTMLElement, m: { name: string; project: string; tasks: Task[] }, at?: { x: number; y: number }) {
     popMenu(anchor, [
-      { label: T("项目信息（名称 / 描述）"), onClick: () => new ProjectInfoModal(this.app, this.store, m.project, () => this.render()).open() },
       { label: T("重命名里程碑"), onClick: () => this.promptRenameMilestone(m) },
       { label: T("打开详情"), onClick: () => new MilestonePeekModal(this.app, this.store, m, () => {
         this.tab = "ms"; this.proj = m.project; void this.render();
@@ -1453,14 +1454,14 @@ export class WorkbenchView extends ItemView {
     const period = pick("[data-period]");
     if (period) { this.period = period.dataset.period as Period; await this.render(); return; }
 
-    const proj = pick("[data-proj]");
-    if (proj) {
-      const name = proj.dataset.proj ?? "";
-      new ProjectInfoModal(this.app, this.store, name, () => this.render(), {
-        onFocus: () => { this.proj = name; void this.render(); },
-      }).open();
+    const pedit = pick("[data-projedit]");
+    if (pedit) {
+      const name = pedit.dataset.projedit ?? "";
+      new ProjectInfoModal(this.app, this.store, name, () => this.render()).open();
       return;
     }
+    const proj = pick("[data-proj]");
+    if (proj) { const name = proj.dataset.proj ?? ""; this.proj = this.proj === name ? null : name; await this.render(); return; }
     if (pick("[data-projclear]")) { this.proj = null; await this.render(); return; }
 
 

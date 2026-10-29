@@ -386,10 +386,9 @@ export class ProjectInfoModal extends TltModal {
   store: Store;
   from: string;
   onDone: () => void | Promise<void>;
-  opts: { onFocus?: () => void };
 
-  constructor(app: App, store: Store, from: string, onDone: () => void | Promise<void>, opts: { onFocus?: () => void } = {}) {
-    super(app); this.store = store; this.from = from; this.onDone = onDone; this.opts = opts;
+  constructor(app: App, store: Store, from: string, onDone: () => void | Promise<void>) {
+    super(app); this.store = store; this.from = from; this.onDone = onDone;
   }
 
   onOpen() {
@@ -423,9 +422,6 @@ export class ProjectInfoModal extends TltModal {
     const foot = el("div", "tlt-m-foot");
     const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
-    const focusBtn = el("button", "tlt-btn", T("只看这个项目"));
-    focusBtn.setAttribute("data-projfocus", "1");
-    focusBtn.onclick = () => { this.close(); this.opts.onFocus?.(); };
     const save = el("button", "tlt-btn pri", T("保存"));
     save.onclick = () => { void (async () => {
       const to = name.value.trim();
@@ -438,7 +434,7 @@ export class ProjectInfoModal extends TltModal {
         ? T("已改名为「{n}」{logs}", { n: to, logs: r.logs ? T("，{n} 条日志里的项目名也改了", { n: r.logs }) : "" })
         : T("已保存项目信息"));
     })(); };
-    foot.append(cancel, focusBtn, save);
+    foot.append(cancel, save);
     contentEl.appendChild(foot);
   }
 }
@@ -1335,17 +1331,24 @@ export function popMenu(
     m.appendChild(b);
   });
   document.body.appendChild(m);
+  // 四边都夹进视口：上面放不下就翻到下面，两边都放不下就贴边——否则菜单会伸出窗口被裁掉
+  const PAD = 8;
   const r = anchor.getBoundingClientRect();
   const w = m.offsetWidth || 150;
+  const h = m.offsetHeight || 120;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let left: number, top: number;
   if (at) {
-    // 右键：贴在指针下方，出界就往回收
-    m.style.left = `${Math.round(Math.min(at.x, window.innerWidth - w - 8))}px`;
-    m.style.top = `${Math.round(Math.min(at.y, window.innerHeight - m.offsetHeight - 8))}px`;
+    left = at.x + w + PAD <= vw ? at.x : vw - w - PAD;      // 右键：贴在指针下方，出界往左收
+    top = at.y;
   } else {
-    const left = align === "right" ? Math.min(r.right - w, window.innerWidth - w - 8) : Math.max(8, r.left);
-    m.style.left = `${Math.round(left)}px`;
-    m.style.top = `${Math.round(Math.min(r.top - m.offsetHeight - 6, window.innerHeight - m.offsetHeight - 8))}px`;
+    left = align === "right" ? r.right - w : r.left;
+    const above = r.top - h - 6;
+    const below = r.bottom + 6;
+    top = above >= PAD ? above : below + h <= vh - PAD ? below : above;
   }
+  m.style.left = `${Math.round(Math.max(PAD, Math.min(left, vw - w - PAD)))}px`;
+  m.style.top = `${Math.round(Math.max(PAD, Math.min(top, vh - h - PAD)))}px`;
   const off = (e: MouseEvent) => {
     if (!m.contains(e.target as Node)) { m.remove(); document.removeEventListener("mousedown", off); }
   };
