@@ -37,6 +37,59 @@ function seg<T extends string | number>(parent: HTMLElement, opts: { v: T; t: st
   return wrap;
 }
 
+/** 把分段控件的选中态刷成某个值（按钮顺序与 opts 一致） */
+function segSetter<T extends string | number>(wrap: HTMLElement, opts: { v: T }[]) {
+  return (v: T) => {
+    const btns = Array.from(wrap.querySelectorAll<HTMLElement>(".tlt-seg-b"));
+    btns.forEach((b, i) => b.classList.toggle("on", opts[i]?.v === v));
+  };
+}
+
+/**
+ * 工作量 ⇄ 截止日期：改一个，另一个跟着算。
+ * 截止 = 开始 + 工作量 - 1（含开始当天：1 天 ⇒ 当天完成）；
+ * 反过来改截止，工作量 = 起止之间的自然日数（当天一天 ⇒ 1 天）。
+ */
+function bindDuration(opts: {
+  draft: { start?: string; due?: string; est?: number };
+  startEl: HTMLInputElement;
+  dueEl: HTMLInputElement;
+  setEstUI: (v: number) => void;
+}) {
+  const { draft, startEl, dueEl, setEstUI } = opts;
+  const spanOf = (a?: string, b?: string): number => {
+    if (!a || !b) return 1;
+    const A = new Date(`${a}T00:00:00`), B = new Date(`${b}T00:00:00`);
+    if (Number.isNaN(+A) || Number.isNaN(+B)) return 1;
+    return Math.max(1, Math.round((+B - +A) / 864e5) + 1);
+  };
+
+  const applyEst = (v: number) => {
+    draft.est = v;
+    setEstUI(v);
+    if (!draft.start) { draft.start = todayISO(); startEl.value = draft.start; }
+    draft.due = addDays(draft.start, Math.max(0, Math.ceil(v) - 1));
+    dueEl.value = draft.due;
+  };
+  const applyDue = (d?: string) => {
+    draft.due = d || undefined;
+    if (!d) return;
+    const span = spanOf(draft.start, d);
+    draft.est = span;
+    setEstUI(span);
+  };
+  const applyStart = (s?: string) => {
+    const span = spanOf(draft.start, draft.due);
+    draft.start = s || undefined;
+    if (!draft.start) return;
+    draft.due = addDays(draft.start, Math.max(0, span - 1));
+    dueEl.value = draft.due;
+    draft.est = span;
+    setEstUI(span);
+  };
+  return { applyEst, applyDue, applyStart };
+}
+
 /* ================= 任务 ================= */
 
 
@@ -459,33 +512,41 @@ export class TaskModal extends TltModal {
     start.type = "date";
     start.value = this.draft.start || "";
     start.title = T("开始");
-    start.onchange = () => { this.draft.start = start.value || undefined; };
+    let dur: ReturnType<typeof bindDuration> | undefined;
+    start.onchange = () => { if (dur) dur.applyStart(start.value); else this.draft.start = start.value || undefined; };
     const arrow = el("span", "tlt-darrow", "→");
     const dIn = el("input", "tlt-input date");
     dIn.type = "date";
     dIn.value = this.draft.due || "";
     dIn.title = T("截止");
-    dIn.onchange = () => { this.draft.due = dIn.value || undefined; };
+    dIn.onchange = () => { if (dur) dur.applyDue(dIn.value); else this.draft.due = dIn.value || undefined; };
     dline.append(start, arrow, dIn);
     dates.appendChild(dline);
 
 
     // 工作量（人天）：与新建一致
     const estRow = row(contentEl, T("工作量"));
-    const estSeg = seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") })), this.draft.est || 1, (v) => {
-      this.draft.est = v;
-    });
+    const estOptsD = [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") }));
+    const estSeg = seg<number>(estRow, estOptsD, this.draft.est || 1, () => { /* 统一处理 */ });
+    const setSegD = segSetter(estSeg, estOptsD);
     // 常用档之外的值：一个小的「自定义」入口，平时不占地方
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0";
-    estInput.value = this.draft.est !== undefined && ![0.5, 1, 2, 3, 5].includes(this.draft.est) ? String(this.draft.est) : "";
+    estInput.value = this.draft.est !== undefined && !estOptsD.some((o) => o.v === this.draft.est) ? String(this.draft.est) : "";
     estInput.placeholder = T("自定义");
+    estRow.appendChild(estInput);
+
+    dur = bindDuration({
+      draft: this.draft, startEl: start, dueEl: dIn,
+      setEstUI: (v) => { setSegD(v); estInput.value = estOptsD.some((o) => o.v === v) ? "" : String(v); },
+    });
+    estSeg.querySelectorAll<HTMLElement>(".tlt-seg-b").forEach((b, i) => {
+      b.onclick = () => { setSegD(estOptsD[i].v); dur?.applyEst(estOptsD[i].v); };
+    });
     estInput.onchange = () => {
       const v = Number(estInput.value);
-      this.draft.est = Number.isFinite(v) && v > 0 ? v : undefined;
-      estSeg.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
+      dur?.applyEst(Number.isFinite(v) && v > 0 ? v : 1);
     };
-    estRow.appendChild(estInput);
 
     const pri = row(contentEl, T("优先级"));
     seg<number>(pri, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri || 1, (v) => (this.draft.pri = v as Pri));
@@ -779,43 +840,40 @@ export class QuickTaskModal extends TltModal {
     paintTags();
     tagRow.appendChild(tagWrap);
 
-    // 开始 / 截止：同一行。截止会跟着「工作量」排（手动改过截止之后就不再自动动它）
-    let dueTouched = false;
+    // 开始 / 截止 / 工作量：三样互相跟着算（改哪个都行，截止 = 开始 + 工作量 - 1）
     const dateRow = row(contentEl, T("时间"));
     const dline = el("div", "tlt-dline");
     const start = el("input", "tlt-input date");
-    start.type = "date"; start.value = this.draft.start; start.title = T("开始");
+    start.type = "date"; start.value = this.draft.start || todayISO(); start.title = T("开始");
     const due = el("input", "tlt-input date");
-    due.type = "date"; due.value = this.draft.due; due.title = T("截止");
-    /** 截止 = 开始 + 工作量（含开始当天：1 天 ⇒ 当天，2 天 ⇒ 次日） */
-    const syncDue = () => {
-      if (dueTouched) return;
-      const days = Math.max(0, Math.ceil(this.draft.est || 1) - 1);
-      this.draft.due = addDays(this.draft.start, days);
-      due.value = this.draft.due;
-    };
-    start.onchange = () => { this.draft.start = start.value; syncDue(); };
-    due.onchange = () => { this.draft.due = due.value; dueTouched = true; };
+    due.type = "date"; due.value = this.draft.due || ""; due.title = T("截止");
     dline.append(start, el("span", "tlt-darrow", "→"), due);
     dateRow.appendChild(dline);
 
-    // 人天（改了会顺手把截止排到「开始 + 工作量」）
     const estRow = row(contentEl, T("工作量"));
-    estRow.querySelector(".tlt-row-l")?.setAttribute("title", T("改工作量会自动把截止排到开始 + 工作量 天（手动改过截止后就不再动）"));
-    seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") })), this.draft.est, (v) => {
-      this.draft.est = v; estInput.value = ""; syncDue();
-    });
+    const estOpts = [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") }));
+    const estSeg = seg<number>(estRow, estOpts, this.draft.est || 1, () => { /* 下面统一处理 */ });
+    const setSeg = segSetter(estSeg, estOpts);
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0";
-    estInput.value = [0.5, 1, 2, 3, 5].includes(this.draft.est) ? "" : String(this.draft.est);
+    estInput.value = estOpts.some((o) => o.v === this.draft.est) ? "" : String(this.draft.est ?? "");
     estInput.placeholder = T("自定义");
+    estRow.appendChild(estInput);
+
+    const dur = bindDuration({
+      draft: this.draft, startEl: start, dueEl: due,
+      setEstUI: (v) => { setSeg(v); estInput.value = estOpts.some((o) => o.v === v) ? "" : String(v); },
+    });
+    // 分段按钮点下去要真的算：seg 的 onPick 已经切了选中态，这里只算日期
+    estSeg.querySelectorAll<HTMLElement>(".tlt-seg-b").forEach((b, i) => {
+      b.onclick = () => { setSeg(estOpts[i].v); dur.applyEst(estOpts[i].v); };
+    });
     estInput.onchange = () => {
       const v = Number(estInput.value);
-      this.draft.est = Number.isFinite(v) && v > 0 ? v : 1;
-      estRow.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
-      syncDue();
+      dur.applyEst(Number.isFinite(v) && v > 0 ? v : 1);
     };
-    estRow.appendChild(estInput);
+    start.onchange = () => dur.applyStart(start.value);
+    due.onchange = () => dur.applyDue(due.value);
 
     // 优先级
     const priRow = row(contentEl, T("优先级"));

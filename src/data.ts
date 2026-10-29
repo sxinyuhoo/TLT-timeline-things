@@ -355,6 +355,61 @@ export function newLogLine(t: { st?: string; en?: string; title: string; project
   return s;
 }
 
+/* ---------------- 项目描述：标题下那段 > 引用 ---------------- */
+
+/**
+ * 从项目文件里读描述：`# 项目名` 下面紧跟的 `>` 块（跳过空行）。
+ * 这是人能直接看见的位置，比 frontmatter 更容易找到。
+ */
+export function readProjectDesc(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const h1 = lines.findIndex((l) => /^#\s+/.test(l));
+  if (h1 < 0) return "";
+  const out: string[] = [];
+  for (let i = h1 + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (!l.trim()) { if (out.length) break; continue; }       // 描述内部允许空行，遇到非 > 就停
+    const q = /^\s*>\s?(.*)$/.exec(l);
+    if (q) { out.push(q[1].trim()); continue; }
+    break;                                                     // 标题下的第一段正文不是引用 ⇒ 没描述
+  }
+  return out.join("\n").trim();
+}
+
+/** 写描述：替换（或插入）标题下的 `>` 块；desc 为空就把这一段删掉 */
+export function writeProjectDesc(text: string, desc: string): string {
+  const lines = text.split(/\r?\n/);
+  const h1 = lines.findIndex((l) => /^#\s+/.test(l));
+  if (h1 < 0) return desc ? `${text.replace(/\s*$/, "")}\n` : text;
+  // 找到紧跟在标题后的那段 > 块（允许前面有空行）
+  let start = h1 + 1;
+  while (start < lines.length && !lines[start].trim()) start++;
+  let end = start;
+  if (start < lines.length && /^\s*>/.test(lines[start])) {
+    while (end < lines.length && (/^\s*>/.test(lines[end]) || !lines[end].trim())) end++;
+    while (end > start && !lines[end - 1].trim()) end--;
+  } else {
+    end = start;                                    // 原来没有描述块
+  }
+  const block = desc.trim()
+    ? desc.trim().split("\n").map((l) => `> ${l}`.trimEnd())
+    : [];
+  const head = lines.slice(0, h1 + 1);
+  const tail = lines.slice(end);
+  const mid = block.length ? ["", ...block] : [];
+  // 重新拼：标题 + 空行 + 描述块 + 空行 + 其余
+  const out = [...head, ...mid];
+  if (tail.length) {
+    if (out.length && out[out.length - 1].trim()) out.push("");
+    out.push(...tail);
+  }
+  let res = out.join("\n").replace(/\n{3,}/g, "\n\n");
+  if (!res.endsWith("\n")) res += "\n";
+  // 老版本把它存在 frontmatter 里，顺手清掉免得两处不一致
+  res = res.replace(/^desc:.*\r?\n/m, "");
+  return res;
+}
+
 /* ---------------- 想法 ---------------- */
 
 export function parseIdeaLine(line: string, file: string, idx: number, body: string): Idea | null {

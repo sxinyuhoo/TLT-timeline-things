@@ -3,7 +3,7 @@ import {
   Task, Staff, Feed, Idea, Msg, Period,
   parseTaskLine, parseStaff, parseMsgLine, parseLogMonth, parseIdeaLine,
   newTaskLine, newMsgLine, newLogLine, toggleTaskLine, setTaskDue, setTaskField, stripFields,
-  todayISO, monthBounds, asText,
+  todayISO, monthBounds, asText, readProjectDesc, writeProjectDesc,
 } from "./data";
 
 /** 消息服务的线上格式（发布端 / 订阅代理），字段都可缺 */
@@ -195,7 +195,8 @@ export class Store {
       const text = await this.app.vault.cachedRead(file);
       const project = file.basename;
       const pfm = (this.app.metadataCache.getFileCache(file)?.frontmatter || {}) as Record<string, unknown>;
-      this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]);
+      // 描述：优先标题下那段 > 引用（人直接看得见），老的 frontmatter desc 还认
+      this.projectDescs[project] = readProjectDesc(text) || asText(pfm["desc"]) || asText(pfm["description"]);
       let milestone: string | undefined;
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
@@ -435,18 +436,9 @@ export class Store {
     let file = await this.fileByPath(`${this.settings.tasksFolder}/${from}.md`);
     if (!file) return { ok: false, renamed: false, logs: 0 };
 
-    // 先写描述（写在自己这个文件里，改名前后都一样）
+    // 先写描述（写在标题下面那段 > 引用里，人打开文件就能看见；老的 frontmatter desc 顺手清掉）
     const wantDesc = desc.trim();
-    await this.app.vault.process(file, (data) => {
-      const stripped = data.replace(/^desc:.*\r?\n/m, "");
-      const hasFm = /^---\r?\n/.test(stripped);
-      const end = hasFm ? stripped.indexOf("\n---", 3) : -1;
-      const head = hasFm && end > 0 ? stripped.slice(0, end) : "";
-      const rest = hasFm && end > 0 ? stripped.slice(end) : stripped;
-      if (!wantDesc) return hasFm ? `${head}${rest}` : rest;
-      const fmLine = `desc: ${wantDesc.replace(/\r?\n/g, " ")}`;
-      return hasFm ? `${head}\n${fmLine}${rest}` : `---\n${fmLine}\n---\n\n${stripped}`;
-    });
+    await this.app.vault.process(file, (data) => writeProjectDesc(data, wantDesc));
     this.projectDescs[clean] = wantDesc;
     if (clean === from) return { ok: true, renamed: false, logs: 0 };
 
@@ -457,6 +449,14 @@ export class Store {
       while (this.asFile(this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`)))) i++;
       target = normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`);
     }
+    // 标题行也跟着改名（# 项目名 就是项目的显示名）
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const i = lines.findIndex((l) => /^#\s+/.test(l));
+      if (i < 0) return `# ${clean}\n\n${data}`;
+      lines[i] = `# ${clean}`;
+      return lines.join("\n");
+    });
     await this.app.fileManager.renameFile(file, target);
     let logs = 0;
     for (const lf of this.filesIn(this.settings.logsFolder)) {

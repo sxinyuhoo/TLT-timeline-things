@@ -335,6 +335,54 @@ function newLogLine(t2) {
   > ${t2.body.replace(/\n/g, "\n  > ")}`;
   return s;
 }
+function readProjectDesc(text) {
+  const lines = text.split(/\r?\n/);
+  const h1 = lines.findIndex((l) => /^#\s+/.test(l));
+  if (h1 < 0) return "";
+  const out = [];
+  for (let i = h1 + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (!l.trim()) {
+      if (out.length) break;
+      continue;
+    }
+    const q = /^\s*>\s?(.*)$/.exec(l);
+    if (q) {
+      out.push(q[1].trim());
+      continue;
+    }
+    break;
+  }
+  return out.join("\n").trim();
+}
+function writeProjectDesc(text, desc) {
+  const lines = text.split(/\r?\n/);
+  const h1 = lines.findIndex((l) => /^#\s+/.test(l));
+  if (h1 < 0) return desc ? `${text.replace(/\s*$/, "")}
+` : text;
+  let start = h1 + 1;
+  while (start < lines.length && !lines[start].trim()) start++;
+  let end = start;
+  if (start < lines.length && /^\s*>/.test(lines[start])) {
+    while (end < lines.length && (/^\s*>/.test(lines[end]) || !lines[end].trim())) end++;
+    while (end > start && !lines[end - 1].trim()) end--;
+  } else {
+    end = start;
+  }
+  const block = desc.trim() ? desc.trim().split("\n").map((l) => `> ${l}`.trimEnd()) : [];
+  const head = lines.slice(0, h1 + 1);
+  const tail = lines.slice(end);
+  const mid = block.length ? ["", ...block] : [];
+  const out = [...head, ...mid];
+  if (tail.length) {
+    if (out.length && out[out.length - 1].trim()) out.push("");
+    out.push(...tail);
+  }
+  let res = out.join("\n").replace(/\n{3,}/g, "\n\n");
+  if (!res.endsWith("\n")) res += "\n";
+  res = res.replace(/^desc:.*\r?\n/m, "");
+  return res;
+}
 function parseIdeaLine(line, file, idx, body) {
   const m = /^\s*[-*+]\s+(.+)$/.exec(line);
   if (!m) return null;
@@ -542,7 +590,7 @@ owner: me
       const text = await this.app.vault.cachedRead(file);
       const project = file.basename;
       const pfm = this.app.metadataCache.getFileCache(file)?.frontmatter || {};
-      this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]);
+      this.projectDescs[project] = readProjectDesc(text) || asText(pfm["desc"]) || asText(pfm["description"]);
       let milestone;
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
@@ -772,21 +820,7 @@ ${line}
     let file = await this.fileByPath(`${this.settings.tasksFolder}/${from}.md`);
     if (!file) return { ok: false, renamed: false, logs: 0 };
     const wantDesc = desc.trim();
-    await this.app.vault.process(file, (data) => {
-      const stripped = data.replace(/^desc:.*\r?\n/m, "");
-      const hasFm = /^---\r?\n/.test(stripped);
-      const end = hasFm ? stripped.indexOf("\n---", 3) : -1;
-      const head = hasFm && end > 0 ? stripped.slice(0, end) : "";
-      const rest = hasFm && end > 0 ? stripped.slice(end) : stripped;
-      if (!wantDesc) return hasFm ? `${head}${rest}` : rest;
-      const fmLine = `desc: ${wantDesc.replace(/\r?\n/g, " ")}`;
-      return hasFm ? `${head}
-${fmLine}${rest}` : `---
-${fmLine}
----
-
-${stripped}`;
-    });
+    await this.app.vault.process(file, (data) => writeProjectDesc(data, wantDesc));
     this.projectDescs[clean] = wantDesc;
     if (clean === from) return { ok: true, renamed: false, logs: 0 };
     let target = normalizePath(`${this.settings.tasksFolder}/${clean}.md`);
@@ -795,6 +829,15 @@ ${stripped}`;
       while (this.asFile(this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`)))) i++;
       target = normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`);
     }
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const i = lines.findIndex((l) => /^#\s+/.test(l));
+      if (i < 0) return `# ${clean}
+
+${data}`;
+      lines[i] = `# ${clean}`;
+      return lines.join("\n");
+    });
     await this.app.fileManager.renameFile(file, target);
     let logs = 0;
     for (const lf of this.filesIn(this.settings.logsFolder)) {
@@ -2669,6 +2712,48 @@ function seg(parent, opts, cur, onPick) {
   parent.appendChild(wrap);
   return wrap;
 }
+function segSetter(wrap, opts) {
+  return (v) => {
+    const btns = Array.from(wrap.querySelectorAll(".tlt-seg-b"));
+    btns.forEach((b, i) => b.classList.toggle("on", opts[i]?.v === v));
+  };
+}
+function bindDuration(opts) {
+  const { draft, startEl, dueEl, setEstUI } = opts;
+  const spanOf = (a, b) => {
+    if (!a || !b) return 1;
+    const A = /* @__PURE__ */ new Date(`${a}T00:00:00`), B = /* @__PURE__ */ new Date(`${b}T00:00:00`);
+    if (Number.isNaN(+A) || Number.isNaN(+B)) return 1;
+    return Math.max(1, Math.round((+B - +A) / 864e5) + 1);
+  };
+  const applyEst = (v) => {
+    draft.est = v;
+    setEstUI(v);
+    if (!draft.start) {
+      draft.start = todayISO();
+      startEl.value = draft.start;
+    }
+    draft.due = addDays(draft.start, Math.max(0, Math.ceil(v) - 1));
+    dueEl.value = draft.due;
+  };
+  const applyDue = (d) => {
+    draft.due = d || void 0;
+    if (!d) return;
+    const span = spanOf(draft.start, d);
+    draft.est = span;
+    setEstUI(span);
+  };
+  const applyStart = (s) => {
+    const span = spanOf(draft.start, draft.due);
+    draft.start = s || void 0;
+    if (!draft.start) return;
+    draft.due = addDays(draft.start, Math.max(0, span - 1));
+    dueEl.value = draft.due;
+    draft.est = span;
+    setEstUI(span);
+  };
+  return { applyEst, applyDue, applyStart };
+}
 var TltModal = class extends Modal {
   constructor(app) {
     super(app);
@@ -3020,8 +3105,10 @@ var TaskModal = class extends TltModal {
     start.type = "date";
     start.value = this.draft.start || "";
     start.title = t("\u5F00\u59CB");
+    let dur;
     start.onchange = () => {
-      this.draft.start = start.value || void 0;
+      if (dur) dur.applyStart(start.value);
+      else this.draft.start = start.value || void 0;
     };
     const arrow = el("span", "tlt-darrow", "\u2192");
     const dIn = el("input", "tlt-input date");
@@ -3029,26 +3116,42 @@ var TaskModal = class extends TltModal {
     dIn.value = this.draft.due || "";
     dIn.title = t("\u622A\u6B62");
     dIn.onchange = () => {
-      this.draft.due = dIn.value || void 0;
+      if (dur) dur.applyDue(dIn.value);
+      else this.draft.due = dIn.value || void 0;
     };
     dline.append(start, arrow, dIn);
     dates.appendChild(dline);
     const estRow = row(contentEl, t("\u5DE5\u4F5C\u91CF"));
-    const estSeg = seg(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + t(" \u5929") })), this.draft.est || 1, (v) => {
-      this.draft.est = v;
+    const estOptsD = [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + t(" \u5929") }));
+    const estSeg = seg(estRow, estOptsD, this.draft.est || 1, () => {
     });
+    const setSegD = segSetter(estSeg, estOptsD);
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number";
     estInput.step = "0.5";
     estInput.min = "0";
-    estInput.value = this.draft.est !== void 0 && ![0.5, 1, 2, 3, 5].includes(this.draft.est) ? String(this.draft.est) : "";
+    estInput.value = this.draft.est !== void 0 && !estOptsD.some((o) => o.v === this.draft.est) ? String(this.draft.est) : "";
     estInput.placeholder = t("\u81EA\u5B9A\u4E49");
+    estRow.appendChild(estInput);
+    dur = bindDuration({
+      draft: this.draft,
+      startEl: start,
+      dueEl: dIn,
+      setEstUI: (v) => {
+        setSegD(v);
+        estInput.value = estOptsD.some((o) => o.v === v) ? "" : String(v);
+      }
+    });
+    estSeg.querySelectorAll(".tlt-seg-b").forEach((b, i) => {
+      b.onclick = () => {
+        setSegD(estOptsD[i].v);
+        dur?.applyEst(estOptsD[i].v);
+      };
+    });
     estInput.onchange = () => {
       const v = Number(estInput.value);
-      this.draft.est = Number.isFinite(v) && v > 0 ? v : void 0;
-      estSeg.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
+      dur?.applyEst(Number.isFinite(v) && v > 0 ? v : 1);
     };
-    estRow.appendChild(estInput);
     const pri = row(contentEl, t("\u4F18\u5148\u7EA7"));
     seg(pri, [{ v: 0, t: t("\u4F4E") }, { v: 1, t: t("\u666E\u901A") }, { v: 2, t: t("\u9AD8") }, { v: 3, t: t("\u7D27\u6025") }], this.draft.pri || 1, (v) => this.draft.pri = v);
     const whoRowD = row(contentEl, t("\u8D1F\u8D23\u4EBA"));
@@ -3367,53 +3470,51 @@ var QuickTaskModal = class extends TltModal {
     };
     paintTags();
     tagRow.appendChild(tagWrap);
-    let dueTouched = false;
     const dateRow = row(contentEl, t("\u65F6\u95F4"));
     const dline = el("div", "tlt-dline");
     const start = el("input", "tlt-input date");
     start.type = "date";
-    start.value = this.draft.start;
+    start.value = this.draft.start || todayISO();
     start.title = t("\u5F00\u59CB");
     const due = el("input", "tlt-input date");
     due.type = "date";
-    due.value = this.draft.due;
+    due.value = this.draft.due || "";
     due.title = t("\u622A\u6B62");
-    const syncDue = () => {
-      if (dueTouched) return;
-      const days = Math.max(0, Math.ceil(this.draft.est || 1) - 1);
-      this.draft.due = addDays(this.draft.start, days);
-      due.value = this.draft.due;
-    };
-    start.onchange = () => {
-      this.draft.start = start.value;
-      syncDue();
-    };
-    due.onchange = () => {
-      this.draft.due = due.value;
-      dueTouched = true;
-    };
     dline.append(start, el("span", "tlt-darrow", "\u2192"), due);
     dateRow.appendChild(dline);
     const estRow = row(contentEl, t("\u5DE5\u4F5C\u91CF"));
-    estRow.querySelector(".tlt-row-l")?.setAttribute("title", t("\u6539\u5DE5\u4F5C\u91CF\u4F1A\u81EA\u52A8\u628A\u622A\u6B62\u6392\u5230\u5F00\u59CB + \u5DE5\u4F5C\u91CF \u5929\uFF08\u624B\u52A8\u6539\u8FC7\u622A\u6B62\u540E\u5C31\u4E0D\u518D\u52A8\uFF09"));
-    seg(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + t(" \u5929") })), this.draft.est, (v) => {
-      this.draft.est = v;
-      estInput.value = "";
-      syncDue();
+    const estOpts = [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + t(" \u5929") }));
+    const estSeg = seg(estRow, estOpts, this.draft.est || 1, () => {
     });
+    const setSeg = segSetter(estSeg, estOpts);
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number";
     estInput.step = "0.5";
     estInput.min = "0";
-    estInput.value = [0.5, 1, 2, 3, 5].includes(this.draft.est) ? "" : String(this.draft.est);
+    estInput.value = estOpts.some((o) => o.v === this.draft.est) ? "" : String(this.draft.est ?? "");
     estInput.placeholder = t("\u81EA\u5B9A\u4E49");
+    estRow.appendChild(estInput);
+    const dur = bindDuration({
+      draft: this.draft,
+      startEl: start,
+      dueEl: due,
+      setEstUI: (v) => {
+        setSeg(v);
+        estInput.value = estOpts.some((o) => o.v === v) ? "" : String(v);
+      }
+    });
+    estSeg.querySelectorAll(".tlt-seg-b").forEach((b, i) => {
+      b.onclick = () => {
+        setSeg(estOpts[i].v);
+        dur.applyEst(estOpts[i].v);
+      };
+    });
     estInput.onchange = () => {
       const v = Number(estInput.value);
-      this.draft.est = Number.isFinite(v) && v > 0 ? v : 1;
-      estRow.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
-      syncDue();
+      dur.applyEst(Number.isFinite(v) && v > 0 ? v : 1);
     };
-    estRow.appendChild(estInput);
+    start.onchange = () => dur.applyStart(start.value);
+    due.onchange = () => dur.applyDue(due.value);
     const priRow = row(contentEl, t("\u4F18\u5148\u7EA7"));
     seg(priRow, [{ v: 0, t: t("\u4F4E") }, { v: 1, t: t("\u666E\u901A") }, { v: 2, t: t("\u9AD8") }, { v: 3, t: t("\u7D27\u6025") }], this.draft.pri, (v) => this.draft.pri = v);
     const whoRow = row(contentEl, t("\u8D1F\u8D23\u4EBA"));
@@ -5446,6 +5547,9 @@ var WorkbenchView = class extends ItemView {
     this.rhythmView = "star";
     this.taskDim = "m";
     this.showArchived = false;
+    /** 日历时间轴滚到哪了（按日期记）：同一天重渲要保住，换天才自动定位 */
+    this.dayScroll = null;
+    this.renderedDay = "";
     this.expandedSteps = /* @__PURE__ */ new Set();
     this.taskTag = null;
     this.starZoom = 1;
@@ -5513,6 +5617,8 @@ var WorkbenchView = class extends ItemView {
     const root = this.contentEl;
     const prevScroll = root.querySelector(".tlt-work")?.scrollTop || 0;
     const prevSide = root.querySelector(".tlt-side-scroll")?.scrollTop || 0;
+    const prevGrid = root.querySelector(".tlt-daygrid");
+    if (prevGrid && this.renderedDay) this.dayScroll = { day: this.renderedDay, top: prevGrid.scrollTop };
     const ae = document.activeElement;
     const focusKey = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey ? { key: ae.dataset.focuskey, start: ae.selectionStart ?? 0, end: ae.selectionEnd ?? 0 } : null;
     root.empty();
@@ -5977,8 +6083,13 @@ var WorkbenchView = class extends ItemView {
     this.scrollToMin = null;
     const d0 = /* @__PURE__ */ new Date();
     const nowMin = d0.getHours() * 60 + d0.getMinutes();
-    const focus = jump !== null ? jump : sel === todayISO() ? Math.max(DAY_FROM, nowMin) : 9 * 60;
-    grid.dataset.scrollTop = String(Math.max(0, (focus - DAY_FROM) / 60 * HOUR_PX - 90));
+    const pxOf = (min) => (min - DAY_FROM) / 60 * HOUR_PX - 90;
+    let target;
+    if (jump !== null) target = pxOf(jump);
+    else if (this.dayScroll && this.dayScroll.day === sel) target = this.dayScroll.top;
+    else target = pxOf(sel === todayISO() ? Math.max(DAY_FROM, nowMin) : 9 * 60);
+    this.renderedDay = sel;
+    grid.dataset.scrollTop = String(Math.max(0, target));
     return p;
   }
   logsOn(k) {
@@ -6220,6 +6331,8 @@ var WorkbenchView = class extends ItemView {
     head.appendChild(seg2);
     head.appendChild(this.sortControl());
     p.appendChild(head);
+    const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
+    if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
     const groups = [
       [t("{l}\u903E\u671F", { l: label }), m.late, "#D98B5F"],
       [t("{l}\u8981\u505A", { l: label }), m.todo, "#5B6CFF"],
@@ -6580,6 +6693,8 @@ var WorkbenchView = class extends ItemView {
     head.appendChild(el("span", "tlt-spacer"));
     head.appendChild(this.sortControl());
     p.appendChild(head);
+    const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
+    if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
     if (!ms.length) p.appendChild(el("div", "tlt-empty", t("\u4EFB\u52A1\u6587\u4EF6\u91CC\u7528\u300C## \u91CC\u7A0B\u7891\u540D\u300D\u5206\u8282\uFF0C\u8FD9\u91CC\u5C31\u4F1A\u51FA\u73B0\u91CC\u7A0B\u7891\u3002")));
     const paintGroup = (group, list) => {
       if (!list.length) return;

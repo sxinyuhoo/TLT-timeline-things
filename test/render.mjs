@@ -1581,15 +1581,21 @@ await t("新建任务：改工作量会把截止排到「开始 + 工作量」",
   await new Promise((r) => window.setTimeout(r, 40));
   assert.equal(dueEl().value, addDays(today, 4), "自定义 5 天：截止应是开始 + 4");
 
-  // 手动改过截止之后，再动工作量就不该自动改它了
-  const manual = addDays(today, 10);
+  // 反过来也成立：自己选截止日，天数要跟着适配（10-29 → 11-02 ＝ 5 天）
+  const manual = addDays(today, 4);
   const due2 = dueEl();
   due2.value = manual;
   due2.dispatchEvent(new due2.ownerDocument.defaultView.Event("change", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 40));
-  segBtn("3 天").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  const estRowEl = modal.contentEl.querySelector(".tlt-est-custom")?.closest(".tlt-row") ?? modal.contentEl;
+  const picked = [...estRowEl.querySelectorAll(".tlt-seg-b")].filter((b) => b.classList.contains("on")).map((b) => b.textContent.trim());
+  assert.deepEqual(picked, ["5 天"], `选到 5 天后，工作量应自动变成 5 天，实际选中：${picked.join(",")}`);
+  assert.equal(modal.contentEl.querySelector(".tlt-est-custom").value, "", "5 天是常用档，自定义框应留空");
+
+  // 再改工作量，截止重新跟着走
+  segBtn("2 天").dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 40));
-  assert.equal(dueEl().value, manual, "手动定过截止之后就不该被工作量覆盖");
+  assert.equal(dueEl().value, addDays(today, 1), "再选 2 天，截止应回到开始 + 1");
 });
 
 await t("项目信息：看得到、改得动名称与描述", async () => {
@@ -1604,8 +1610,76 @@ await t("项目信息：看得到、改得动名称与描述", async () => {
   descEl.value = "示例项目：演示用的假项目";
   clickModal("保存");
   await new Promise((r) => window.setTimeout(r, 120));
-  assert.ok(/desc:\s*示例项目：演示用的假项目/.test(files["TLT/tasks/示例项目.md"]), `描述应写进 frontmatter：\n${files["TLT/tasks/示例项目.md"].slice(0, 200)}`);
+  // 描述写在标题（项目名）下面，用 > 引用——打开文件就能看见
+  const head = files["TLT/tasks/示例项目.md"].split("\n").slice(0, 5).join("\n");
+  assert.ok(/^# 示例项目$/m.test(head), `第一行应是项目名：\n${head}`);
+  assert.ok(/^> 示例项目：演示用的假项目$/m.test(head), `标题下面应是 > 描述块：\n${head}`);
+  assert.ok(!/^desc:/m.test(files["TLT/tasks/示例项目.md"]), "不该再往 frontmatter 里写 desc");
   assert.equal(store.projectDesc("示例项目"), "示例项目：演示用的假项目", "重新读盘后描述应读得到");
+});
+
+await t("任务详情：改工作量 / 改截止，两边互相对齐", async () => {
+  document.body.empty();
+  const task = store.tasks.find((x) => x.title.includes("报告定稿"));
+  assert.ok(task, "夹具里应有那条任务");
+  const modal = new TaskModal(leaf.app ?? plugin.app, store, task, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const dates = () => [...modal.contentEl.querySelectorAll(".tlt-dline input[type=date]")];
+  const segBtn = (label) => [...modal.contentEl.querySelectorAll(".tlt-seg-b")].find((b) => b.textContent.trim() === label);
+  const addDays = (iso, n) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d + n);
+    const p2 = (x) => String(x).padStart(2, "0");
+    return `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())}`;
+  };
+  const fire = (el) => el.dispatchEvent(new el.ownerDocument.defaultView.Event("change", { bubbles: true }));
+  const start0 = dates()[0].value;
+
+  segBtn("3 天").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  assert.equal(dates()[1].value, addDays(start0, 2), "选 3 天：截止应是开始 + 2");
+
+  // 改截止 → 天数跟着适配（7 天不是常用档，落到自定义框里）
+  const dueEl = dates()[1];
+  dueEl.value = addDays(start0, 6);
+  fire(dueEl);
+  await new Promise((r) => window.setTimeout(r, 40));
+  assert.equal(modal.contentEl.querySelector(".tlt-est-custom").value, "7", `截止改成 7 天跨度后，工作量应变成 7，实际 ${modal.contentEl.querySelector(".tlt-est-custom").value}`);
+
+  // 改开始 → 天数不变，截止跟着顺延
+  const startEl = dates()[0];
+  startEl.value = addDays(start0, 1);
+  fire(startEl);
+  await new Promise((r) => window.setTimeout(r, 40));
+  assert.equal(dates()[1].value, addDays(start0, 7), `改开始后截止应顺延到 ${addDays(start0, 7)}`);
+  assert.equal(modal.contentEl.querySelector(".tlt-est-custom").value, "7", "顺延不该改动天数");
+});
+
+await t("日历：切换项目/重渲时保住你滚到的位置，换天才自动定位", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  view.viewDate = D;
+  await view.onOpen();
+  view.tab = "today";
+  view.viewDate = D;
+  await view.render();
+  const grid = () => document.querySelector(".tlt-daygrid");
+  assert.ok(grid(), "日历页应有时间轴");
+  grid().scrollTop = 500;
+  // 点左边的项目＝触发一次重渲（这是用户报「跳回当前时间」的场景）
+  const proj = document.querySelector(".tlt-proj");
+  assert.ok(proj, "侧栏应有项目卡");
+  proj.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.equal(grid().scrollTop, 500, `重渲后应停在你滚到的位置，实际 ${grid().scrollTop}`);
+
+  // 换一天就该自动定位（不再沿用上一天的滚动位置）
+  document.querySelector('[data-dnav="1"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  const auto = grid().scrollTop;
+  assert.notEqual(auto, 500, "换天后应重新定位，而不是沿用上一天的位置");
+  assert.ok(auto >= 0 && auto < 2000, `换天后应是合理的时间轴位置，实际 ${auto}`);
 });
 
 await t("独立消息中心渲染", async () => {

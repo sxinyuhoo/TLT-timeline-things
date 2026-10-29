@@ -1535,3 +1535,4 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 }
 .tlt-ownerbox { display: flex; flex-direction: column; gap: 6px; }
 .tlt-textarea { min-height: 74px; resize: vertical; line-height: 1.6; font-family: inherit; }
+.tlt-pane-sub { font-size: 10px; color: var(--tlt-ink4); line-height: 1.7; margin: -2px 0 8px; max-width: 72ch; white-space: pre-wrap; }

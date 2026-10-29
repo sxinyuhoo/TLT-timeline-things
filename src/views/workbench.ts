@@ -44,6 +44,9 @@ export class WorkbenchView extends ItemView {
   private rhythmView: "bars" | "star" = "star";
   private taskDim: TaskDim = "m";
   private showArchived = false;
+  /** 日历时间轴滚到哪了（按日期记）：同一天重渲要保住，换天才自动定位 */
+  private dayScroll: { day: string; top: number } | null = null;
+  private renderedDay = "";
   private expandedSteps = new Set<string>();
   private get sideOff() { return !!this.cfg.sideCollapsed; }
   private get railOff() { return !!this.cfg.railCollapsed; }
@@ -95,6 +98,8 @@ export class WorkbenchView extends ItemView {
     const root = this.contentEl;
     const prevScroll = root.querySelector<HTMLElement>(".tlt-work")?.scrollTop || 0;
     const prevSide = root.querySelector<HTMLElement>(".tlt-side-scroll")?.scrollTop || 0;
+    const prevGrid = root.querySelector<HTMLElement>(".tlt-daygrid");
+    if (prevGrid && this.renderedDay) this.dayScroll = { day: this.renderedDay, top: prevGrid.scrollTop };
     // 输入框在 render 里会被重建，先记下焦点与光标位置，建完再还回去
     const ae = document.activeElement;
     const focusKey = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey
@@ -547,13 +552,19 @@ export class WorkbenchView extends ItemView {
     wrap.appendChild(side);
     p.appendChild(wrap);
 
-    // 时间轴定位：刚排期的任务 → 它的开始时间；否则当天滚到此刻前半小时，别的日子滚到 9:00
+    // 时间轴定位：刚排期的任务 → 它的开始时间；同一天重渲 → 保住你滚到的位置；
+    // 换了日子才自动定位（今天＝此刻前 1.5 小时，别的天＝9:00）
     const jump = this.scrollToMin;
     this.scrollToMin = null;
     const d0 = new Date();
     const nowMin = d0.getHours() * 60 + d0.getMinutes();
-    const focus = jump !== null ? jump : sel === todayISO() ? Math.max(DAY_FROM, nowMin) : 9 * 60;
-    grid.dataset.scrollTop = String(Math.max(0, ((focus - DAY_FROM) / 60) * HOUR_PX - 90));
+    const pxOf = (min: number) => ((min - DAY_FROM) / 60) * HOUR_PX - 90;
+    let target: number;
+    if (jump !== null) target = pxOf(jump);
+    else if (this.dayScroll && this.dayScroll.day === sel) target = this.dayScroll.top;
+    else target = pxOf(sel === todayISO() ? Math.max(DAY_FROM, nowMin) : 9 * 60);
+    this.renderedDay = sel;
+    grid.dataset.scrollTop = String(Math.max(0, target));
     return p;
   }
 
@@ -802,6 +813,8 @@ export class WorkbenchView extends ItemView {
     head.appendChild(seg);
     head.appendChild(this.sortControl());
     p.appendChild(head);
+    const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
+    if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
     const groups: [string, Task[], string][] = [
       [T("{l}逾期", { l: label }), m.late, "#D98B5F"],
       [T("{l}要做", { l: label }), m.todo, "#5B6CFF"],
@@ -1170,6 +1183,8 @@ export class WorkbenchView extends ItemView {
     head.appendChild(el("span", "tlt-spacer"));
     head.appendChild(this.sortControl());
     p.appendChild(head);
+    const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
+    if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
     if (!ms.length) p.appendChild(el("div", "tlt-empty", T("任务文件里用「## 里程碑名」分节，这里就会出现里程碑。")));
 
     // 开展中的放上面，已完成的收在下面
