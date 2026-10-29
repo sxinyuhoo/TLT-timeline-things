@@ -562,7 +562,7 @@ await t("里程碑：刚做完那一刻才记 ms.done（不伪造历史）", asy
 });
 
 /* ---------------- 项目信息：改名 + 描述（0.9.2） ---------------- */
-await t("项目信息：描述写在标题下，改名连文件与日志一起改", async () => {
+await t("项目信息：描述写进 frontmatter，改名连文件与日志一起改", async () => {
   const { store } = await NEW();
   fps.files["TLT/tasks/阿尔法.md"] = `# 阿尔法\n\n## 一期\n\n- [ ] 一条任务 [pri:: 1]\n`;
   fps.files["TLT/logs/2026-10.md"] = `# 2026-10\n\n## 2026-10-20\n\n- 09:30–10:30 写方案 [proj:: 阿尔法]\n- 11:00–12:00 别的事 [proj:: 别的项目]\n`;
@@ -573,10 +573,9 @@ await t("项目信息：描述写在标题下，改名连文件与日志一起�
   assert.ok(r.renamed, "改了名字就该搬文件");
   const text = fps.files["TLT/tasks/阿尔法平台.md"];
   assert.ok(text, `项目文件应改名成阿尔法平台.md，实际有：${Object.keys(fps.files).filter((k) => k.includes("tasks")).join(", ")}`);
-  // 描述写在标题（项目名）下面，用 > 引用：打开文件就能看见
-  assert.ok(/^# 阿尔法平台$/m.test(text), `第一行应是项目名：\n${text.slice(0, 80)}`);
-  assert.ok(/^> 做演示用的项目$/m.test(text), `标题下面应是 > 描述块：\n${text.slice(0, 120)}`);
-  assert.ok(!/^desc:/m.test(text), "不该再往 frontmatter 写 desc");
+  // 描述统一存 frontmatter 的 desc；正文标题跟着改名
+  assert.ok(/^# 阿尔法平台$/m.test(text), `正文标题应跟着改名：\n${text.slice(0, 80)}`);
+  assert.ok(/^desc: 做演示用的项目$/m.test(text), `描述应写进 frontmatter：\n${text.slice(0, 140)}`);
   assert.ok(!fps.files["TLT/tasks/阿尔法.md"], "旧文件不该还在");
   const logs = fps.files["TLT/logs/2026-10.md"];
   assert.ok(/\[proj:: 阿尔法平台\]/.test(logs), `日志里的项目名应一起改：\n${logs}`);
@@ -594,7 +593,7 @@ await t("项目信息：只改描述（不改名）也能存", async () => {
   await store.load();
   const r = await store.setProjectInfo("贝塔", "贝塔", "只加一段描述");
   assert.ok(r.ok && !r.renamed, "同名应只写描述");
-  assert.ok(/^> 只加一段描述$/m.test(fps.files["TLT/tasks/贝塔.md"]), fps.files["TLT/tasks/贝塔.md"]);
+  assert.ok(/^desc: 只加一段描述$/m.test(fps.files["TLT/tasks/贝塔.md"]), fps.files["TLT/tasks/贝塔.md"]);
   assert.ok(fps.files["TLT/tasks/贝塔.md"].includes("# 贝塔"), "正文不能被吃掉");
 });
 

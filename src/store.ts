@@ -3,7 +3,7 @@ import {
   Task, Staff, Feed, Idea, Msg, Period,
   parseTaskLine, parseStaff, parseMsgLine, parseLogMonth, parseIdeaLine,
   newTaskLine, newMsgLine, newLogLine, toggleTaskLine, setTaskDue, setTaskField, stripFields,
-  todayISO, monthBounds, asText, readProjectDesc, writeProjectDesc,
+  todayISO, monthBounds, asText, readProjectDesc,
 } from "./data";
 
 /** 消息服务的线上格式（发布端 / 订阅代理），字段都可缺 */
@@ -195,8 +195,8 @@ export class Store {
       const text = await this.app.vault.cachedRead(file);
       const project = file.basename;
       const pfm = (this.app.metadataCache.getFileCache(file)?.frontmatter || {}) as Record<string, unknown>;
-      // 描述：优先标题下那段 > 引用（人直接看得见），老的 frontmatter desc 还认
-      this.projectDescs[project] = readProjectDesc(text) || asText(pfm["desc"]) || asText(pfm["description"]);
+      // 描述存在项目文件的 frontmatter（desc）；更早版本写在标题下的 > 块里，仍认作回退
+      this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]) || readProjectDesc(text);
       let milestone: string | undefined;
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
@@ -436,9 +436,18 @@ export class Store {
     let file = await this.fileByPath(`${this.settings.tasksFolder}/${from}.md`);
     if (!file) return { ok: false, renamed: false, logs: 0 };
 
-    // 先写描述（写在标题下面那段 > 引用里，人打开文件就能看见；老的 frontmatter desc 顺手清掉）
+    // 写描述：项目文件 frontmatter 的 desc（不碰标题下你自己写的那段 > 说明）
     const wantDesc = desc.trim();
-    await this.app.vault.process(file, (data) => writeProjectDesc(data, wantDesc));
+    await this.app.vault.process(file, (data) => {
+      const stripped = data.replace(/^desc:.*\r?\n/m, "");
+      const hasFm = /^---\r?\n/.test(stripped);
+      const end = hasFm ? stripped.indexOf("\n---", 3) : -1;
+      const head = hasFm && end > 0 ? stripped.slice(0, end) : "";
+      const rest = hasFm && end > 0 ? stripped.slice(end) : stripped;
+      if (!wantDesc) return hasFm ? `${head}${rest}` : rest;      // 清空描述＝删掉这一行
+      const line = `desc: ${wantDesc.replace(/\r?\n/g, " ")}`;
+      return hasFm ? `${head}\n${line}${rest}` : `---\n${line}\n---\n\n${stripped}`;
+    });
     this.projectDescs[clean] = wantDesc;
     if (clean === from) return { ok: true, renamed: false, logs: 0 };
 

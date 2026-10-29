@@ -163,7 +163,7 @@ const parseFmNow = (path) => {
 const app = {
   vault,
   metadataCache: { getFileCache: (f) => ({ frontmatter: parseFmNow(f.path) }) },
-  workspace: { getLeavesOfType: () => [], getLeaf: () => ({}) },
+  workspace: { getLeavesOfType: () => [], getLeaf: () => ({}), getActiveViewOfType: () => null },
   // 搬运走 Obsidian 的 renameFile：实测语义照搬（内容跟着路径走）
   fileManager: { renameFile: async (f, to) => { if (f && f.path in files) { files[to] = files[f.path]; delete files[f.path]; } } },
 };
@@ -841,7 +841,7 @@ await t("切到本月：四组 + 任务行", async () => {
   assert.ok(document.querySelectorAll(".tlt-task").length >= 3);
 });
 
-await t("点侧栏项目：日历 / 任务 / 里程碑跟着一起筛", async () => {
+await t("点侧栏项目＝看项目信息；点「只看这个项目」才筛日历/任务/里程碑", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
   await view.onOpen();
@@ -849,11 +849,20 @@ await t("点侧栏项目：日历 / 任务 / 里程碑跟着一起筛", async ()
   await view.render();
   const total = document.querySelectorAll(".tlt-task").length;
 
-  // 点侧栏的项目卡（事件走 contentEl 的委托）
+  // 点侧栏的项目卡：先弹项目信息（名称 + 描述），不再直接筛
   const card = document.querySelector('.tlt-proj[data-proj="示例项目"]');
   assert.ok(card, "侧栏没有示例项目卡片");
   card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 30));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const info = document.querySelector(".tlt-host");
+  assert.ok(info, "点项目卡应弹出项目信息");
+  assert.equal(info.querySelector("[data-projname]").value, "示例项目", "弹窗里应是这个项目");
+  assert.ok(info.querySelector("[data-projdesc]"), "弹窗里应有描述框");
+  assert.equal(document.querySelectorAll(".tlt-proj.on").length, 0, "这时候还不该筛");
+
+  // 弹窗里的「只看这个项目」才把视图筛过去
+  info.querySelector("[data-projfocus]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
   const shown = [...document.querySelectorAll(".tlt-task")].map((e) => e.dataset.task || "");
   assert.ok(shown.length > 0, "筛选后没有任务");
   assert.ok(shown.length < total, `筛选没生效：${shown.length} / ${total}`);
@@ -1610,11 +1619,10 @@ await t("项目信息：看得到、改得动名称与描述", async () => {
   descEl.value = "示例项目：演示用的假项目";
   clickModal("保存");
   await new Promise((r) => window.setTimeout(r, 120));
-  // 描述写在标题（项目名）下面，用 > 引用——打开文件就能看见
-  const head = files["TLT/tasks/示例项目.md"].split("\n").slice(0, 5).join("\n");
-  assert.ok(/^# 示例项目$/m.test(head), `第一行应是项目名：\n${head}`);
-  assert.ok(/^> 示例项目：演示用的假项目$/m.test(head), `标题下面应是 > 描述块：\n${head}`);
-  assert.ok(!/^desc:/m.test(files["TLT/tasks/示例项目.md"]), "不该再往 frontmatter 里写 desc");
+  // 描述统一存在 frontmatter 的 desc（用户可以自己删标题下那段手写的 > 说明，插件不碰它）
+  const text = files["TLT/tasks/示例项目.md"];
+  assert.ok(/^desc: 示例项目：演示用的假项目$/m.test(text), `描述应写进 frontmatter：\n${text.slice(0, 140)}`);
+  assert.ok(/^# 示例项目$/m.test(text), "正文标题要留着");
   assert.equal(store.projectDesc("示例项目"), "示例项目：演示用的假项目", "重新读盘后描述应读得到");
 });
 
@@ -1680,6 +1688,23 @@ await t("日历：切换项目/重渲时保住你滚到的位置，换天才自�
   const auto = grid().scrollTop;
   assert.notEqual(auto, 500, "换天后应重新定位，而不是沿用上一天的位置");
   assert.ok(auto >= 0 && auto < 2000, `换天后应是合理的时间轴位置，实际 ${auto}`);
+});
+
+await t("侧栏项目卡：有描述就显示一行（不用悬停）", async () => {
+  document.body.empty();
+  await store.setProjectInfo("示例项目", "示例项目", "这个项目用来演示任务与里程碑");
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  const card = document.querySelector('.tlt-proj[data-proj="示例项目"]');
+  assert.ok(card, "没有项目卡");
+  const desc = card.querySelector(".tlt-pdesc");
+  assert.ok(desc, "有描述时卡片上应直接显示");
+  assert.equal(desc.textContent.trim(), "这个项目用来演示任务与里程碑");
+  // 没有描述的项目不该多出这一行
+  const other = document.querySelector('.tlt-proj[data-proj="示例工具"]');
+  assert.ok(other && !other.querySelector(".tlt-pdesc"), "没描述的项目不该有这一行");
 });
 
 await t("独立消息中心渲染", async () => {

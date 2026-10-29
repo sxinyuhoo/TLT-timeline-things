@@ -61,6 +61,16 @@ export class TLTPlugin extends Plugin {
    * 所以这里必须把「文案 key」单独记住、切换语言时用 t(key) 重新求值，
    * 不能读 entry.name —— 那样只会把注册那一刻的语言再写一遍。
    */
+  /** 清掉核心面板里属于「上一个文件」的内容（私有接口，失败就算了，不影响使用） */
+  private clearFileSidePanels() {
+    for (const type of ["outline", "backlink", "outgoing-link", "localgraph"]) {
+      for (const leaf of this.app.workspace.getLeavesOfType(type)) {
+        const v = leaf.view as unknown as { onFileOpen?: (f: null) => void };
+        try { v.onFileOpen?.(null); } catch { /* 核心面板接口变了也不该影响插件 */ }
+      }
+    }
+  }
+
   private cmd(id: string, key: string, callback: () => void) {
     const prefix = () => this.manifest.name || this.manifest.id || "TLT";
     const full = () => `${prefix()}: ${t(key)}`;
@@ -226,6 +236,13 @@ export class TLTPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("rename", reload));
     // 换主题（或跟随系统日夜切换）时重新落一次令牌类
     this.registerEvent(this.app.workspace.on("css-change", () => this.applyTheme()));
+    // 切到 TLT 的视图时，把右侧那些「按活动文件渲染」的核心面板（大纲、双链、出链、局部图）清空，
+    // 免得它们继续显示上一个文件的内容——TLT 不是文件视图，那些内容对不上号。
+    this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => {
+      const type = leaf?.view?.getViewType?.();
+      if (type !== VIEW_TYPE_WORKBENCH && type !== VIEW_TYPE_MESSAGES) return;
+      this.clearFileSidePanels();
+    }));
 
     // 重启后 Obsidian 会恢复上次打开的视图，那时 store 还是空的；数据读完必须补一次重画。
     // 这一步绝不能把 onload 带崩：视图自己出问题不该让插件「加载失败」。

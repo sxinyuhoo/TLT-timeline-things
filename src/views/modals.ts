@@ -389,15 +389,23 @@ export class ProjectInfoModal extends TltModal {
   store: Store;
   from: string;
   onDone: () => void | Promise<void>;
+  opts: { onFocus?: () => void };
 
-  constructor(app: App, store: Store, from: string, onDone: () => void | Promise<void>) {
-    super(app); this.store = store; this.from = from; this.onDone = onDone;
+  constructor(app: App, store: Store, from: string, onDone: () => void | Promise<void>, opts: { onFocus?: () => void } = {}) {
+    super(app); this.store = store; this.from = from; this.onDone = onDone; this.opts = opts;
   }
 
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
     contentEl.appendChild(el("div", "tlt-m-title", T("项目信息")));
+
+    // 一句话概况：几个里程碑、多少条任务、完成 percentage
+    const list = this.store.tasks.filter((t) => t.project === this.from);
+    const msCount = this.store.milestones(this.from).length;
+    const doneCount = list.filter((t) => t.done).length;
+    const pct = list.length ? Math.round((doneCount / list.length) * 100) : 0;
+    contentEl.appendChild(el("div", "tlt-hint", T("{m} 个里程碑 · {n} 条任务 · 完成 {p}%", { m: msCount, n: list.length, p: pct })));
 
     const nameRow = row(contentEl, T("名称"));
     const name = el("input", "tlt-input wide");
@@ -408,7 +416,7 @@ export class ProjectInfoModal extends TltModal {
     const descRow = row(contentEl, T("描述"));
     const desc = el("textarea", "tlt-input tlt-textarea");
     desc.value = this.store.projectDesc(this.from);
-    desc.placeholder = T("这个项目是做什么的、交付什么、有谁在参与…（会写进项目文件的 desc）");
+    desc.placeholder = T("这个项目是做什么的、交付什么、有谁在参与…（存进项目文件的 frontmatter：desc）");
     desc.setAttribute("data-projdesc", "1");
     descRow.appendChild(desc);
 
@@ -418,6 +426,9 @@ export class ProjectInfoModal extends TltModal {
     const foot = el("div", "tlt-m-foot");
     const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
+    const focusBtn = el("button", "tlt-btn", T("只看这个项目"));
+    focusBtn.setAttribute("data-projfocus", "1");
+    focusBtn.onclick = () => { this.close(); this.opts.onFocus?.(); };
     const save = el("button", "tlt-btn pri", T("保存"));
     save.onclick = () => { void (async () => {
       const to = name.value.trim();
@@ -430,7 +441,7 @@ export class ProjectInfoModal extends TltModal {
         ? T("已改名为「{n}」{logs}", { n: to, logs: r.logs ? T("，{n} 条日志里的项目名也改了", { n: r.logs }) : "" })
         : T("已保存项目信息"));
     })(); };
-    foot.append(cancel, save);
+    foot.append(cancel, focusBtn, save);
     contentEl.appendChild(foot);
   }
 }

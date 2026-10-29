@@ -24,6 +24,19 @@ const weekday = (i: number) => [T("日"), T("一"), T("二"), T("三"), T("四")
 const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
 
 export class MessagesView extends ItemView {
+  /** 只在自己这个视图是活动叶子时生效；弹窗开着、或焦点在输入框里就交给它们自己处理 */
+  private guardEscape(ev: KeyboardEvent) {
+    if (ev.key !== "Escape") return;
+    if (this.app.workspace.getActiveViewOfType(MessagesView) !== this) return;
+    if (document.querySelector(".modal-container")) return;
+    const ae = document.activeElement as HTMLElement | null;
+    if (ae && this.contentEl.contains(ae) &&
+      (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+    this.contentEl.querySelectorAll<HTMLElement>(".tlt-pickpop:not(.tlt-hidden)")
+      .forEach((pop) => pop.addClass("tlt-hidden"));
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
   plugin: TLTPlugin;
   /** 左栏多选：选中哪些源（空 = 全部源） */
   private selected: Set<string> = new Set();
@@ -55,7 +68,11 @@ export class MessagesView extends ItemView {
   getDisplayText() { return T("消息中心"); }
   getIcon() { return "rss"; }
 
-  async onOpen() { await this.ensureData(); await this.render(); }
+  async onOpen() {
+    // 本视图里按 Esc：先收掉自己的浮层，然后吃掉这个键——别让 Obsidian 把活动标签页切走
+    this.registerDomEvent(window, "keydown", (ev) => this.guardEscape(ev), true);
+    await this.ensureData(); await this.render();
+  }
   async refresh() { await this.ensureData(true); await this.render(); }
 
 

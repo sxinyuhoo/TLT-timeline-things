@@ -34,6 +34,14 @@ export class ItemView {
   getIcon() { return ""; }
   async onOpen() {}
   async onClose() {}
+  /** Obsidian 的 Component.registerDomEvent：真挂监听，卸载时摘掉（视图里用它绑按键） */
+  private _cleanups: (() => void)[] = [];
+  registerDomEvent(target: any, type: string, cb: (ev: any) => void, opts?: any) {
+    target.addEventListener(type, cb, opts);
+    this._cleanups.push(() => target.removeEventListener(type, cb, opts));
+  }
+  register(cb: () => void) { this._cleanups.push(cb); }
+  unload() { this._cleanups.forEach((f) => f()); this._cleanups = []; }
 }
 
 export class Plugin {

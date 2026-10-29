@@ -66,7 +66,23 @@ export class WorkbenchView extends ItemView {
   getDisplayText() { return T("时间线工作台"); }
   getIcon() { return "activity"; }
 
+  /** 只在自己这个视图是活动叶子时生效；弹窗开着、或焦点在输入框里就交给它们自己处理 */
+  private guardEscape(ev: KeyboardEvent) {
+    if (ev.key !== "Escape") return;
+    if (this.app.workspace.getActiveViewOfType(WorkbenchView) !== this) return;
+    if (document.querySelector(".modal-container")) return;
+    const ae = document.activeElement as HTMLElement | null;
+    if (ae && this.contentEl.contains(ae) &&
+      (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+    this.contentEl.querySelectorAll<HTMLElement>(".tlt-pickpop:not(.tlt-hidden)")
+      .forEach((pop) => pop.addClass("tlt-hidden"));
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+
   async onOpen() {
+    // 本视图里按 Esc：先收掉自己的浮层，然后吃掉这个键——别让 Obsidian 把活动标签页切走
+    this.registerDomEvent(window, "keydown", (ev) => this.guardEscape(ev), true);
     this.contentEl.addEventListener("click", (ev) => { void this.onClick(ev); });
     await this.ensureData();
     await this.render();
@@ -261,7 +277,7 @@ export class WorkbenchView extends ItemView {
       sw.setCssProps({ "--tlt-sw": this.projColor(p) });
       const nameEl = el("span", "tlt-pname", p);
       const pdesc = this.store.projectDesc(p);
-      if (pdesc) nameEl.title = pdesc;      // 描述挂在名字的 tooltip 上，侧栏窄，不再占一行
+      if (pdesc) nameEl.title = pdesc;
       row.append(sw, nameEl, el("span", "tlt-ppct", pct + "%"));
       // 项目级动作：悬停出现「…」，右键也可以
       const more = el("button", "tlt-pmore", "⋯");
@@ -277,6 +293,7 @@ export class WorkbenchView extends ItemView {
       const fill = el("i"); fill.style.width = pct + "%"; bar.appendChild(fill);
       const meta = el("div", "tlt-pmeta", T("{a} 项未完成 · {b} 个里程碑任务", { a: list.filter((t) => !t.done).length, b: list.filter((t) => t.milestone).length }));
       card.append(row, bar, meta);
+      if (pdesc) card.appendChild(el("div", "tlt-pdesc", pdesc));   // 有描述就直接显示一行，不用悬停
       scroll.appendChild(card);
     });
     // 已归档：和里程碑视图一样分组，默认收起
@@ -920,6 +937,7 @@ export class WorkbenchView extends ItemView {
     const file = this.app.vault.getAbstractFileByPath(`${this.cfg.tasksFolder}/${p}.md`);
     popMenu(anchor, [
       { label: T("项目信息（名称 / 描述）"), onClick: () => new ProjectInfoModal(this.app, this.store, p, () => this.render()).open() },
+      { label: T("只看这个项目"), onClick: () => { this.proj = this.proj === p ? null : p; void this.render(); } },
       { label: T("新建里程碑"), onClick: () => this.promptMilestone(p) },
       { label: T("归档项目"), onClick: () => { if (file instanceof TFile) confirmArchiveProject(this.app, this.store, file, () => this.render()); } },
       { label: T("打开项目文件"), onClick: () => {
@@ -1410,7 +1428,13 @@ export class WorkbenchView extends ItemView {
     if (period) { this.period = period.dataset.period as Period; await this.render(); return; }
 
     const proj = pick("[data-proj]");
-    if (proj) { const name = proj.dataset.proj ?? ""; this.proj = this.proj === name ? null : name; await this.render(); return; }
+    if (proj) {
+      const name = proj.dataset.proj ?? "";
+      new ProjectInfoModal(this.app, this.store, name, () => this.render(), {
+        onFocus: () => { this.proj = name; void this.render(); },
+      }).open();
+      return;
+    }
     if (pick("[data-projclear]")) { this.proj = null; await this.render(); return; }
 
 
