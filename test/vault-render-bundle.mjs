@@ -428,7 +428,9 @@ var DEFAULT_SETTINGS = {
   publisherName: "",
   publisherSalt: "",
   sideCollapsed: false,
-  railCollapsed: false
+  railCollapsed: false,
+  sortBy: "name",
+  sortDir: 1
 };
 var PEOPLE_COLORS = ["#F0C24B", "#6C8CFF", "#27C1A3", "#B57BFF", "#F2994A", "#FF7A9C", "#5FD6B4", "#7C8BA1"];
 var Store = class _Store {
@@ -1942,6 +1944,17 @@ var EN = {
   "\u53D1\u5E03": "Publish",
   "\u786E\u5B9A": "OK",
   "\u672A\u77E5\u9519\u8BEF": "Unknown error",
+  "\u6392\u5E8F": "Sort",
+  "\u540D\u79F0": "Name",
+  "\u6309\u540D\u79F0": "By name",
+  "\u6309\u521B\u5EFA\u65F6\u95F4": "By created",
+  "\u6309\u622A\u6B62\u65F6\u95F4": "By due",
+  "\u53CD\u5411\u6392\u5217": "Reverse",
+  "\u6392\u5E8F\uFF1A{label} {dir}": "Sort: {label} {dir}",
+  "\u9879\u76EE\u6392\u5E8F\uFF1A\u6309\u540D\u79F0 / \u521B\u5EFA\u65F6\u95F4 / \u622A\u6B62\u65F6\u95F4": "Sort projects: by name / created / due",
+  "\u6309\u540D\u79F0 / \u521B\u5EFA\u65F6\u95F4 / \u622A\u6B62\u65F6\u95F4\u6392\uFF1B\u70B9\u540C\u4E00\u4E2A\u6362\u65B9\u5411": "Sort by name / created / due; pick the same one again to reverse",
+  "\u8FD8\u6CA1\u6709\u9879\u76EE": "No projects yet",
+  "\uFF0B \u65B0\u5EFA\u9879\u76EE": "+ New project",
   "\u5B50\u9879 {a}/{b}\uFF0C\u70B9\u4E00\u4E0B\u5C55\u5F00": "Sub-tasks {a}/{b} \u2014 click to expand",
   "\u52A0\u4E00\u6761\u5B50\u9879\uFF0C\u56DE\u8F66": "Add a sub-task, press Enter",
   "\u5220\u6389\u8FD9\u6761\u5B50\u9879": "Delete this sub-task",
@@ -2850,6 +2863,14 @@ var TaskModal = class extends TltModal {
       owners: [...task.owners]
     };
   }
+  /** 子项动过之后：重新读盘拿最新的 steps，再重画这一层（不重读会看不到刚加的那条） */
+  async refreshSteps() {
+    await this.store.load();
+    const fresh = this.store.tasks.find((x) => x.file === this.task.file && x.title === this.task.title);
+    if (fresh) this.task = fresh;
+    this.contentEl.empty();
+    void this.onOpen();
+  }
   /** 就地改子项文字（回车保存，Esc 取消） */
   editStep(span, index) {
     const input = el("input", "tlt-step-edit");
@@ -2863,8 +2884,7 @@ var TaskModal = class extends TltModal {
         if (done) return;
         done = true;
         if (save) await this.store.setStepText(this.task, index, input.value);
-        this.contentEl.empty();
-        void this.onOpen();
+        await this.refreshSteps();
       })();
     };
     input.addEventListener("keydown", (e) => {
@@ -2933,20 +2953,16 @@ var TaskModal = class extends TltModal {
     ownerSelect(this.store, whoRowD, this.draft);
     const stepRow = row(contentEl, t("\u5B50\u9879"));
     const stepBox = el("div", "tlt-steps in-modal");
-    const refreshSteps = () => {
-      this.contentEl.empty();
-      void this.onOpen();
-    };
     if (!this.task.steps.length) {
       stepBox.appendChild(el("div", "tlt-hint", t("\u8FD8\u6CA1\u6709\u5B50\u9879\u3002\u52A0\u4E00\u6761\u5C31\u6709\u5173\u952E\u6B65\u9AA4\uFF0C\u4EFB\u52A1\u884C\u4E0A\u4F1A\u51FA\u73B0\u8FDB\u5EA6\u73AF\u3002")));
     }
     this.task.steps.forEach((st, i) => {
-      const line = el("div", "tlt-step");
+      const line = el("div", "tlt-step" + (st.done ? " done" : ""));
       const cb = el("i", "tlt-scb" + (st.done ? " on" : ""));
       cb.onclick = () => {
         void (async () => {
           await this.store.setStepDone(this.task, i, !st.done);
-          refreshSteps();
+          await this.refreshSteps();
         })();
       };
       const txt = el("span", "tlt-step-t", st.text);
@@ -2963,7 +2979,7 @@ ${t("\u53EA\u5220\u5B50\u9879\uFF0C\u4EFB\u52A1\u672C\u8EAB\u4E0D\u52A8\u3002")}
         }, async (ok) => {
           if (ok) {
             await this.store.deleteStep(this.task, i);
-            refreshSteps();
+            await this.refreshSteps();
           }
         }).open();
       };
@@ -2978,7 +2994,7 @@ ${t("\u53EA\u5220\u5B50\u9879\uFF0C\u4EFB\u52A1\u672C\u8EAB\u4E0D\u52A8\u3002")}
       if (!v) return;
       void (async () => {
         await this.store.addStep(this.task, v);
-        refreshSteps();
+        await this.refreshSteps();
       })();
     });
     stepBox.appendChild(stepAdd);
@@ -2998,7 +3014,8 @@ ${t("\u53EA\u5220\u5B50\u9879\uFF0C\u4EFB\u52A1\u672C\u8EAB\u4E0D\u52A8\u3002")}
     const tlToggle = el("button", "tlt-btn tiny", this.showTimeline ? t("\u6536\u8D77") : t("\u5C55\u5F00"));
     tlToggle.onclick = () => {
       this.showTimeline = !this.showTimeline;
-      refreshSteps();
+      this.contentEl.empty();
+      void this.onOpen();
     };
     if (!this.showTimeline) tl.addClass("tlt-hidden");
     tlRow.querySelector(".tlt-row-l")?.appendChild(tlToggle);
@@ -4224,6 +4241,1070 @@ function setSvgMarkup(svg, markup) {
   svg.replaceChildren(...nodes);
 }
 
+// src/views/messages.ts
+var VIEW_TYPE_MESSAGES = "tlt-messages";
+async function remoteHasFeed(hub, id) {
+  try {
+    const res = await requestUrl({ url: `${hub.replace(/\/$/, "")}/feeds`, method: "GET", throw: false });
+    if (res.status >= 400) return false;
+    const body = res.json;
+    return (body.feeds || []).some((x) => x.id === id);
+  } catch {
+    return false;
+  }
+}
+var KIND_COLOR = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
+var weekday = (i) => [t("\u65E5"), t("\u4E00"), t("\u4E8C"), t("\u4E09"), t("\u56DB"), t("\u4E94"), t("\u516D")][i] || "";
+var escapeXml = (s) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[c]);
+var MessagesView = class extends ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    /** 左栏多选：选中哪些源（空 = 全部源） */
+    this.selected = /* @__PURE__ */ new Set();
+    this.zoom = "w";
+    this.filter = "all";
+    this.range = "all";
+    this.mode = "card";
+    /** 横轴时间线：窗口跨度（天）与中心（相对今天的偏移） */
+    this.tlSpan = 33;
+    this.tlCenter = 13.5;
+    this.heatMonth = todayISO().slice(0, 7);
+    this.heatDay = "";
+    this.q = "";
+    this.plugin = plugin;
+  }
+  get store() {
+    return this.plugin.store;
+  }
+  /**
+   * 视图有可能比插件的 store 先就绪（重启恢复标签页时会撞上），
+   * 所以设置统一走这里：拿不到就用默认值，渲染绝不因此抛错。
+   */
+  get cfg() {
+    return this.plugin?.store?.settings ?? DEFAULT_SETTINGS;
+  }
+  getViewType() {
+    return VIEW_TYPE_MESSAGES;
+  }
+  getDisplayText() {
+    return t("\u6D88\u606F\u4E2D\u5FC3");
+  }
+  getIcon() {
+    return "rss";
+  }
+  async onOpen() {
+    await this.ensureData();
+    await this.render();
+  }
+  async refresh() {
+    await this.ensureData(true);
+    await this.render();
+  }
+  /** 视图可能比插件先就绪；拿不到 store 就跳过，绝不抛 */
+  async ensureData(force = false) {
+    const s = this.plugin?.store;
+    if (!s) return;
+    try {
+      if (force) await s.load();
+      else await s.ensureLoaded();
+    } catch (e) {
+      console.error("TLT: \u8F7D\u5165\u6570\u636E\u5931\u8D25", e);
+    }
+  }
+  msgs() {
+    return this.store.feeds.flatMap((f) => f.items);
+  }
+  async render() {
+    const alive = new Set(this.store.feeds.map((f) => f.id));
+    [...this.selected].forEach((id) => {
+      if (!alive.has(id)) this.selected.delete(id);
+    });
+    const root = this.contentEl;
+    const ae = document.activeElement;
+    const keep = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey ? { key: ae.dataset.focuskey, start: ae.selectionStart ?? 0, end: ae.selectionEnd ?? 0 } : null;
+    root.empty();
+    root.addClass("tlt-root");
+    const outer = el("div", "tlt-fm");
+    const head = el("div", "tlt-fm-h");
+    head.append(el("b", "", t("\u6D88\u606F\u4E2D\u5FC3")), el("span", "tlt-fm-hint", t("\u4E2A\u4EBA \xB7 \u53D1\u5E03 \xB7 \u8BA2\u9605")));
+    head.appendChild(el("span", "tlt-spacer"));
+    const th = el("button", "tlt-btn", this.plugin.isLight() ? "\u263E" : "\u2600");
+    th.onclick = () => this.plugin.toggleTheme();
+    head.appendChild(th);
+    outer.appendChild(head);
+    const body = el("div", "tlt-fm-body");
+    body.append(this.rail(), this.center(), this.side());
+    outer.appendChild(body);
+    root.appendChild(outer);
+    if (keep) {
+      const again = root.querySelector(`[data-focuskey="${keep.key}"]`);
+      if (again) {
+        again.focus();
+        try {
+          again.setSelectionRange(keep.start, keep.end);
+        } catch {
+        }
+      }
+    }
+  }
+  /* ---------------- 左栏：多选筛选 ---------------- */
+  railRow(f) {
+    const on = this.selected.has(f.id);
+    const row2 = el("div", "tlt-fr" + (on ? " on" : "") + (f.mine ? " mine" : "") + (f.personal ? " personal" : ""));
+    row2.append(
+      el("span", "tlt-ck" + (on ? " on" : "")),
+      el("span", "tlt-fr-n", f.name),
+      el("span", "tlt-fr-c", String(f.items.length))
+    );
+    row2.onclick = (ev) => {
+      if (ev.metaKey || ev.ctrlKey) {
+        if (this.selected.has(f.id)) this.selected.delete(f.id);
+        else this.selected.add(f.id);
+      } else if (this.selected.size === 1 && this.selected.has(f.id)) {
+        this.selected.clear();
+      } else {
+        this.selected.clear();
+        this.selected.add(f.id);
+      }
+      void this.render();
+    };
+    return row2;
+  }
+  rail() {
+    const r = el("aside", "tlt-fm-rail");
+    const personal = this.store.feeds.filter((f) => f.personal);
+    const mine = this.store.feeds.filter((f) => f.mine && !f.personal);
+    const subs = this.store.feeds.filter((f) => !f.mine && !f.personal);
+    r.appendChild(el("div", "tlt-fgrp", t("\u4E2A\u4EBA")));
+    personal.forEach((f) => r.appendChild(this.railRow(f)));
+    r.appendChild(el("div", "tlt-fgrp", t("\u6211\u53D1\u5E03\u7684")));
+    mine.forEach((f) => r.appendChild(this.railRow(f)));
+    r.appendChild(el("div", "tlt-fgrp", t("\u6211\u8BA2\u9605\u7684")));
+    subs.forEach((f) => r.appendChild(this.railRow(f)));
+    if (!personal.length && !mine.length && !subs.length) r.appendChild(el("div", "tlt-empty", t("feeds/ \u91CC\u8FD8\u6CA1\u6709\u6E90")));
+    const all = el("div", "tlt-fr add");
+    all.append(el("span", "tlt-fr-n", this.selected.size ? t("\u5DF2\u9009 {n} \u4E2A \xB7 \u6E05\u9664", { n: this.selected.size }) : t("\u2318 \u70B9\u53EF\u591A\u9009 \xB7 \u5168\u90E8\u6E90")));
+    all.onclick = () => {
+      this.selected.clear();
+      void this.render();
+    };
+    r.appendChild(all);
+    return r;
+  }
+  /* ---------------- 中栏：新建 + 筛选 + 时间线 ---------------- */
+  center() {
+    const m = el("main", "tlt-fm-main");
+    const items = this.visible();
+    const bar = el("div", "tlt-fm-bar");
+    const sb = el("div", "tlt-fm-search");
+    const si = el("input");
+    si.placeholder = t("\u641C\u7D22\u6D88\u606F");
+    si.value = this.q;
+    si.dataset.focuskey = "msgsearch";
+    let composing = false;
+    si.addEventListener("compositionstart", () => {
+      composing = true;
+    });
+    si.addEventListener("compositionend", () => {
+      composing = false;
+      this.q = si.value.trim();
+      void this.render();
+    });
+    si.addEventListener("input", () => {
+      if (composing) return;
+      this.q = si.value.trim();
+      void this.render();
+    });
+    sb.appendChild(si);
+    bar.appendChild(sb);
+    const add = el("button", "tlt-btn pri lg", t("\uFF0B \u65B0\u5EFA"));
+    add.onclick = () => new ComposeModal(this.app, this.store, () => this.refresh()).open();
+    bar.appendChild(add);
+    m.appendChild(bar);
+    const t1 = el("div", "tlt-fm-tools");
+    const dg = el("div", "tlt-tgrp");
+    dg.appendChild(el("span", "tlt-tgrp-l", t("\u65F6\u95F4")));
+    const range = el("div", "tlt-seg");
+    [["all", t("\u5168\u90E8")], ["today", t("\u4ECA\u5929")], ["7", t("\u8FD1 7 \u5929")], ["30", t("\u8FD1 30 \u5929")]].forEach(([v, t3]) => {
+      const b = el("button", "tlt-seg-b" + (this.range === v ? " on" : ""), t3);
+      b.onclick = () => {
+        this.range = v;
+        void this.render();
+      };
+      range.appendChild(b);
+    });
+    dg.appendChild(range);
+    t1.appendChild(dg);
+    t1.appendChild(el("span", "tlt-spacer"));
+    const today = el("button", "tlt-tlink", t("\u56DE\u5230\u4ECA\u5929"));
+    today.onclick = () => this.jumpToday();
+    t1.appendChild(today);
+    m.appendChild(t1);
+    const t2 = el("div", "tlt-fm-tools sub");
+    t2.appendChild(el("span", "tlt-count", t("{n} \u6761", { n: items.length })));
+    t2.appendChild(el("span", "tlt-spacer"));
+    const MODES = [
+      ["card", t("\u5361\u7247")],
+      ["spine", t("\u6CB3\u6D41")],
+      ["compact", t("\u7D27\u51D1")],
+      ["bands", t("\u6309\u6E90\u5206\u5E26")],
+      ["axis", t("\u53EF\u7F29\u653E\u65F6\u95F4\u8F74")],
+      ["heat", t("\u6708\u5EA6\u70ED\u529B")],
+      ["net", t("\u4EBA\u7269\u8109\u7EDC")]
+    ];
+    const cur = MODES.find(([v]) => v === this.mode) ?? MODES[0];
+    const viewBtn = el("button", "tlt-btn tlt-viewbtn");
+    viewBtn.append(el("span", "tlt-viewbtn-i", "\u25A4"), el("span", "", t(cur[1])), el("span", "tlt-viewbtn-c", "\u2304"));
+    viewBtn.onclick = () => {
+      popMenu(viewBtn, MODES.map(([v, label]) => ({
+        label: (v === this.mode ? "\u2713 " : "   ") + t(label),
+        onClick: () => {
+          this.mode = v;
+          void this.render();
+        }
+      })), "right");
+    };
+    t2.appendChild(viewBtn);
+    m.appendChild(t2);
+    if (this.mode === "heat") m.appendChild(this.heat());
+    else if (this.mode === "axis") m.appendChild(this.axis(items));
+    else if (this.mode === "bands") m.appendChild(this.bands(items));
+    else if (this.mode === "net") m.appendChild(this.net(items));
+    else m.appendChild(this.timeline(items));
+    return m;
+  }
+  /** 时间线（卡片 / 河流 / 紧凑共用） */
+  timeline(items) {
+    const list = el("div", "tlt-mtl wide mode-" + this.mode);
+    if (!items.length) list.appendChild(el("div", "tlt-empty", t("\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u6D88\u606F")));
+    let last = "";
+    items.forEach((x) => {
+      const key = this.zoom === "m" ? x.date.slice(0, 7) : x.date;
+      if (key !== last) {
+        const d = D(x.date);
+        const isToday = x.date === todayISO();
+        const mk = el("div", "tlt-mday" + (isToday ? " today" : ""));
+        mk.dataset.day = isToday ? "today" : x.date;
+        mk.append(el(
+          "span",
+          "tlt-mday-n",
+          this.zoom === "m" ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : `${d.getDate()}`
+        ));
+        if (this.zoom !== "m") mk.append(el("span", "tlt-mday-u", `${d.getMonth() + 1}`));
+        if (this.zoom !== "m") mk.append(el("span", "tlt-mday-w", weekday(d.getDay())));
+        if (isToday) mk.append(el("span", "tlt-mday-t", t("\u4ECA\u5929")));
+        list.appendChild(mk);
+        last = key;
+      }
+      list.appendChild(this.item(x));
+    });
+    return list;
+  }
+  /** 可缩放时间轴：横轴是日期，滚轮缩放、拖动平移、双击复位 */
+  axis(items) {
+    const box = el("div", "tlt-axis");
+    const svg = createSvg("svg");
+    svg.setAttribute("class", "tlt-axis-svg");
+    svg.setAttribute("viewBox", "0 0 760 260");
+    const W = 760;
+    const label = el("div", "tlt-axis-hint", "");
+    const redraw = () => {
+      const lanes = this.axisLanes(items);
+      const H = Math.max(120, 54 + lanes.length * 30);
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      setSvgMarkup(svg, this.axisBody(W, H, items));
+      label.textContent = t("\u7A97\u53E3 {n} \u5929 \xB7 \u6EDA\u8F6E\u7F29\u653E \xB7 \u62D6\u52A8\u5E73\u79FB \xB7 \u53CC\u51FB\u56DE\u5230\u9ED8\u8BA4\uFF08\u524D 3 \u5929\u540E 30 \u5929\uFF09", { n: Math.round(this.tlSpan) });
+    };
+    redraw();
+    box.appendChild(svg);
+    box.appendChild(label);
+    const dayOf = (clientX) => {
+      const r = svg.getBoundingClientRect();
+      const frac = (clientX - r.left) / r.width;
+      const to = this.tlCenter + this.tlSpan / 2;
+      const from = to - this.tlSpan;
+      return from + frac * this.tlSpan;
+    };
+    box.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const at = dayOf(e.clientX);
+      const next = Math.max(2, Math.min(400, this.tlSpan * (e.deltaY < 0 ? 0.86 : 1.16)));
+      const r = svg.getBoundingClientRect();
+      const frac = (e.clientX - r.left) / r.width;
+      this.tlCenter = at - frac * next + next / 2;
+      this.tlSpan = next;
+      redraw();
+    }, { passive: false });
+    let drag = false, sx = 0, c0 = 0;
+    svg.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("[data-msg]")) return;
+      drag = true;
+      sx = e.clientX;
+      c0 = this.tlCenter;
+      svg.setPointerCapture(e.pointerId);
+      svg.classList.add("grabbing");
+    });
+    svg.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const r = svg.getBoundingClientRect();
+      this.tlCenter = c0 - (e.clientX - sx) / r.width * this.tlSpan;
+      redraw();
+    });
+    const stop = () => {
+      drag = false;
+      svg.classList.remove("grabbing");
+    };
+    svg.addEventListener("pointerup", stop);
+    svg.addEventListener("pointercancel", stop);
+    svg.addEventListener("dblclick", () => {
+      this.tlSpan = 33;
+      this.tlCenter = 13.5;
+      redraw();
+    });
+    svg.addEventListener("click", (e) => {
+      const target = e.target;
+      const g = target instanceof Element ? target.closest("[data-msg]") : null;
+      if (!g) return;
+      const m = items.find((x) => x.id === g.getAttribute("data-msg"));
+      if (m) this.openMsg(m);
+    });
+    return box;
+  }
+  axisLanes(items) {
+    return this.store.feeds.map((f) => ({ feed: f, items: items.filter((x) => x.feed === f.id) })).filter((l) => l.items.length);
+  }
+  /** 横轴时间线的 SVG：日期刻度 + 每个源一条泳道 + 今天竖线 */
+  axisBody(W, H, items) {
+    const left = 92, right = W - 18;
+    const plotW = right - left;
+    const to = this.tlCenter + this.tlSpan / 2;
+    const from = to - this.tlSpan;
+    const baseDay = Math.floor(+D(todayISO()) / 864e5);
+    const x = (off) => left + (off - from) / this.tlSpan * plotW;
+    const offsetOf = (iso2) => Math.floor(+D(iso2) / 864e5) - baseDay;
+    const steps = [1, 2, 3, 7, 14, 30, 90];
+    const step = steps.find((s) => this.tlSpan / s <= 12) || 90;
+    let g = "";
+    for (let d = Math.ceil(from / step) * step; d <= to; d += step) {
+      const px = x(d);
+      if (px < left - 1 || px > right + 1) continue;
+      g += `<line class="tlt-axis-grid" x1="${px.toFixed(1)}" y1="34" x2="${px.toFixed(1)}" y2="${H - 10}"/>`;
+      const dt = new Date((baseDay + d) * 864e5);
+      const label = step >= 30 ? `${dt.getMonth() + 1}` : `${dt.getMonth() + 1}/${dt.getDate()}`;
+      g += `<text class="tlt-axis-tick" x="${px.toFixed(1)}" y="24" text-anchor="middle">${label}</text>`;
+    }
+    const tx = x(0);
+    if (tx >= left && tx <= right) {
+      g += `<line class="tlt-axis-today" x1="${tx.toFixed(1)}" y1="30" x2="${tx.toFixed(1)}" y2="${H - 8}"/>`;
+      g += `<text class="tlt-axis-today-l" x="${(tx + 3).toFixed(1)}" y="40">${t("\u4ECA\u5929")}</text>`;
+    }
+    const lanes = this.axisLanes(items);
+    lanes.forEach((lane, i) => {
+      const y = 52 + i * 30;
+      g += `<text class="tlt-axis-lane" x="${left - 10}" y="${y + 4}" text-anchor="end">${escapeXml(lane.feed.name.slice(0, 8))}</text>`;
+      g += `<line class="tlt-axis-lane-l" x1="${left}" y1="${y}" x2="${right}" y2="${y}"/>`;
+      lane.items.forEach((m) => {
+        const px = x(offsetOf(m.date));
+        if (px < left - 6 || px > right + 6) return;
+        const r = 3.2;
+        g += `<g class="tlt-axis-g" data-msg="${escapeXml(m.id)}">
+          <circle class="tlt-axis-hit" cx="${px.toFixed(1)}" cy="${y}" r="9"/>
+          <circle class="tlt-axis-d" cx="${px.toFixed(1)}" cy="${y}" r="${r}" fill="${m.star ? "var(--tlt-acc)" : "var(--tlt-ink3)"}"/>
+          <title>${escapeXml(`${m.date} ${m.title}`)}</title></g>`;
+      });
+    });
+    if (!lanes.length) g += `<text class="tlt-axis-empty" x="${left}" y="70">${t("\u6CA1\u6709\u6D88\u606F\u5728\u8FD9\u4E2A\u7A97\u53E3\u91CC")}</text>`;
+    return g;
+  }
+  /** 按源分带：每个消息源一条泳道，横轴＝时间 */
+  bands(items) {
+    const { from, to } = this.bounds();
+    const a = +D(from), b = +D(to);
+    const span = Math.max(864e5, b - a);
+    const box = el("div", "tlt-bands");
+    const axis = el("div", "tlt-band-axis");
+    axis.append(el("span", "", from.slice(5)), el("span", "tlt-spacer"), el("span", "", to.slice(5)));
+    box.appendChild(axis);
+    const feeds = this.store.feeds.filter((f) => items.some((x) => x.feed === f.id));
+    feeds.forEach((f) => {
+      const row2 = el("div", "tlt-band");
+      const name = el("div", "tlt-band-n");
+      name.append(el("span", "tlt-band-dot"), el("span", "", f.name));
+      const lane = el("div", "tlt-band-lane");
+      items.filter((x) => x.feed === f.id).forEach((x) => {
+        const p = el("i", "tlt-band-i");
+        p.style.left = `${Math.max(0, Math.min(100, (+D(x.date) - a) / span * 100)).toFixed(2)}%`;
+        p.style.background = KIND_COLOR[x.kind];
+        p.title = `${x.date} \xB7 ${x.title}`;
+        p.onclick = () => this.openMsg(x);
+        lane.appendChild(p);
+      });
+      row2.append(name, lane);
+      box.appendChild(row2);
+    });
+    if (!feeds.length) box.appendChild(el("div", "tlt-empty", t("\u8FD9\u4E2A\u8303\u56F4\u91CC\u6CA1\u6709\u6D88\u606F")));
+    return box;
+  }
+  /** 月度热力：一个月一张格子，颜色深浅＝当天消息数 */
+  heat() {
+    const box = el("div", "tlt-heat");
+    const all = this.msgs().filter((x) => !this.selected.size || this.selected.has(x.feed));
+    const [y, mo] = this.heatMonth.split("-").map(Number);
+    const head = el("div", "tlt-heat-h");
+    const prev = el("button", "tlt-tlink", "\u2039");
+    prev.onclick = () => {
+      this.heatMonth = this.shiftMonth(-1);
+      void this.render();
+    };
+    const next = el("button", "tlt-tlink", "\u203A");
+    next.onclick = () => {
+      this.heatMonth = this.shiftMonth(1);
+      void this.render();
+    };
+    head.append(
+      prev,
+      el("b", "", `${y}-${String(mo).padStart(2, "0")}`),
+      next,
+      el("span", "tlt-spacer"),
+      el("span", "tlt-heat-l", t("\u5C11")),
+      el("span", "tlt-heat-i lv1"),
+      el("span", "tlt-heat-i lv2"),
+      el("span", "tlt-heat-i lv3"),
+      el("span", "tlt-heat-i lv4"),
+      el("span", "tlt-heat-l", t("\u591A"))
+    );
+    box.appendChild(head);
+    const grid = el("div", "tlt-heat-grid");
+    [t("\u65E5"), t("\u4E00"), t("\u4E8C"), t("\u4E09"), t("\u56DB"), t("\u4E94"), t("\u516D")].forEach((w) => grid.appendChild(el("div", "tlt-heat-w", w)));
+    const first = new Date(y, mo - 1, 1);
+    const days = new Date(y, mo, 0).getDate();
+    for (let i = 0; i < first.getDay(); i++) grid.appendChild(el("div", "tlt-heat-c blank"));
+    const count = {};
+    all.forEach((x) => {
+      count[x.date] = (count[x.date] || 0) + 1;
+    });
+    const max = Math.max(1, ...Object.values(count));
+    for (let d = 1; d <= days; d++) {
+      const key = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const n = count[key] || 0;
+      const lv = n === 0 ? 0 : Math.min(4, 1 + Math.floor(n / max * 3));
+      const c = el("div", "tlt-heat-c" + (lv ? ` lv${lv}` : "") + (key === todayISO() ? " today" : "") + (this.heatDay === key ? " on" : ""));
+      c.title = t("{k} \xB7 {n} \u6761", { k: key, n });
+      c.append(el("span", "tlt-heat-d", String(d)));
+      if (n) c.append(el("span", "tlt-heat-n", String(n)));
+      c.onclick = () => {
+        this.heatDay = key;
+        void this.render();
+      };
+      grid.appendChild(c);
+    }
+    box.appendChild(grid);
+    if (this.heatDay) {
+      const list = el("div", "tlt-heat-day");
+      list.appendChild(el("div", "tlt-count", t("{d} \u7684\u6D88\u606F", { d: this.heatDay })));
+      all.filter((x) => x.date === this.heatDay).forEach((x) => {
+        const row2 = el("div", "tlt-crow");
+        const dot = el("span", "tlt-nd");
+        dot.style.background = KIND_COLOR[x.kind];
+        row2.append(dot, el("span", "tlt-crow-t", x.title));
+        row2.onclick = () => this.openMsg(x);
+        list.appendChild(row2);
+      });
+      if (!all.some((x) => x.date === this.heatDay)) list.appendChild(el("div", "tlt-empty", t("\u8FD9\u5929\u6CA1\u6709\u6D88\u606F")));
+      box.appendChild(list);
+    }
+    return box;
+  }
+  /** 人物脉络：谁发的源 → 哪些源 → 多少条 */
+  net(items) {
+    const box = el("div", "tlt-net");
+    const feeds = this.store.feeds.filter((f) => f.items.length);
+    const owners = Array.from(new Set(feeds.map((f) => f.owner || t("\u6211"))));
+    const W = 640, H = Math.max(240, owners.length * 64);
+    const svg = createSvg("svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("class", "tlt-net-svg");
+    const oy = (i) => 34 + i * (H - 68) / Math.max(1, owners.length - 1);
+    const fy = (i) => 26 + i * (H - 52) / Math.max(1, feeds.length - 1);
+    let g = "";
+    feeds.forEach((f, i) => {
+      const oi = owners.indexOf(f.owner || t("\u6211"));
+      g += `<path class="tlt-net-e" d="M150 ${oy(oi).toFixed(1)} C 260 ${oy(oi).toFixed(1)}, 300 ${fy(i).toFixed(1)}, 400 ${fy(i).toFixed(1)}"/>`;
+    });
+    owners.forEach((o, i) => {
+      const n = feeds.filter((f) => (f.owner || t("\u6211")) === o).reduce((s, f) => s + f.items.length, 0);
+      const label = o === "me" ? t("\u6211") : o;
+      g += `<g class="tlt-net-g"><circle class="tlt-net-o" cx="130" cy="${oy(i).toFixed(1)}" r="${(11 + Math.min(9, n)).toFixed(1)}"/>
+        <text class="tlt-net-t" x="130" y="${(oy(i) + 30).toFixed(1)}" text-anchor="middle">${escapeXml(label.slice(0, 6))}</text>
+        <text class="tlt-net-n" x="130" y="${(oy(i) + 3).toFixed(1)}" text-anchor="middle">${n}</text></g>`;
+    });
+    feeds.forEach((f, i) => {
+      const y = fy(i);
+      g += `<g class="tlt-net-g" data-feed="${escapeXml(f.id)}">
+        <rect class="tlt-net-hit" x="392" y="${(y - 12).toFixed(1)}" width="196" height="24"/>
+        <rect class="tlt-net-f" x="400" y="${(y - 10).toFixed(1)}" width="${(56 + Math.min(96, f.items.length * 12)).toFixed(0)}" height="20" rx="10"/>
+        <text class="tlt-net-t2" x="410" y="${(y + 4).toFixed(1)}">${escapeXml(f.name.slice(0, 12))}</text>
+        <text class="tlt-net-n2" x="586" y="${(y + 4).toFixed(1)}">${f.items.length}</text></g>`;
+    });
+    setSvgMarkup(svg, g);
+    svg.addEventListener("click", (ev) => {
+      const target = ev.target;
+      const t2 = target instanceof Element ? target.closest("[data-feed]") : null;
+      if (!t2) return;
+      const id = t2.getAttribute("data-feed") ?? "";
+      if (this.selected.has(id)) this.selected.delete(id);
+      else this.selected.add(id);
+      void this.render();
+    });
+    box.appendChild(svg);
+    box.appendChild(el("div", "tlt-hint", t("\u5706\uFF1D\u4EBA\uFF08\u6570\u5B57\u662F\u4ED6\u4EEC\u53D1\u7684\u6D88\u606F\u6570\uFF09\uFF0C\u80F6\u56CA\uFF1D\u6D88\u606F\u6E90\uFF0C\u7C97\u7EC6\u4E0D\u4EE3\u8868\u4EC0\u4E48\u3002\u70B9\u6E90\u53EF\u4EE5\u53EA\u770B\u5B83\u3002")));
+    return box;
+  }
+  openMsg(x) {
+    x.read_ = true;
+    new MsgModal(this.app, this.store, x, () => this.refresh()).open();
+  }
+  shiftMonth(d) {
+    const [y, mo] = this.heatMonth.split("-").map(Number);
+    const dt = new Date(y, mo - 1 + d, 1);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+  }
+  /** 一条消息：三种形态共用一套数据，只换外壳 */
+  item(x) {
+    const feed = this.store.feeds.find((f) => f.id === x.feed);
+    const dot = () => {
+      const d = el("span", "tlt-nd");
+      d.style.background = KIND_COLOR[x.kind];
+      return d;
+    };
+    const open = () => this.openMsg(x);
+    if (this.mode === "compact") {
+      const row2 = el("div", "tlt-crow" + (x.star ? " star" : "") + (x.state === "ended" ? " ended" : ""));
+      row2.append(dot());
+      row2.append(el("span", "tlt-crow-t", x.title));
+      row2.append(el("span", "tlt-crow-s", feed ? feed.name : ""));
+      row2.onclick = open;
+      return row2;
+    }
+    if (this.mode === "spine") {
+      const row2 = el("div", "tlt-srow" + (x.star ? " star" : "") + (x.state === "ended" ? " ended" : ""));
+      const rail = el("div", "tlt-srail");
+      rail.appendChild(dot());
+      row2.appendChild(rail);
+      const body = el("div", "tlt-sbody");
+      const nh = el("div", "tlt-nh");
+      nh.append(el("span", "tlt-nm", x.title));
+      if (x.star) nh.appendChild(el("span", "tlt-sk", "\u2605"));
+      body.appendChild(nh);
+      body.appendChild(el(
+        "div",
+        "tlt-nm2",
+        [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(t("\u3001")) : "", x.until ? t("\u622A\u6B62 {d}", { d: x.until }) : "", x.state === "ended" ? t("\u5DF2\u7ED3\u675F") : ""].filter(Boolean).join("  \xB7  ")
+      ));
+      if (x.body) body.appendChild(el("div", "tlt-nb", x.body));
+      row2.appendChild(body);
+      row2.onclick = open;
+      return row2;
+    }
+    const card = el("div", "tlt-card" + (x.star ? " star" : "") + (x.state === "ended" ? " ended" : ""));
+    const top = el("div", "tlt-card-top");
+    const kd = el("span", "tlt-carddot");
+    kd.style.background = KIND_COLOR[x.kind];
+    top.append(kd, el("span", "tlt-nm", x.title));
+    if (x.star) top.appendChild(el("span", "tlt-sk", "\u2605"));
+    card.appendChild(top);
+    const bits = [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(t("\u3001")) : "", x.until ? t("\u622A\u6B62 {d}", { d: x.until }) : "", x.state === "ended" ? t("\u5DF2\u7ED3\u675F") : ""].filter(Boolean);
+    if (bits.length) card.appendChild(el("div", "tlt-nm2", bits.join("  \xB7  ")));
+    if (x.body) card.appendChild(el("div", "tlt-nb", x.body));
+    card.onclick = open;
+    return card;
+  }
+  bounds() {
+    const back = this.zoom === "m" ? 60 : this.zoom === "d" ? 5 : 14;
+    const fwd = this.zoom === "m" ? 120 : this.zoom === "d" ? 10 : 60;
+    let from = addDays(todayISO(), -back), to = addDays(todayISO(), fwd);
+    if (this.range === "today") {
+      from = todayISO();
+      to = todayISO();
+    }
+    if (this.range === "7") from = addDays(todayISO(), -7);
+    if (this.range === "30") from = addDays(todayISO(), -30);
+    return { from, to };
+  }
+  visible() {
+    const { from, to } = this.bounds();
+    return this.msgs().filter((x) => this.filter === "star" ? x.star : this.filter === "unread" ? !x.read_ : true).filter((x) => !this.selected.size || this.selected.has(x.feed)).filter((x) => !this.q || x.title.includes(this.q) || (x.body || "").includes(this.q) || (x.place || "").includes(this.q)).filter((x) => x.date >= from && x.date <= to).sort((a, b) => a.date.localeCompare(b.date));
+  }
+  /** 回到今天：找得到就滚过去，找不到就把范围放宽再滚 */
+  jumpToday() {
+    const go = () => {
+      const el2 = document.querySelector('.tlt-mtl [data-day="today"]');
+      if (el2) el2.scrollIntoView({ block: "start", behavior: "smooth" });
+    };
+    if (document.querySelector('.tlt-mtl [data-day="today"]')) {
+      go();
+      return;
+    }
+    this.range = "7";
+    if (!this.msgs().some((x) => x.date === todayISO())) this.range = "all";
+    void this.render().then(() => window.setTimeout(go, 60));
+  }
+  /* ---------------- 右栏：消息源管理 ---------------- */
+  side() {
+    const s = el("aside", "tlt-fm-side");
+    const ids = Array.from(this.selected);
+    if (ids.length === 1) {
+      const f = this.store.feeds.find((x) => x.id === ids[0]);
+      if (f) {
+        const tw = el("div", "tlt-d-titlewrap");
+        const tEl = el("div", "tlt-d-title", f.name);
+        const pen = el("button", "tlt-rename", "\u270E");
+        pen.title = f.remote ? t("\u8BBE\u7F6E\u522B\u540D\uFF08\u53EA\u6539\u4F60\u770B\u5230\u7684\u540D\u79F0\uFF09") : t("\u6539\u6E90\u540D\u79F0");
+        pen.onclick = () => {
+          const inp = el("input", "tlt-input");
+          inp.value = f.name;
+          tw.empty();
+          tw.appendChild(inp);
+          inp.focus();
+          inp.select();
+          let done = false;
+          const commit = () => {
+            void (async () => {
+              if (done) return;
+              done = true;
+              const v = inp.value.trim();
+              if (v && v !== f.name) {
+                const r = await this.store.renameFeed(f, v);
+                new Notice(r.alias ? t("\u5DF2\u8BBE\u4E3A\u4F60\u8FD9\u8FB9\u7684\u522B\u540D\u300C{n}\u300D\uFF08\u5BF9\u65B9\u7684\u6E90\u540D\u4E0D\u53D8\uFF09", { n: v }) : t("\u5DF2\u6539\u540D\u4E3A\u300C{n}\u300D", { n: v }));
+              }
+              await this.refresh();
+            })();
+          };
+          inp.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") void this.render();
+          });
+          inp.addEventListener("blur", commit);
+        };
+        tw.append(tEl, pen);
+        s.appendChild(tw);
+        s.appendChild(el(
+          "div",
+          "tlt-d-meta",
+          t("{k} \xB7 {n} \u6761", { k: f.personal ? t("\u4E2A\u4EBA\u6E90") : f.mine ? t("\u6211\u53D1\u5E03\u7684\u6E90") : t("\u6211\u8BA2\u9605\u7684\u6E90"), n: f.items.length })
+        ));
+        if (f.remote && f.remoteTitle) {
+          s.appendChild(el("div", "tlt-d-meta", t("\u539F\u540D\uFF1A{n}{owner}", { n: f.remoteTitle, owner: f.owner ? t(" \xB7 \u6765\u81EA {o}", { o: f.owner }) : "" })));
+        }
+        const act = el("div", "tlt-d-act");
+        if (f.personal) {
+          s.appendChild(el("div", "tlt-d-body", t("\u65B0\u6D88\u606F\u9ED8\u8BA4\u8FDB\u8FD9\u91CC\uFF0C\u53EA\u6709\u81EA\u5DF1\u770B\u3002\u70B9\u5F00\u67D0\u6761\u8349\u7A3F\u53EF\u4EE5\u300C\u53D1\u5E03\u4E3A\u6D88\u606F\u6E90\u300D\u3002")));
+          const n = el("button", "tlt-btn pri", t("\u65B0\u5EFA\u6D88\u606F\u5230\u8FD9\u4E2A\u6E90"));
+          n.onclick = () => new ComposeModal(this.app, this.store, () => this.refresh(), f.id).open();
+          act.appendChild(n);
+          const pub = el("button", "tlt-btn", t("\u53D1\u5E03\u6D88\u606F\u6E90\u2026"));
+          pub.title = t("\u628A\u8FD9\u91CC\u7684\u8349\u7A3F\u53D8\u6210\u4E00\u4E2A\u522B\u4EBA\u80FD\u8BA2\u9605\u7684\u6E90");
+          pub.onclick = () => new PublishFeedModal(this.app, this.store, this.plugin, f, () => this.refresh()).open();
+          act.appendChild(pub);
+        } else if (f.mine) {
+          const st = this.plugin.hubState();
+          const pid = (this.cfg.feedIds || {})[f.id] || f.id;
+          const url = `${st.publish}/feed?id=${encodeURIComponent(pid)}`;
+          const urow = el("div", "tlt-urrow");
+          const uin = el("input", "tlt-input tlt-input-url");
+          uin.readOnly = true;
+          uin.value = url;
+          uin.title = t("\u9009\u4E2D\u590D\u5236\uFF0C\u6216\u70B9\u53F3\u8FB9\u7684\u300C\u590D\u5236\u300D");
+          const copy = el("button", "tlt-btn tiny", t("\u590D\u5236"));
+          copy.onclick = () => {
+            void (async () => {
+              try {
+                if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(url);
+                else {
+                  uin.select();
+                }
+                new Notice(t("\u8BA2\u9605\u5730\u5740\u5DF2\u590D\u5236"));
+              } catch {
+                uin.select();
+                new Notice(t("\u590D\u5236\u5931\u8D25\uFF0C\u5DF2\u5E2E\u4F60\u9009\u4E2D\uFF0C\u6309 \u2318C \u590D\u5236"), 4e3);
+              }
+            })();
+          };
+          urow.append(uin, copy);
+          s.appendChild(el("div", "tlt-d-body", t("\u628A\u8FD9\u884C\u5730\u5740\u53D1\u7ED9\u522B\u4EBA\uFF0C\u5BF9\u65B9\u5728\u300C\u8BA2\u9605\u300D\u91CC\u7C98\u8D34\u5373\u53EF")));
+          s.appendChild(urow);
+          const push = el("button", "tlt-btn pri", t("\u624B\u52A8\u63A8\u9001"));
+          push.onclick = () => {
+            void (async () => {
+              try {
+                const clean = await this.store.ensureCleanPublishId(f);
+                if (clean.changed) new Notice(t("\u8BA2\u9605\u5730\u5740\u5DF2\u6362\u6210\u65B0\u7684\u77ED ID\uFF1A{id}", { id: clean.id }), 5e3);
+                const r = await this.store.publishFeed(f, st.publish, clean.id);
+                new Notice(t("\u5DF2\u63A8\u9001 {n} \u6761", { n: r.count }));
+              } catch (e) {
+                new Notice(t("\u63A8\u9001\u5931\u8D25\uFF1A") + errMsg(e));
+              }
+            })();
+          };
+          const unpub = el("button", "tlt-btn danger", t("\u53D6\u6D88\u53D1\u5E03"));
+          unpub.onclick = () => {
+            void (async () => {
+              try {
+                await this.store.unpublishFeed(pid, st.publish);
+              } catch {
+              }
+              if (!Store.isCleanId(pid)) {
+                try {
+                  await this.store.unpublishFeed(f.id, st.publish);
+                } catch {
+                }
+              }
+              const back = f.personal ? 0 : await this.store.demoteToPersonal(f, "\u4E2A\u4EBA");
+              this.selected.delete(f.id);
+              await this.refresh();
+              if (back < 0) new Notice(t("\u5E76\u56DE\u4E2A\u4EBA\u5931\u8D25\uFF0C\u6E90\u6587\u4EF6\u5DF2\u4FDD\u7559\uFF0C\u7A0D\u540E\u518D\u8BD5"));
+              else if (!back) new Notice(t("\u5DF2\u53D6\u6D88\u53D1\u5E03\uFF0C\u8FD9\u4E2A\u6E90\u539F\u6837\u56DE\u5230\u300C\u4E2A\u4EBA\u300D"));
+              else new Notice(t("\u5DF2\u53D6\u6D88\u53D1\u5E03\uFF0C{n} \u6761\u5E76\u56DE\u300C\u4E2A\u4EBA\u300D\uFF08\u539F\u6765\u90A3\u4E2A\u4E2A\u4EBA\u6E90\u91CC\u5DF2\u6709\u5185\u5BB9\uFF09", { n: back }));
+            })();
+          };
+          act.append(push, unpub);
+        } else {
+          const st = this.plugin.hubState();
+          if (f.remote) s.appendChild(el("div", "tlt-d-body", f.remote));
+          const un = el("button", "tlt-btn danger", t("\u53D6\u6D88\u8BA2\u9605"));
+          un.onclick = () => {
+            void (async () => {
+              try {
+                await this.store.unsubscribeRemote(st.sync, f.remote || "");
+              } catch {
+              }
+              this.selected.delete(f.id);
+              const gone = await this.store.trashFeedFile(f);
+              await this.refresh();
+              new Notice(gone ? t("\u5DF2\u53D6\u6D88\u8BA2\u9605\u300C{n}\u300D\uFF0C\u672C\u5730\u6587\u4EF6\u5DF2\u8FDB\u56DE\u6536\u7AD9", { n: f.name }) : t("\u5DF2\u53D6\u6D88\u8BA2\u9605\u300C{n}\u300D", { n: f.name }));
+            })();
+          };
+          act.appendChild(un);
+        }
+        s.appendChild(act);
+        s.appendChild(el("div", "tlt-hint", t("\u5DE6\u680F\u53EF\u591A\u9009\u6E90\u6765\u8FC7\u6EE4\u65F6\u95F4\u7EBF\uFF1B\u8FD9\u91CC\u53EA\u7BA1\u7406\u5F53\u524D\u8FD9\u4E00\u4E2A\u6E90\u3002")));
+        return s;
+      }
+    }
+    if (ids.length > 1) {
+      s.appendChild(el("div", "tlt-d-title", t("\u5DF2\u9009 {n} \u4E2A\u6E90", { n: ids.length })));
+      s.appendChild(el("div", "tlt-d-meta", t("\u8981\u7BA1\u7406\u67D0\u4E2A\u6E90\uFF0C\u53EA\u9009\u5B83\u4E00\u4E2A\u3002")));
+      const list = el("div", "tlt-src-list");
+      ids.forEach((id) => {
+        const f = this.store.feeds.find((x) => x.id === id);
+        if (!f) return;
+        const row2 = el("div", "tlt-src-row");
+        row2.append(
+          el("span", "tlt-src-name", f.name),
+          el("span", "tlt-src-kind", f.personal ? t("\u4E2A\u4EBA") : f.mine ? t("\u6211\u53D1\u5E03") : t("\u8BA2\u9605"))
+        );
+        list.appendChild(row2);
+      });
+      s.appendChild(list);
+      return s;
+    }
+    return this.overviewSide(s);
+  }
+  overviewSide(s) {
+    const unread = this.msgs().filter((x) => !x.read_).length;
+    const star = this.msgs().filter((x) => x.star).length;
+    s.appendChild(el("div", "tlt-d-title", t("\u6D88\u606F\u6E90\u7BA1\u7406")));
+    const stats = el("div", "tlt-d-stats");
+    [[String(unread), t("\u672A\u8BFB")], [String(star), t("\u91CD\u8981")], [String(this.store.feeds.length), t("\u6E90")]].forEach(([v, l]) => {
+      const c = el("div", "tlt-d-stat");
+      c.append(el("b", "", v), el("span", "", l));
+      stats.appendChild(c);
+    });
+    s.appendChild(stats);
+    s.appendChild(this.hubPanel());
+    s.appendChild(el("div", "tlt-hint", t("\u70B9\u5DE6\u680F\u67D0\u4E2A\u6E90\uFF0C\u8FD9\u91CC\u6362\u6210\u5B83\u7684\u7BA1\u7406\u9762\u677F\uFF08\u53EF\u591A\u9009\u7B5B\u9009\u65F6\u95F4\u7EBF\uFF09\u3002")));
+    return s;
+  }
+  hubPanel() {
+    const box = el("div", "tlt-hub-side");
+    const st = this.plugin.hubState();
+    box.appendChild(el("div", "tlt-fgrp", t("\u670D\u52A1")));
+    const row2 = (label, value) => {
+      const d = el("div", "tlt-hub-row");
+      d.append(el("span", "tlt-hub-l", label), el("code", "", value));
+      return d;
+    };
+    box.appendChild(row2(t("\u53D1\u5E03"), st.publish));
+    box.appendChild(row2(t("\u62C9\u53D6"), st.sync));
+    box.appendChild(el(
+      "div",
+      "tlt-hub-note",
+      t("\u81EA\u52A8\u540C\u6B65\uFF1A{a} \xB7 \u81EA\u52A8\u63A8\u9001\uFF1A{b}\uFF08\u5728\u8BBE\u7F6E\u91CC\u6539\uFF09", { a: st.syncMin ? t("\u6BCF {n} \u5206\u949F", { n: st.syncMin }) : t("off"), b: st.pushMin ? t("\u6BCF {n} \u5206\u949F", { n: st.pushMin }) : t("off") })
+    ));
+    const btns = el("div", "tlt-hub-btns");
+    const push = el("button", "tlt-btn", t("\u63A8\u9001\u6211\u7684\u6E90"));
+    push.onclick = () => new PublishModal(this.app, this.store, this.plugin, () => this.render()).open();
+    const sync = el("button", "tlt-btn", t("\u540C\u6B65\u8BA2\u9605"));
+    sync.onclick = () => {
+      void (async () => {
+        try {
+          const r = await this.store.pullFromHub(st.sync);
+          const stamp = (/* @__PURE__ */ new Date()).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+          this.plugin.setHubState({ lastSync: stamp, lastResult: t("\u65B0\u589E {n} \u6761", { n: r.added }), lastError: "" });
+          await this.refresh();
+          new Notice(t("\u540C\u6B65\u5B8C\u6210\uFF1A\u65B0\u589E {n} \u6761", { n: r.added }));
+        } catch (e) {
+          new Notice(t("\u540C\u6B65\u5931\u8D25\uFF1A") + errMsg(e));
+        }
+      })();
+    };
+    btns.append(push, sync);
+    box.appendChild(btns);
+    const input = el("input", "tlt-input");
+    input.placeholder = t("\u8BA2\u9605\u5730\u5740\uFF08\u53EF\u7C98\u8D34 @URL:\u2026\uFF09");
+    box.appendChild(input);
+    const sub = el("button", "tlt-btn", t("\u8BA2\u9605\u8FD9\u4E2A\u6E90"));
+    sub.onclick = () => {
+      void (async () => {
+        const url = cleanFeedUrl(input.value);
+        if (!url) {
+          new Notice(t("\u5148\u586B\u8BA2\u9605\u5730\u5740"));
+          return;
+        }
+        try {
+          const r = await this.store.subscribeRemote(st.sync, url);
+          if (r.reason === "self") {
+            new Notice(t("\u8FD9\u662F\u4F60\u81EA\u5DF1\u53D1\u5E03\u7684\u6E90\uFF0C\u4E0D\u9700\u8981\u8BA2\u9605"));
+            return;
+          }
+          if (r.existed) {
+            new Notice(t("\u5DF2\u7ECF\u8BA2\u9605\u8FC7\u8FD9\u4E2A\u6E90"));
+            input.value = "";
+            return;
+          }
+          input.value = "";
+          const p = await this.store.pullFromHub(st.sync);
+          await this.refresh();
+          new Notice(t("\u5DF2\u8BA2\u9605\u5E76\u540C\u6B65 {n} \u6761", { n: p.added }));
+        } catch (e) {
+          new Notice(t("\u8BA2\u9605\u5931\u8D25\uFF1A") + errMsg(e));
+        }
+      })();
+    };
+    box.appendChild(sub);
+    return box;
+  }
+};
+var PublishFeedModal = class extends TltModal {
+  constructor(app, store, plugin, from, onDone) {
+    super(app);
+    this.store = store;
+    this.plugin = plugin;
+    this.from = from;
+    this.onDone = onDone;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", t("\u53D1\u5E03\u6D88\u606F\u6E90")));
+    contentEl.appendChild(el(
+      "div",
+      "tlt-m-meta",
+      t("\u628A\u300C{n}\u300D\u91CC\u7684\u8349\u7A3F\u53D8\u6210\u4E00\u4E2A\u522B\u4EBA\u80FD\u8BA2\u9605\u7684\u6E90\uFF1B\u53D1\u5E03\u540E\u5B83\u4F1A\u51FA\u73B0\u5728\u300C\u6211\u53D1\u5E03\u7684\u300D\u91CC\u3002", { n: this.from.name })
+    ));
+    contentEl.appendChild(el("div", "tlt-m-meta", t("\u6E90\u540D\u79F0\uFF1A{n}", { n: this.from.name })));
+    const descRow = el("div", "tlt-row");
+    descRow.appendChild(el("span", "tlt-row-l", t("\u8BF4\u660E")));
+    const descIn = el("input", "tlt-input");
+    descIn.placeholder = t("\u8FD9\u4E2A\u6E90\u53D1\u4EC0\u4E48\uFF08\u53EF\u7559\u7A7A\uFF09");
+    descRow.appendChild(descIn);
+    contentEl.append(descRow);
+    contentEl.appendChild(el(
+      "div",
+      "tlt-hint",
+      t("\u540D\u79F0\u53D6\u81EA\u8FD9\u4E2A\u6E90\u672C\u8EAB\uFF08\u8981\u6539\u5728\u53F3\u680F \u270E \u6539\uFF0C\u53D1\u5E03/\u53D6\u6D88\u53D1\u5E03\u90FD\u4E0D\u4F1A\u53D8\uFF09\u3002\u8BA2\u9605\u5730\u5740\u7531\u63D2\u4EF6\u81EA\u52A8\u751F\u6210\uFF0C\u4E0D\u7528\u81EA\u5DF1\u8D77 ID\u3002")
+    ));
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", t("\u53D6\u6D88"));
+    cancel.onclick = () => this.close();
+    const ok = el("button", "tlt-btn pri", t("\u53D1\u5E03"));
+    ok.onclick = () => {
+      void (async () => {
+        const name = this.from.name;
+        const hub = this.plugin.hubState().publish;
+        if (!hub) {
+          new Notice(t("\u8FD8\u6CA1\u586B\u53D1\u5E03\u670D\u52A1\u5730\u5740\uFF08\u8BBE\u7F6E \u2192 \u6D88\u606F\u670D\u52A1\uFF09"));
+          return;
+        }
+        if (!await this.plugin.pingHub("publish")) return;
+        try {
+          const r = await this.store.publishSource(this.from, {
+            name,
+            desc: descIn.value.trim()
+          });
+          if (!r.ok) {
+            new Notice(t("\u53D1\u5E03\u5931\u8D25\uFF1A\u540D\u79F0\u7A7A\u7740"));
+            return;
+          }
+          await this.store.load();
+          const feed = this.store.feeds.find((f) => f.id === r.id || f.file === r.path);
+          if (!feed) throw new Error(t("\u53D1\u5E03\u540E\u6CA1\u8BFB\u56DE\u8FD9\u4E2A\u6E90"));
+          const pushed = await this.store.publishFeed(feed, hub, r.id);
+          const okRemote = await remoteHasFeed(hub, r.id);
+          this.close();
+          void this.onDone();
+          new Notice(okRemote ? t("\u5DF2\u53D1\u5E03\u5E76\u63A8\u9001\u300C{name}\u300D\xB7 {n} \u6761 \xB7 \u670D\u52A1\u7AEF\u5DF2\u786E\u8BA4", { name, n: pushed.count ?? 0 }) : t("\u5DF2\u63A8\u9001\uFF0C\u4F46\u670D\u52A1\u7AEF\u6CA1\u67E5\u5230\u300C{id}\u300D\uFF0C\u8BF7\u68C0\u67E5\u670D\u52A1\u5730\u5740\uFF1A{hub}", { id: r.id, hub }), 8e3);
+          new Notice(t("\u8BA2\u9605\u5730\u5740\u5DF2\u751F\u6210\uFF0C\u53EF\u5728\u53F3\u680F\u300C\u590D\u5236\u300D\u540E\u53D1\u7ED9\u522B\u4EBA\uFF1A{u}", { u: `${hub}/feed?id=${encodeURIComponent(r.id)}` }), 9e3);
+        } catch (e) {
+          this.close();
+          void this.onDone();
+          new Notice(t("\u6E90\u5DF2\u5EFA\u597D\uFF0C\u4F46\u63A8\u9001\u5931\u8D25\uFF1A{msg}\uFF08\u53EF\u5728\u53F3\u680F\u300C\u624B\u52A8\u63A8\u9001\u300D\u91CD\u8BD5\uFF09", { msg: errMsg(e) }), 8e3);
+        }
+      })();
+    };
+    foot.append(cancel, ok);
+    contentEl.appendChild(foot);
+    window.setTimeout(() => descIn.focus(), 50);
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var ComposeModal = class extends TltModal {
+  constructor(app, store, onDone, presetFeed) {
+    super(app);
+    this.store = store;
+    this.onDone = onDone;
+    this.presetFeed = presetFeed;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", t("\u65B0\u5EFA\u6D88\u606F")));
+    contentEl.appendChild(el("div", "tlt-m-meta", t("\u53EA\u6709\u6807\u9898\u5FC5\u586B\uFF1B\u65F6\u95F4\u5730\u70B9\u4EBA\u7269\u8FD9\u4E9B\u7559\u7740\u66F4\u597D\u627E\uFF0C\u4E5F\u53EF\u4EE5\u7A7A\u7740\u3002")));
+    const f = buildMsgFields(contentEl, { date: todayISO() }, this.store);
+    const srcRow = el("div", "tlt-row");
+    srcRow.appendChild(el("span", "tlt-row-l", t("\u6D88\u606F\u6E90")));
+    const src = el("select", "tlt-input");
+    const options = [
+      ...this.store.feeds.filter((x) => x.personal),
+      ...this.store.feeds.filter((x) => x.mine && !x.personal)
+    ];
+    options.forEach((x) => {
+      const o = createEl("option");
+      o.value = x.id;
+      o.textContent = `${x.name} (${x.personal ? t("\u4E2A\u4EBA") : t("\u5DF2\u53D1\u5E03")})`;
+      src.appendChild(o);
+    });
+    if (this.presetFeed) src.value = this.presetFeed;
+    srcRow.appendChild(src);
+    contentEl.appendChild(srcRow);
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", t("\u53D6\u6D88"));
+    cancel.onclick = () => this.close();
+    const ok = el("button", "tlt-btn pri", t("\u521B\u5EFA"));
+    ok.onclick = () => {
+      void (async () => {
+        const v = f.value();
+        if (!v.title) {
+          new Notice(t("\u5148\u5199\u6807\u9898"));
+          return;
+        }
+        if (!src.value) {
+          new Notice(t("\u5148\u9009\u4E00\u4E2A\u6D88\u606F\u6E90"));
+          return;
+        }
+        await this.store.addMessage(src.value, v);
+        this.close();
+        void this.onDone();
+        new Notice(t("\u5DF2\u521B\u5EFA\u6D88\u606F"));
+      })();
+    };
+    foot.append(cancel, ok);
+    contentEl.appendChild(foot);
+    window.setTimeout(() => f.titleEl.focus(), 50);
+    f.titleEl.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) ok.click();
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var PublishModal = class extends TltModal {
+  constructor(app, store, plugin, onDone) {
+    super(app);
+    this.store = store;
+    this.plugin = plugin;
+    this.onDone = onDone;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", t("\u63A8\u9001\u5230\u53D1\u5E03\u670D\u52A1")));
+    contentEl.appendChild(el("div", "tlt-m-meta", t("\u4E0B\u9762\u7684 ID \u5C31\u662F\u522B\u4EBA\u8BA2\u9605\u5730\u5740\u91CC\u7684 ?id=\u3002")));
+    const rows = [];
+    this.store.feeds.filter((f) => f.mine && !f.personal).forEach((f) => {
+      const r = el("div", "tlt-row");
+      r.appendChild(el("span", "tlt-row-l", f.name.slice(0, 6)));
+      const box = el("div", "tlt-row-v");
+      const input = el("input", "tlt-input");
+      input.value = (this.store.settings.feedIds || {})[f.id] || f.id;
+      box.append(input, el("div", "tlt-hint", t("{n} \u6761", { n: f.items.length })));
+      r.appendChild(box);
+      contentEl.appendChild(r);
+      rows.push({ feed: f, input });
+    });
+    if (!rows.length) contentEl.appendChild(el("div", "tlt-hint", t("\u6CA1\u6709\u53EF\u53D1\u5E03\u7684\u6E90")));
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", t("\u53D6\u6D88"));
+    cancel.onclick = () => this.close();
+    const ok = el("button", "tlt-btn pri", t("\u4FDD\u5B58\u5E76\u63A8\u9001"));
+    ok.onclick = () => {
+      void (async () => {
+        const ids = {};
+        rows.forEach(({ feed, input }) => {
+          ids[feed.id] = input.value.trim() || feed.id;
+        });
+        this.store.settings.feedIds = ids;
+        await this.plugin.saveSettings();
+        try {
+          let total = 0;
+          for (const { feed, input } of rows) {
+            const r = await this.store.publishFeed(feed, this.plugin.hubState().publish, input.value.trim() || feed.id);
+            total += r.count || 0;
+          }
+          new Notice(t("\u5DF2\u63A8\u9001 {f} \u4E2A\u6E90\uFF08{n} \u6761\uFF09", { f: rows.length, n: total }));
+        } catch (e) {
+          new Notice(t("\u63A8\u9001\u5931\u8D25\uFF1A") + errMsg(e));
+        }
+        this.close();
+        void this.onDone();
+      })();
+    };
+    foot.append(cancel, ok);
+    contentEl.appendChild(foot);
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
+// src/actions.ts
+function newProjectFlow(app, store, refresh) {
+  new PromptModal(app, t("\u65B0\u5EFA\u9879\u76EE"), t("\u9879\u76EE\u540D\uFF08\u4F1A\u5EFA\u6210\u4E00\u4E2A md\uFF0C## \u662F\u91CC\u7A0B\u7891\uFF09"), async (name) => {
+    const ok = await store.createProject(name);
+    if (!ok) {
+      new Notice(t("\u6CA1\u5EFA\u6210\uFF1A\u540D\u5B57\u7A7A\u4E86\uFF0C\u6216\u8005\u540C\u540D\u9879\u76EE\u5DF2\u5B58\u5728"));
+      return;
+    }
+    await store.load();
+    await refresh();
+    new Notice(t("\u5DF2\u65B0\u5EFA\u9879\u76EE\uFF1A{n}", { n: name }));
+  }).open();
+}
+
 // src/views/workbench.ts
 var VIEW_TYPE_WORKBENCH = "tlt-workbench";
 var DAY_FROM = 7 * 60;
@@ -4231,9 +5312,9 @@ var DAY_TO = 23 * 60;
 var HOUR_PX = 62;
 var periodLabel = (p) => ({ w: t("\u672C\u5468"), m: t("\u672C\u6708"), q: t("\u672C\u5B63\u5EA6") })[p];
 var kindLabel = (k) => ({ ask: t("\u8981\u6C42"), event: t("\u6D3B\u52A8"), risk: t("\u98CE\u9669"), note: t("\u901A\u77E5") })[k] || k;
-var KIND_COLOR = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
-var weekday = (i) => [t("\u65E5"), t("\u4E00"), t("\u4E8C"), t("\u4E09"), t("\u56DB"), t("\u4E94"), t("\u516D")][i] || "";
-var escapeXml = (s) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[c]);
+var KIND_COLOR2 = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
+var weekday2 = (i) => [t("\u65E5"), t("\u4E00"), t("\u4E8C"), t("\u4E09"), t("\u56DB"), t("\u4E94"), t("\u516D")][i] || "";
+var escapeXml2 = (s) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[c]);
 var labelWidth = (s) => Array.from(s).reduce((w, ch) => w + (/[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? 10 : 5.8), 0);
 var PROJ_COLORS = ["#5B6CFF", "#F0C24B", "#27C1A3", "#B57BFF", "#F2994A", "#FF7A9C", "#5FD6B4", "#7C8BA1"];
 var WorkbenchView = class extends ItemView {
@@ -4345,6 +5426,75 @@ var WorkbenchView = class extends ItemView {
     }
   }
   /* ---------- 左栏 ---------- */
+  /* ---------- 排序：项目 / 里程碑 / 任务通用 ---------- */
+  sortKey() {
+    return this.cfg.sortBy || "name";
+  }
+  sortDir() {
+    return this.cfg.sortDir === -1 ? -1 : 1;
+  }
+  /** 一组东西按「名称 / 创建 / 截止」排序；取不到时间的排最后，同名时按名称兜底 */
+  sortItems(items, keyOf, nameOf) {
+    const dir = this.sortDir();
+    const byName = this.sortKey() === "name";
+    return [...items].sort((a, b) => {
+      const va = keyOf(a), vb = keyOf(b);
+      if (!va && !vb) return nameOf(a).localeCompare(nameOf(b), "zh");
+      if (!va) return 1;
+      if (!vb) return -1;
+      const c = byName ? va.localeCompare(vb, "zh") : va.localeCompare(vb);
+      return c !== 0 ? c * dir : nameOf(a).localeCompare(nameOf(b), "zh");
+    });
+  }
+  /** 一组任务里最早/最晚的那个日期（项目、里程碑用它的任务推算） */
+  edgeDate(list, pick) {
+    const k = this.sortKey();
+    if (k === "name") return "";
+    const vals = list.map((t2) => (k === "created" ? t2.created : t2.due) || "").filter(Boolean).sort();
+    if (!vals.length) return "";
+    return pick === "min" ? vals[0] : vals[vals.length - 1];
+  }
+  sortTasks(list) {
+    const k = this.sortKey();
+    return this.sortItems(
+      list,
+      (t2) => k === "created" ? t2.created || "" : k === "due" ? t2.due || "" : t2.title,
+      (t2) => t2.title
+    );
+  }
+  /** 工具条上的排序按钮：当前口径写在按钮上，点开选口径、再点同一个换方向 */
+  sortControl() {
+    const btn = el("button", "tlt-btn tiny tlt-sortbtn");
+    const label = { name: t("\u540D\u79F0"), created: t("\u521B\u5EFA"), due: t("\u622A\u6B62") }[this.sortKey()];
+    btn.textContent = t("\u6392\u5E8F\uFF1A{label} {dir}", { label, dir: this.sortDir() === 1 ? "\u2191" : "\u2193" });
+    btn.title = t("\u6309\u540D\u79F0 / \u521B\u5EFA\u65F6\u95F4 / \u622A\u6B62\u65F6\u95F4\u6392\uFF1B\u70B9\u540C\u4E00\u4E2A\u6362\u65B9\u5411");
+    btn.dataset.sort = "1";
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const mark = (k) => this.sortKey() === k ? this.sortDir() === 1 ? " \u2191" : " \u2193" : "";
+      popMenu(btn, [
+        { label: t("\u6309\u540D\u79F0") + mark("name"), onClick: () => void this.pickSort("name") },
+        { label: t("\u6309\u521B\u5EFA\u65F6\u95F4") + mark("created"), onClick: () => void this.pickSort("created") },
+        { label: t("\u6309\u622A\u6B62\u65F6\u95F4") + mark("due"), onClick: () => void this.pickSort("due") },
+        { label: t("\u53CD\u5411\u6392\u5217"), onClick: () => void this.pickSort(this.sortKey(), true) }
+      ], "right");
+    };
+    return btn;
+  }
+  async pickSort(k, flip = false) {
+    if (this.sortKey() === k && !flip) this.cfg.sortDir = this.sortDir() === 1 ? -1 : 1;
+    else {
+      this.cfg.sortBy = k;
+      if (flip) this.cfg.sortDir = this.sortDir() === 1 ? -1 : 1;
+      else this.cfg.sortDir = 1;
+    }
+    const p = this.plugin;
+    try {
+      await p.saveSettings?.();
+    } catch {
+    }
+    await this.render();
+  }
   sidebar() {
     const s = el("aside", "tlt-side");
     if (this.sideOff) {
@@ -4371,9 +5521,37 @@ var WorkbenchView = class extends ItemView {
     top.appendChild(fold);
     s.appendChild(top);
     const scroll = el("div", "tlt-side-scroll");
-    scroll.appendChild(el("div", "tlt-shead", t("\u9879\u76EE \xB7 \u8FDB\u5EA6")));
-    const projects = this.store.projects();
+    const shead = el("div", "tlt-shead");
+    shead.appendChild(el("span", "", t("\u9879\u76EE \xB7 \u8FDB\u5EA6")));
+    const padd = el("button", "tlt-padd", "\uFF0B");
+    padd.title = t("\u65B0\u5EFA\u9879\u76EE");
+    padd.dataset.newproj = "1";
+    padd.onclick = () => newProjectFlow(this.app, this.store, () => this.render());
+    const psort = el("button", "tlt-padd", "\u21C5");
+    psort.title = t("\u9879\u76EE\u6392\u5E8F\uFF1A\u6309\u540D\u79F0 / \u521B\u5EFA\u65F6\u95F4 / \u622A\u6B62\u65F6\u95F4");
+    psort.dataset.sortproj = "1";
+    psort.onclick = (ev) => {
+      ev.stopPropagation();
+      this.sidebarSortMenu(psort);
+    };
+    shead.append(psort, padd);
+    scroll.appendChild(shead);
     const all = this.store.tasks;
+    const projTasks = (name) => all.filter((t2) => t2.project === name);
+    const projects = this.sortItems(
+      this.store.projects(),
+      (p2) => this.sortKey() === "name" ? p2 : this.edgeDate(projTasks(p2), "min"),
+      (p2) => p2
+    );
+    if (!projects.length) {
+      const empty = el("div", "tlt-pempty");
+      empty.appendChild(el("span", "", t("\u8FD8\u6CA1\u6709\u9879\u76EE")));
+      const add = el("button", "tlt-btn tiny", t("\uFF0B \u65B0\u5EFA\u9879\u76EE"));
+      add.dataset.newproj = "1";
+      add.onclick = () => newProjectFlow(this.app, this.store, () => this.render());
+      empty.appendChild(add);
+      scroll.appendChild(empty);
+    }
     projects.forEach((p) => {
       const list = all.filter((t2) => t2.project === p);
       const pct = list.length ? Math.round(list.filter((t2) => t2.done).length / list.length * 100) : 0;
@@ -4403,7 +5581,6 @@ var WorkbenchView = class extends ItemView {
       card.append(row2, bar, meta);
       scroll.appendChild(card);
     });
-    if (!projects.length) scroll.appendChild(el("div", "tlt-empty", t("{dir} \u91CC\u8FD8\u6CA1\u6709\u4EFB\u52A1\u6587\u4EF6", { dir: this.cfg.tasksFolder })));
     const archived = this.store.archivedProjects();
     if (archived.length) {
       const head = el("div", "tlt-shead tlt-shead-arch");
@@ -4543,7 +5720,7 @@ var WorkbenchView = class extends ItemView {
     const dl = D(sel);
     const lab = el("div", "tlt-dlabel");
     lab.append(t("{m} \u6708 {d} \u65E5", { m: dl.getMonth() + 1, d: dl.getDate() }));
-    lab.createEl("em", { text: t("\u5468{w}", { w: weekday(dl.getDay()) }) + (sel === todayISO() ? t(" \xB7 \u4ECA\u5929") : "") });
+    lab.createEl("em", { text: t("\u5468{w}", { w: weekday2(dl.getDay()) }) + (sel === todayISO() ? t(" \xB7 \u4ECA\u5929") : "") });
     const todayBtn = el("button", "tlt-btn", t("\u56DE\u5230\u4ECA\u5929"));
     todayBtn.dataset.today = "1";
     bar.append(
@@ -4559,7 +5736,7 @@ var WorkbenchView = class extends ItemView {
       const k = addDays(sel, i);
       const cell = el("div", "tlt-ds" + (k === sel ? " sel" : "") + (k === todayISO() ? " today" : ""));
       cell.dataset.day = k;
-      cell.append(el("span", "tlt-dw", weekday(D(k).getDay())), el("span", "tlt-dn", String(D(k).getDate())));
+      cell.append(el("span", "tlt-dw", weekday2(D(k).getDay())), el("span", "tlt-dn", String(D(k).getDate())));
       const b = el("span", "tlt-db" + (this.tasksForDay(k).length ? " on" : ""));
       cell.appendChild(b);
       strip.appendChild(cell);
@@ -4821,7 +5998,7 @@ var WorkbenchView = class extends ItemView {
       const x1 = cx + Math.cos(a1) * rr, y1 = cy + Math.sin(a1) * rr;
       const list = byP[p] || [];
       const open = list.filter((t2) => !t2.done).length;
-      body += `<path class="tlt-wedge" data-proj="${escapeXml(p)}" d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${x0.toFixed(1)} ${y0.toFixed(1)} A${rr.toFixed(1)} ${rr.toFixed(1)} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)} Z" fill="${this.projColor(p)}" opacity=".1"><title>${escapeXml(p)} \xB7 ${t("\u672A\u5B8C\u6210")} ${open} / ${t("\u5171")} ${list.length}</title></path>`;
+      body += `<path class="tlt-wedge" data-proj="${escapeXml2(p)}" d="M${cx.toFixed(1)} ${cy.toFixed(1)} L${x0.toFixed(1)} ${y0.toFixed(1)} A${rr.toFixed(1)} ${rr.toFixed(1)} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)} Z" fill="${this.projColor(p)}" opacity=".1"><title>${escapeXml2(p)} \xB7 ${t("\u672A\u5B8C\u6210")} ${open} / ${t("\u5171")} ${list.length}</title></path>`;
     });
     [0, 7, 14, 21].forEach((d) => {
       const r = r0 + d / 21 * (R - r0);
@@ -4847,7 +6024,7 @@ var WorkbenchView = class extends ItemView {
         const box = { x0: x0 - 3, x1: x0 + w + 3, y0: ly - 11, y1: ly + 5 };
         if (boxes.some((b) => !(box.x1 < b.x0 || box.x0 > b.x1 || box.y1 < b.y0 || box.y0 > b.y1))) continue;
         boxes.push(box);
-        body += `<text class="tlt-plab" data-proj="${escapeXml(p)}" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="${anchor}" fill="${this.projColor(p)}">${escapeXml(label)}<title>${escapeXml(p)}</title></text>`;
+        body += `<text class="tlt-plab" data-proj="${escapeXml2(p)}" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="${anchor}" fill="${this.projColor(p)}">${escapeXml2(label)}<title>${escapeXml2(p)}</title></text>`;
         break;
       }
     });
@@ -4879,7 +6056,7 @@ var WorkbenchView = class extends ItemView {
         <circle class="tlt-hit" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${(r + 7).toFixed(1)}"/>
         <circle class="tlt-node" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${r.toFixed(1)}"
           fill="${t2.done ? "var(--tlt-ink4)" : "var(--tlt-acc)"}" opacity="${t2.done ? 0.45 : 0.9}"/>
-        <title>${escapeXml(t2.title)}</title></g>`;
+        <title>${escapeXml2(t2.title)}</title></g>`;
     });
     this.store.milestones().forEach((m) => {
       const dues = m.tasks.map((t2) => t2.due).filter((d) => !!d).sort();
@@ -4889,11 +6066,11 @@ var WorkbenchView = class extends ItemView {
       const a = (-90 + i * span) * Math.PI / 180;
       const r = at(dues[dues.length - 1]);
       const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
-      body += `<g class="tlt-ms-g" data-mspeek="${escapeXml(m.project)}::${escapeXml(m.name)}">
+      body += `<g class="tlt-ms-g" data-mspeek="${escapeXml2(m.project)}::${escapeXml2(m.name)}">
         <rect class="tlt-hit" x="${(x - 8).toFixed(1)}" y="${(y - 8).toFixed(1)}" width="16" height="16"/>
         <rect class="tlt-ms-dia" x="${(x - 3.2).toFixed(1)}" y="${(y - 3.2).toFixed(1)}" width="6.4" height="6.4"
           transform="rotate(45 ${x.toFixed(1)} ${y.toFixed(1)})"/>
-        <title>${escapeXml(m.name)}</title></g>`;
+        <title>${escapeXml2(m.name)}</title></g>`;
     });
     return body;
   }
@@ -4920,6 +6097,7 @@ var WorkbenchView = class extends ItemView {
       seg2.appendChild(b2);
     });
     head.appendChild(seg2);
+    head.appendChild(this.sortControl());
     p.appendChild(head);
     const groups = [
       [t("{l}\u903E\u671F", { l: label }), m.late, "#D98B5F"],
@@ -4935,7 +6113,7 @@ var WorkbenchView = class extends ItemView {
       h.append(dot, el("span", "", name), el("span", "tlt-mgc", String(list.length)));
       g.appendChild(h);
       if (!list.length) g.appendChild(el("div", "tlt-empty", t("\u6CA1\u6709")));
-      list.forEach((t2) => g.appendChild(this.taskRow(t2)));
+      this.sortTasks(list).forEach((t2) => g.appendChild(this.taskRow(t2)));
       p.appendChild(g);
     });
     return p;
@@ -4986,7 +6164,7 @@ var WorkbenchView = class extends ItemView {
   stepBlock(t2) {
     const box = el("div", "tlt-steps");
     t2.steps.forEach((st, i) => {
-      const row2 = el("div", "tlt-step");
+      const row2 = el("div", "tlt-step" + (st.done ? " done" : ""));
       const cb = el("i", "tlt-scb" + (st.done ? " on" : ""));
       cb.dataset.step = `${t2.id}|${i}`;
       const txt = el("span", "tlt-step-t", st.text);
@@ -5004,6 +6182,16 @@ var WorkbenchView = class extends ItemView {
     return box;
   }
   /** 项目菜单：新建里程碑 / 归档项目 / 打开文件 */
+  /** 侧栏窄，排序用一个小菜单 */
+  sidebarSortMenu(anchor) {
+    const mark = (k) => this.sortKey() === k ? this.sortDir() === 1 ? " \u2191" : " \u2193" : "";
+    popMenu(anchor, [
+      { label: t("\u6309\u540D\u79F0") + mark("name"), onClick: () => void this.pickSort("name") },
+      { label: t("\u6309\u521B\u5EFA\u65F6\u95F4") + mark("created"), onClick: () => void this.pickSort("created") },
+      { label: t("\u6309\u622A\u6B62\u65F6\u95F4") + mark("due"), onClick: () => void this.pickSort("due") },
+      { label: t("\u53CD\u5411\u6392\u5217"), onClick: () => void this.pickSort(this.sortKey(), true) }
+    ], "right");
+  }
   projectMenu(anchor, p, at) {
     const file = this.app.vault.getAbstractFileByPath(`${this.cfg.tasksFolder}/${p}.md`);
     popMenu(anchor, [
@@ -5266,6 +6454,8 @@ var WorkbenchView = class extends ItemView {
     const finished = ms.filter(isDone);
     const head = el("div", "tlt-pane-h");
     head.append(el("span", "", t("{a} \u4E2A\u91CC\u7A0B\u7891 \xB7 {b} \u5F00\u5C55\u4E2D \xB7 {c} \u5DF2\u5B8C\u6210", { a: ms.length, b: active.length, c: finished.length })));
+    head.appendChild(el("span", "tlt-spacer"));
+    head.appendChild(this.sortControl());
     p.appendChild(head);
     if (!ms.length) p.appendChild(el("div", "tlt-empty", t("\u4EFB\u52A1\u6587\u4EF6\u91CC\u7528\u300C## \u91CC\u7A0B\u7891\u540D\u300D\u5206\u8282\uFF0C\u8FD9\u91CC\u5C31\u4F1A\u51FA\u73B0\u91CC\u7A0B\u7891\u3002")));
     const paintGroup = (group, list) => {
@@ -5301,14 +6491,19 @@ var WorkbenchView = class extends ItemView {
         card.appendChild(h);
         if (this.expanded.has(m.name)) {
           const body = el("div", "tlt-ms-b");
-          m.tasks.forEach((t2) => body.appendChild(this.taskRow(t2)));
+          this.sortTasks(m.tasks).forEach((t2) => body.appendChild(this.taskRow(t2)));
           card.appendChild(body);
         }
         p.appendChild(card);
       });
     };
-    paintGroup(t("\u5F00\u5C55\u4E2D"), active);
-    paintGroup(t("\u5DF2\u5B8C\u6210"), finished);
+    const sortMs = (list) => this.sortItems(
+      list,
+      (m) => this.sortKey() === "name" ? m.name : this.edgeDate(m.tasks, "min"),
+      (m) => m.name
+    );
+    paintGroup(t("\u5F00\u5C55\u4E2D"), sortMs(active));
+    paintGroup(t("\u5DF2\u5B8C\u6210"), sortMs(finished));
     return p;
   }
   /* ---------- 右栏：消息 ---------- */
@@ -5347,13 +6542,13 @@ var WorkbenchView = class extends ItemView {
     items.forEach((m) => {
       if (m.date !== last) {
         const d = D(m.date);
-        list.appendChild(el("div", "tlt-mday" + (m.date === todayISO() ? " today" : ""), `${d.getMonth() + 1}/${d.getDate()} \xB7 ${t("\u5468{w}", { w: weekday(d.getDay()) })}`));
+        list.appendChild(el("div", "tlt-mday" + (m.date === todayISO() ? " today" : ""), `${d.getMonth() + 1}/${d.getDate()} \xB7 ${t("\u5468{w}", { w: weekday2(d.getDay()) })}`));
         last = m.date;
       }
       const n = el("div", "tlt-mnode" + (m.star ? " star" : "") + (m.read_ ? " read" : "") + (m.state === "ended" ? " ended" : ""));
       n.dataset.msg = m.id;
       const dot = el("span", "tlt-nd");
-      dot.style.background = KIND_COLOR[m.kind];
+      dot.style.background = KIND_COLOR2[m.kind];
       n.appendChild(dot);
       const nh = el("div", "tlt-nh");
       nh.append(el("span", "tlt-nm", m.title));
@@ -5866,1056 +7061,6 @@ ${t("\u53EA\u5220\u5B50\u9879\uFF0C\u4EFB\u52A1\u672C\u8EAB\u4E0D\u52A8\u3002")}
   }
   findTask(id) {
     return [...this.store.tasks, ...this.store.logs].find((t2) => t2.id === id);
-  }
-};
-
-// src/views/messages.ts
-var VIEW_TYPE_MESSAGES = "tlt-messages";
-async function remoteHasFeed(hub, id) {
-  try {
-    const res = await requestUrl({ url: `${hub.replace(/\/$/, "")}/feeds`, method: "GET", throw: false });
-    if (res.status >= 400) return false;
-    const body = res.json;
-    return (body.feeds || []).some((x) => x.id === id);
-  } catch {
-    return false;
-  }
-}
-var KIND_COLOR2 = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
-var weekday2 = (i) => [t("\u65E5"), t("\u4E00"), t("\u4E8C"), t("\u4E09"), t("\u56DB"), t("\u4E94"), t("\u516D")][i] || "";
-var escapeXml2 = (s) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[c]);
-var MessagesView = class extends ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
-    /** 左栏多选：选中哪些源（空 = 全部源） */
-    this.selected = /* @__PURE__ */ new Set();
-    this.zoom = "w";
-    this.filter = "all";
-    this.range = "all";
-    this.mode = "card";
-    /** 横轴时间线：窗口跨度（天）与中心（相对今天的偏移） */
-    this.tlSpan = 33;
-    this.tlCenter = 13.5;
-    this.heatMonth = todayISO().slice(0, 7);
-    this.heatDay = "";
-    this.q = "";
-    this.plugin = plugin;
-  }
-  get store() {
-    return this.plugin.store;
-  }
-  /**
-   * 视图有可能比插件的 store 先就绪（重启恢复标签页时会撞上），
-   * 所以设置统一走这里：拿不到就用默认值，渲染绝不因此抛错。
-   */
-  get cfg() {
-    return this.plugin?.store?.settings ?? DEFAULT_SETTINGS;
-  }
-  getViewType() {
-    return VIEW_TYPE_MESSAGES;
-  }
-  getDisplayText() {
-    return t("\u6D88\u606F\u4E2D\u5FC3");
-  }
-  getIcon() {
-    return "rss";
-  }
-  async onOpen() {
-    await this.ensureData();
-    await this.render();
-  }
-  async refresh() {
-    await this.ensureData(true);
-    await this.render();
-  }
-  /** 视图可能比插件先就绪；拿不到 store 就跳过，绝不抛 */
-  async ensureData(force = false) {
-    const s = this.plugin?.store;
-    if (!s) return;
-    try {
-      if (force) await s.load();
-      else await s.ensureLoaded();
-    } catch (e) {
-      console.error("TLT: \u8F7D\u5165\u6570\u636E\u5931\u8D25", e);
-    }
-  }
-  msgs() {
-    return this.store.feeds.flatMap((f) => f.items);
-  }
-  async render() {
-    const alive = new Set(this.store.feeds.map((f) => f.id));
-    [...this.selected].forEach((id) => {
-      if (!alive.has(id)) this.selected.delete(id);
-    });
-    const root = this.contentEl;
-    const ae = document.activeElement;
-    const keep = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey ? { key: ae.dataset.focuskey, start: ae.selectionStart ?? 0, end: ae.selectionEnd ?? 0 } : null;
-    root.empty();
-    root.addClass("tlt-root");
-    const outer = el("div", "tlt-fm");
-    const head = el("div", "tlt-fm-h");
-    head.append(el("b", "", t("\u6D88\u606F\u4E2D\u5FC3")), el("span", "tlt-fm-hint", t("\u4E2A\u4EBA \xB7 \u53D1\u5E03 \xB7 \u8BA2\u9605")));
-    head.appendChild(el("span", "tlt-spacer"));
-    const th = el("button", "tlt-btn", this.plugin.isLight() ? "\u263E" : "\u2600");
-    th.onclick = () => this.plugin.toggleTheme();
-    head.appendChild(th);
-    outer.appendChild(head);
-    const body = el("div", "tlt-fm-body");
-    body.append(this.rail(), this.center(), this.side());
-    outer.appendChild(body);
-    root.appendChild(outer);
-    if (keep) {
-      const again = root.querySelector(`[data-focuskey="${keep.key}"]`);
-      if (again) {
-        again.focus();
-        try {
-          again.setSelectionRange(keep.start, keep.end);
-        } catch {
-        }
-      }
-    }
-  }
-  /* ---------------- 左栏：多选筛选 ---------------- */
-  railRow(f) {
-    const on = this.selected.has(f.id);
-    const row2 = el("div", "tlt-fr" + (on ? " on" : "") + (f.mine ? " mine" : "") + (f.personal ? " personal" : ""));
-    row2.append(
-      el("span", "tlt-ck" + (on ? " on" : "")),
-      el("span", "tlt-fr-n", f.name),
-      el("span", "tlt-fr-c", String(f.items.length))
-    );
-    row2.onclick = (ev) => {
-      if (ev.metaKey || ev.ctrlKey) {
-        if (this.selected.has(f.id)) this.selected.delete(f.id);
-        else this.selected.add(f.id);
-      } else if (this.selected.size === 1 && this.selected.has(f.id)) {
-        this.selected.clear();
-      } else {
-        this.selected.clear();
-        this.selected.add(f.id);
-      }
-      void this.render();
-    };
-    return row2;
-  }
-  rail() {
-    const r = el("aside", "tlt-fm-rail");
-    const personal = this.store.feeds.filter((f) => f.personal);
-    const mine = this.store.feeds.filter((f) => f.mine && !f.personal);
-    const subs = this.store.feeds.filter((f) => !f.mine && !f.personal);
-    r.appendChild(el("div", "tlt-fgrp", t("\u4E2A\u4EBA")));
-    personal.forEach((f) => r.appendChild(this.railRow(f)));
-    r.appendChild(el("div", "tlt-fgrp", t("\u6211\u53D1\u5E03\u7684")));
-    mine.forEach((f) => r.appendChild(this.railRow(f)));
-    r.appendChild(el("div", "tlt-fgrp", t("\u6211\u8BA2\u9605\u7684")));
-    subs.forEach((f) => r.appendChild(this.railRow(f)));
-    if (!personal.length && !mine.length && !subs.length) r.appendChild(el("div", "tlt-empty", t("feeds/ \u91CC\u8FD8\u6CA1\u6709\u6E90")));
-    const all = el("div", "tlt-fr add");
-    all.append(el("span", "tlt-fr-n", this.selected.size ? t("\u5DF2\u9009 {n} \u4E2A \xB7 \u6E05\u9664", { n: this.selected.size }) : t("\u2318 \u70B9\u53EF\u591A\u9009 \xB7 \u5168\u90E8\u6E90")));
-    all.onclick = () => {
-      this.selected.clear();
-      void this.render();
-    };
-    r.appendChild(all);
-    return r;
-  }
-  /* ---------------- 中栏：新建 + 筛选 + 时间线 ---------------- */
-  center() {
-    const m = el("main", "tlt-fm-main");
-    const items = this.visible();
-    const bar = el("div", "tlt-fm-bar");
-    const sb = el("div", "tlt-fm-search");
-    const si = el("input");
-    si.placeholder = t("\u641C\u7D22\u6D88\u606F");
-    si.value = this.q;
-    si.dataset.focuskey = "msgsearch";
-    let composing = false;
-    si.addEventListener("compositionstart", () => {
-      composing = true;
-    });
-    si.addEventListener("compositionend", () => {
-      composing = false;
-      this.q = si.value.trim();
-      void this.render();
-    });
-    si.addEventListener("input", () => {
-      if (composing) return;
-      this.q = si.value.trim();
-      void this.render();
-    });
-    sb.appendChild(si);
-    bar.appendChild(sb);
-    const add = el("button", "tlt-btn pri lg", t("\uFF0B \u65B0\u5EFA"));
-    add.onclick = () => new ComposeModal(this.app, this.store, () => this.refresh()).open();
-    bar.appendChild(add);
-    m.appendChild(bar);
-    const t1 = el("div", "tlt-fm-tools");
-    const dg = el("div", "tlt-tgrp");
-    dg.appendChild(el("span", "tlt-tgrp-l", t("\u65F6\u95F4")));
-    const range = el("div", "tlt-seg");
-    [["all", t("\u5168\u90E8")], ["today", t("\u4ECA\u5929")], ["7", t("\u8FD1 7 \u5929")], ["30", t("\u8FD1 30 \u5929")]].forEach(([v, t3]) => {
-      const b = el("button", "tlt-seg-b" + (this.range === v ? " on" : ""), t3);
-      b.onclick = () => {
-        this.range = v;
-        void this.render();
-      };
-      range.appendChild(b);
-    });
-    dg.appendChild(range);
-    t1.appendChild(dg);
-    t1.appendChild(el("span", "tlt-spacer"));
-    const today = el("button", "tlt-tlink", t("\u56DE\u5230\u4ECA\u5929"));
-    today.onclick = () => this.jumpToday();
-    t1.appendChild(today);
-    m.appendChild(t1);
-    const t2 = el("div", "tlt-fm-tools sub");
-    t2.appendChild(el("span", "tlt-count", t("{n} \u6761", { n: items.length })));
-    t2.appendChild(el("span", "tlt-spacer"));
-    const MODES = [
-      ["card", t("\u5361\u7247")],
-      ["spine", t("\u6CB3\u6D41")],
-      ["compact", t("\u7D27\u51D1")],
-      ["bands", t("\u6309\u6E90\u5206\u5E26")],
-      ["axis", t("\u53EF\u7F29\u653E\u65F6\u95F4\u8F74")],
-      ["heat", t("\u6708\u5EA6\u70ED\u529B")],
-      ["net", t("\u4EBA\u7269\u8109\u7EDC")]
-    ];
-    const cur = MODES.find(([v]) => v === this.mode) ?? MODES[0];
-    const viewBtn = el("button", "tlt-btn tlt-viewbtn");
-    viewBtn.append(el("span", "tlt-viewbtn-i", "\u25A4"), el("span", "", t(cur[1])), el("span", "tlt-viewbtn-c", "\u2304"));
-    viewBtn.onclick = () => {
-      popMenu(viewBtn, MODES.map(([v, label]) => ({
-        label: (v === this.mode ? "\u2713 " : "   ") + t(label),
-        onClick: () => {
-          this.mode = v;
-          void this.render();
-        }
-      })), "right");
-    };
-    t2.appendChild(viewBtn);
-    m.appendChild(t2);
-    if (this.mode === "heat") m.appendChild(this.heat());
-    else if (this.mode === "axis") m.appendChild(this.axis(items));
-    else if (this.mode === "bands") m.appendChild(this.bands(items));
-    else if (this.mode === "net") m.appendChild(this.net(items));
-    else m.appendChild(this.timeline(items));
-    return m;
-  }
-  /** 时间线（卡片 / 河流 / 紧凑共用） */
-  timeline(items) {
-    const list = el("div", "tlt-mtl wide mode-" + this.mode);
-    if (!items.length) list.appendChild(el("div", "tlt-empty", t("\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u6D88\u606F")));
-    let last = "";
-    items.forEach((x) => {
-      const key = this.zoom === "m" ? x.date.slice(0, 7) : x.date;
-      if (key !== last) {
-        const d = D(x.date);
-        const isToday = x.date === todayISO();
-        const mk = el("div", "tlt-mday" + (isToday ? " today" : ""));
-        mk.dataset.day = isToday ? "today" : x.date;
-        mk.append(el(
-          "span",
-          "tlt-mday-n",
-          this.zoom === "m" ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : `${d.getDate()}`
-        ));
-        if (this.zoom !== "m") mk.append(el("span", "tlt-mday-u", `${d.getMonth() + 1}`));
-        if (this.zoom !== "m") mk.append(el("span", "tlt-mday-w", weekday2(d.getDay())));
-        if (isToday) mk.append(el("span", "tlt-mday-t", t("\u4ECA\u5929")));
-        list.appendChild(mk);
-        last = key;
-      }
-      list.appendChild(this.item(x));
-    });
-    return list;
-  }
-  /** 可缩放时间轴：横轴是日期，滚轮缩放、拖动平移、双击复位 */
-  axis(items) {
-    const box = el("div", "tlt-axis");
-    const svg = createSvg("svg");
-    svg.setAttribute("class", "tlt-axis-svg");
-    svg.setAttribute("viewBox", "0 0 760 260");
-    const W = 760;
-    const label = el("div", "tlt-axis-hint", "");
-    const redraw = () => {
-      const lanes = this.axisLanes(items);
-      const H = Math.max(120, 54 + lanes.length * 30);
-      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-      setSvgMarkup(svg, this.axisBody(W, H, items));
-      label.textContent = t("\u7A97\u53E3 {n} \u5929 \xB7 \u6EDA\u8F6E\u7F29\u653E \xB7 \u62D6\u52A8\u5E73\u79FB \xB7 \u53CC\u51FB\u56DE\u5230\u9ED8\u8BA4\uFF08\u524D 3 \u5929\u540E 30 \u5929\uFF09", { n: Math.round(this.tlSpan) });
-    };
-    redraw();
-    box.appendChild(svg);
-    box.appendChild(label);
-    const dayOf = (clientX) => {
-      const r = svg.getBoundingClientRect();
-      const frac = (clientX - r.left) / r.width;
-      const to = this.tlCenter + this.tlSpan / 2;
-      const from = to - this.tlSpan;
-      return from + frac * this.tlSpan;
-    };
-    box.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const at = dayOf(e.clientX);
-      const next = Math.max(2, Math.min(400, this.tlSpan * (e.deltaY < 0 ? 0.86 : 1.16)));
-      const r = svg.getBoundingClientRect();
-      const frac = (e.clientX - r.left) / r.width;
-      this.tlCenter = at - frac * next + next / 2;
-      this.tlSpan = next;
-      redraw();
-    }, { passive: false });
-    let drag = false, sx = 0, c0 = 0;
-    svg.addEventListener("pointerdown", (e) => {
-      if (e.target.closest("[data-msg]")) return;
-      drag = true;
-      sx = e.clientX;
-      c0 = this.tlCenter;
-      svg.setPointerCapture(e.pointerId);
-      svg.classList.add("grabbing");
-    });
-    svg.addEventListener("pointermove", (e) => {
-      if (!drag) return;
-      const r = svg.getBoundingClientRect();
-      this.tlCenter = c0 - (e.clientX - sx) / r.width * this.tlSpan;
-      redraw();
-    });
-    const stop = () => {
-      drag = false;
-      svg.classList.remove("grabbing");
-    };
-    svg.addEventListener("pointerup", stop);
-    svg.addEventListener("pointercancel", stop);
-    svg.addEventListener("dblclick", () => {
-      this.tlSpan = 33;
-      this.tlCenter = 13.5;
-      redraw();
-    });
-    svg.addEventListener("click", (e) => {
-      const target = e.target;
-      const g = target instanceof Element ? target.closest("[data-msg]") : null;
-      if (!g) return;
-      const m = items.find((x) => x.id === g.getAttribute("data-msg"));
-      if (m) this.openMsg(m);
-    });
-    return box;
-  }
-  axisLanes(items) {
-    return this.store.feeds.map((f) => ({ feed: f, items: items.filter((x) => x.feed === f.id) })).filter((l) => l.items.length);
-  }
-  /** 横轴时间线的 SVG：日期刻度 + 每个源一条泳道 + 今天竖线 */
-  axisBody(W, H, items) {
-    const left = 92, right = W - 18;
-    const plotW = right - left;
-    const to = this.tlCenter + this.tlSpan / 2;
-    const from = to - this.tlSpan;
-    const baseDay = Math.floor(+D(todayISO()) / 864e5);
-    const x = (off) => left + (off - from) / this.tlSpan * plotW;
-    const offsetOf = (iso2) => Math.floor(+D(iso2) / 864e5) - baseDay;
-    const steps = [1, 2, 3, 7, 14, 30, 90];
-    const step = steps.find((s) => this.tlSpan / s <= 12) || 90;
-    let g = "";
-    for (let d = Math.ceil(from / step) * step; d <= to; d += step) {
-      const px = x(d);
-      if (px < left - 1 || px > right + 1) continue;
-      g += `<line class="tlt-axis-grid" x1="${px.toFixed(1)}" y1="34" x2="${px.toFixed(1)}" y2="${H - 10}"/>`;
-      const dt = new Date((baseDay + d) * 864e5);
-      const label = step >= 30 ? `${dt.getMonth() + 1}` : `${dt.getMonth() + 1}/${dt.getDate()}`;
-      g += `<text class="tlt-axis-tick" x="${px.toFixed(1)}" y="24" text-anchor="middle">${label}</text>`;
-    }
-    const tx = x(0);
-    if (tx >= left && tx <= right) {
-      g += `<line class="tlt-axis-today" x1="${tx.toFixed(1)}" y1="30" x2="${tx.toFixed(1)}" y2="${H - 8}"/>`;
-      g += `<text class="tlt-axis-today-l" x="${(tx + 3).toFixed(1)}" y="40">${t("\u4ECA\u5929")}</text>`;
-    }
-    const lanes = this.axisLanes(items);
-    lanes.forEach((lane, i) => {
-      const y = 52 + i * 30;
-      g += `<text class="tlt-axis-lane" x="${left - 10}" y="${y + 4}" text-anchor="end">${escapeXml2(lane.feed.name.slice(0, 8))}</text>`;
-      g += `<line class="tlt-axis-lane-l" x1="${left}" y1="${y}" x2="${right}" y2="${y}"/>`;
-      lane.items.forEach((m) => {
-        const px = x(offsetOf(m.date));
-        if (px < left - 6 || px > right + 6) return;
-        const r = 3.2;
-        g += `<g class="tlt-axis-g" data-msg="${escapeXml2(m.id)}">
-          <circle class="tlt-axis-hit" cx="${px.toFixed(1)}" cy="${y}" r="9"/>
-          <circle class="tlt-axis-d" cx="${px.toFixed(1)}" cy="${y}" r="${r}" fill="${m.star ? "var(--tlt-acc)" : "var(--tlt-ink3)"}"/>
-          <title>${escapeXml2(`${m.date} ${m.title}`)}</title></g>`;
-      });
-    });
-    if (!lanes.length) g += `<text class="tlt-axis-empty" x="${left}" y="70">${t("\u6CA1\u6709\u6D88\u606F\u5728\u8FD9\u4E2A\u7A97\u53E3\u91CC")}</text>`;
-    return g;
-  }
-  /** 按源分带：每个消息源一条泳道，横轴＝时间 */
-  bands(items) {
-    const { from, to } = this.bounds();
-    const a = +D(from), b = +D(to);
-    const span = Math.max(864e5, b - a);
-    const box = el("div", "tlt-bands");
-    const axis = el("div", "tlt-band-axis");
-    axis.append(el("span", "", from.slice(5)), el("span", "tlt-spacer"), el("span", "", to.slice(5)));
-    box.appendChild(axis);
-    const feeds = this.store.feeds.filter((f) => items.some((x) => x.feed === f.id));
-    feeds.forEach((f) => {
-      const row2 = el("div", "tlt-band");
-      const name = el("div", "tlt-band-n");
-      name.append(el("span", "tlt-band-dot"), el("span", "", f.name));
-      const lane = el("div", "tlt-band-lane");
-      items.filter((x) => x.feed === f.id).forEach((x) => {
-        const p = el("i", "tlt-band-i");
-        p.style.left = `${Math.max(0, Math.min(100, (+D(x.date) - a) / span * 100)).toFixed(2)}%`;
-        p.style.background = KIND_COLOR2[x.kind];
-        p.title = `${x.date} \xB7 ${x.title}`;
-        p.onclick = () => this.openMsg(x);
-        lane.appendChild(p);
-      });
-      row2.append(name, lane);
-      box.appendChild(row2);
-    });
-    if (!feeds.length) box.appendChild(el("div", "tlt-empty", t("\u8FD9\u4E2A\u8303\u56F4\u91CC\u6CA1\u6709\u6D88\u606F")));
-    return box;
-  }
-  /** 月度热力：一个月一张格子，颜色深浅＝当天消息数 */
-  heat() {
-    const box = el("div", "tlt-heat");
-    const all = this.msgs().filter((x) => !this.selected.size || this.selected.has(x.feed));
-    const [y, mo] = this.heatMonth.split("-").map(Number);
-    const head = el("div", "tlt-heat-h");
-    const prev = el("button", "tlt-tlink", "\u2039");
-    prev.onclick = () => {
-      this.heatMonth = this.shiftMonth(-1);
-      void this.render();
-    };
-    const next = el("button", "tlt-tlink", "\u203A");
-    next.onclick = () => {
-      this.heatMonth = this.shiftMonth(1);
-      void this.render();
-    };
-    head.append(
-      prev,
-      el("b", "", `${y}-${String(mo).padStart(2, "0")}`),
-      next,
-      el("span", "tlt-spacer"),
-      el("span", "tlt-heat-l", t("\u5C11")),
-      el("span", "tlt-heat-i lv1"),
-      el("span", "tlt-heat-i lv2"),
-      el("span", "tlt-heat-i lv3"),
-      el("span", "tlt-heat-i lv4"),
-      el("span", "tlt-heat-l", t("\u591A"))
-    );
-    box.appendChild(head);
-    const grid = el("div", "tlt-heat-grid");
-    [t("\u65E5"), t("\u4E00"), t("\u4E8C"), t("\u4E09"), t("\u56DB"), t("\u4E94"), t("\u516D")].forEach((w) => grid.appendChild(el("div", "tlt-heat-w", w)));
-    const first = new Date(y, mo - 1, 1);
-    const days = new Date(y, mo, 0).getDate();
-    for (let i = 0; i < first.getDay(); i++) grid.appendChild(el("div", "tlt-heat-c blank"));
-    const count = {};
-    all.forEach((x) => {
-      count[x.date] = (count[x.date] || 0) + 1;
-    });
-    const max = Math.max(1, ...Object.values(count));
-    for (let d = 1; d <= days; d++) {
-      const key = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-      const n = count[key] || 0;
-      const lv = n === 0 ? 0 : Math.min(4, 1 + Math.floor(n / max * 3));
-      const c = el("div", "tlt-heat-c" + (lv ? ` lv${lv}` : "") + (key === todayISO() ? " today" : "") + (this.heatDay === key ? " on" : ""));
-      c.title = t("{k} \xB7 {n} \u6761", { k: key, n });
-      c.append(el("span", "tlt-heat-d", String(d)));
-      if (n) c.append(el("span", "tlt-heat-n", String(n)));
-      c.onclick = () => {
-        this.heatDay = key;
-        void this.render();
-      };
-      grid.appendChild(c);
-    }
-    box.appendChild(grid);
-    if (this.heatDay) {
-      const list = el("div", "tlt-heat-day");
-      list.appendChild(el("div", "tlt-count", t("{d} \u7684\u6D88\u606F", { d: this.heatDay })));
-      all.filter((x) => x.date === this.heatDay).forEach((x) => {
-        const row2 = el("div", "tlt-crow");
-        const dot = el("span", "tlt-nd");
-        dot.style.background = KIND_COLOR2[x.kind];
-        row2.append(dot, el("span", "tlt-crow-t", x.title));
-        row2.onclick = () => this.openMsg(x);
-        list.appendChild(row2);
-      });
-      if (!all.some((x) => x.date === this.heatDay)) list.appendChild(el("div", "tlt-empty", t("\u8FD9\u5929\u6CA1\u6709\u6D88\u606F")));
-      box.appendChild(list);
-    }
-    return box;
-  }
-  /** 人物脉络：谁发的源 → 哪些源 → 多少条 */
-  net(items) {
-    const box = el("div", "tlt-net");
-    const feeds = this.store.feeds.filter((f) => f.items.length);
-    const owners = Array.from(new Set(feeds.map((f) => f.owner || t("\u6211"))));
-    const W = 640, H = Math.max(240, owners.length * 64);
-    const svg = createSvg("svg");
-    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-    svg.setAttribute("class", "tlt-net-svg");
-    const oy = (i) => 34 + i * (H - 68) / Math.max(1, owners.length - 1);
-    const fy = (i) => 26 + i * (H - 52) / Math.max(1, feeds.length - 1);
-    let g = "";
-    feeds.forEach((f, i) => {
-      const oi = owners.indexOf(f.owner || t("\u6211"));
-      g += `<path class="tlt-net-e" d="M150 ${oy(oi).toFixed(1)} C 260 ${oy(oi).toFixed(1)}, 300 ${fy(i).toFixed(1)}, 400 ${fy(i).toFixed(1)}"/>`;
-    });
-    owners.forEach((o, i) => {
-      const n = feeds.filter((f) => (f.owner || t("\u6211")) === o).reduce((s, f) => s + f.items.length, 0);
-      const label = o === "me" ? t("\u6211") : o;
-      g += `<g class="tlt-net-g"><circle class="tlt-net-o" cx="130" cy="${oy(i).toFixed(1)}" r="${(11 + Math.min(9, n)).toFixed(1)}"/>
-        <text class="tlt-net-t" x="130" y="${(oy(i) + 30).toFixed(1)}" text-anchor="middle">${escapeXml2(label.slice(0, 6))}</text>
-        <text class="tlt-net-n" x="130" y="${(oy(i) + 3).toFixed(1)}" text-anchor="middle">${n}</text></g>`;
-    });
-    feeds.forEach((f, i) => {
-      const y = fy(i);
-      g += `<g class="tlt-net-g" data-feed="${escapeXml2(f.id)}">
-        <rect class="tlt-net-hit" x="392" y="${(y - 12).toFixed(1)}" width="196" height="24"/>
-        <rect class="tlt-net-f" x="400" y="${(y - 10).toFixed(1)}" width="${(56 + Math.min(96, f.items.length * 12)).toFixed(0)}" height="20" rx="10"/>
-        <text class="tlt-net-t2" x="410" y="${(y + 4).toFixed(1)}">${escapeXml2(f.name.slice(0, 12))}</text>
-        <text class="tlt-net-n2" x="586" y="${(y + 4).toFixed(1)}">${f.items.length}</text></g>`;
-    });
-    setSvgMarkup(svg, g);
-    svg.addEventListener("click", (ev) => {
-      const target = ev.target;
-      const t2 = target instanceof Element ? target.closest("[data-feed]") : null;
-      if (!t2) return;
-      const id = t2.getAttribute("data-feed") ?? "";
-      if (this.selected.has(id)) this.selected.delete(id);
-      else this.selected.add(id);
-      void this.render();
-    });
-    box.appendChild(svg);
-    box.appendChild(el("div", "tlt-hint", t("\u5706\uFF1D\u4EBA\uFF08\u6570\u5B57\u662F\u4ED6\u4EEC\u53D1\u7684\u6D88\u606F\u6570\uFF09\uFF0C\u80F6\u56CA\uFF1D\u6D88\u606F\u6E90\uFF0C\u7C97\u7EC6\u4E0D\u4EE3\u8868\u4EC0\u4E48\u3002\u70B9\u6E90\u53EF\u4EE5\u53EA\u770B\u5B83\u3002")));
-    return box;
-  }
-  openMsg(x) {
-    x.read_ = true;
-    new MsgModal(this.app, this.store, x, () => this.refresh()).open();
-  }
-  shiftMonth(d) {
-    const [y, mo] = this.heatMonth.split("-").map(Number);
-    const dt = new Date(y, mo - 1 + d, 1);
-    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-  }
-  /** 一条消息：三种形态共用一套数据，只换外壳 */
-  item(x) {
-    const feed = this.store.feeds.find((f) => f.id === x.feed);
-    const dot = () => {
-      const d = el("span", "tlt-nd");
-      d.style.background = KIND_COLOR2[x.kind];
-      return d;
-    };
-    const open = () => this.openMsg(x);
-    if (this.mode === "compact") {
-      const row2 = el("div", "tlt-crow" + (x.star ? " star" : "") + (x.state === "ended" ? " ended" : ""));
-      row2.append(dot());
-      row2.append(el("span", "tlt-crow-t", x.title));
-      row2.append(el("span", "tlt-crow-s", feed ? feed.name : ""));
-      row2.onclick = open;
-      return row2;
-    }
-    if (this.mode === "spine") {
-      const row2 = el("div", "tlt-srow" + (x.star ? " star" : "") + (x.state === "ended" ? " ended" : ""));
-      const rail = el("div", "tlt-srail");
-      rail.appendChild(dot());
-      row2.appendChild(rail);
-      const body = el("div", "tlt-sbody");
-      const nh = el("div", "tlt-nh");
-      nh.append(el("span", "tlt-nm", x.title));
-      if (x.star) nh.appendChild(el("span", "tlt-sk", "\u2605"));
-      body.appendChild(nh);
-      body.appendChild(el(
-        "div",
-        "tlt-nm2",
-        [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(t("\u3001")) : "", x.until ? t("\u622A\u6B62 {d}", { d: x.until }) : "", x.state === "ended" ? t("\u5DF2\u7ED3\u675F") : ""].filter(Boolean).join("  \xB7  ")
-      ));
-      if (x.body) body.appendChild(el("div", "tlt-nb", x.body));
-      row2.appendChild(body);
-      row2.onclick = open;
-      return row2;
-    }
-    const card = el("div", "tlt-card" + (x.star ? " star" : "") + (x.state === "ended" ? " ended" : ""));
-    const top = el("div", "tlt-card-top");
-    const kd = el("span", "tlt-carddot");
-    kd.style.background = KIND_COLOR2[x.kind];
-    top.append(kd, el("span", "tlt-nm", x.title));
-    if (x.star) top.appendChild(el("span", "tlt-sk", "\u2605"));
-    card.appendChild(top);
-    const bits = [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(t("\u3001")) : "", x.until ? t("\u622A\u6B62 {d}", { d: x.until }) : "", x.state === "ended" ? t("\u5DF2\u7ED3\u675F") : ""].filter(Boolean);
-    if (bits.length) card.appendChild(el("div", "tlt-nm2", bits.join("  \xB7  ")));
-    if (x.body) card.appendChild(el("div", "tlt-nb", x.body));
-    card.onclick = open;
-    return card;
-  }
-  bounds() {
-    const back = this.zoom === "m" ? 60 : this.zoom === "d" ? 5 : 14;
-    const fwd = this.zoom === "m" ? 120 : this.zoom === "d" ? 10 : 60;
-    let from = addDays(todayISO(), -back), to = addDays(todayISO(), fwd);
-    if (this.range === "today") {
-      from = todayISO();
-      to = todayISO();
-    }
-    if (this.range === "7") from = addDays(todayISO(), -7);
-    if (this.range === "30") from = addDays(todayISO(), -30);
-    return { from, to };
-  }
-  visible() {
-    const { from, to } = this.bounds();
-    return this.msgs().filter((x) => this.filter === "star" ? x.star : this.filter === "unread" ? !x.read_ : true).filter((x) => !this.selected.size || this.selected.has(x.feed)).filter((x) => !this.q || x.title.includes(this.q) || (x.body || "").includes(this.q) || (x.place || "").includes(this.q)).filter((x) => x.date >= from && x.date <= to).sort((a, b) => a.date.localeCompare(b.date));
-  }
-  /** 回到今天：找得到就滚过去，找不到就把范围放宽再滚 */
-  jumpToday() {
-    const go = () => {
-      const el2 = document.querySelector('.tlt-mtl [data-day="today"]');
-      if (el2) el2.scrollIntoView({ block: "start", behavior: "smooth" });
-    };
-    if (document.querySelector('.tlt-mtl [data-day="today"]')) {
-      go();
-      return;
-    }
-    this.range = "7";
-    if (!this.msgs().some((x) => x.date === todayISO())) this.range = "all";
-    void this.render().then(() => window.setTimeout(go, 60));
-  }
-  /* ---------------- 右栏：消息源管理 ---------------- */
-  side() {
-    const s = el("aside", "tlt-fm-side");
-    const ids = Array.from(this.selected);
-    if (ids.length === 1) {
-      const f = this.store.feeds.find((x) => x.id === ids[0]);
-      if (f) {
-        const tw = el("div", "tlt-d-titlewrap");
-        const tEl = el("div", "tlt-d-title", f.name);
-        const pen = el("button", "tlt-rename", "\u270E");
-        pen.title = f.remote ? t("\u8BBE\u7F6E\u522B\u540D\uFF08\u53EA\u6539\u4F60\u770B\u5230\u7684\u540D\u79F0\uFF09") : t("\u6539\u6E90\u540D\u79F0");
-        pen.onclick = () => {
-          const inp = el("input", "tlt-input");
-          inp.value = f.name;
-          tw.empty();
-          tw.appendChild(inp);
-          inp.focus();
-          inp.select();
-          let done = false;
-          const commit = () => {
-            void (async () => {
-              if (done) return;
-              done = true;
-              const v = inp.value.trim();
-              if (v && v !== f.name) {
-                const r = await this.store.renameFeed(f, v);
-                new Notice(r.alias ? t("\u5DF2\u8BBE\u4E3A\u4F60\u8FD9\u8FB9\u7684\u522B\u540D\u300C{n}\u300D\uFF08\u5BF9\u65B9\u7684\u6E90\u540D\u4E0D\u53D8\uFF09", { n: v }) : t("\u5DF2\u6539\u540D\u4E3A\u300C{n}\u300D", { n: v }));
-              }
-              await this.refresh();
-            })();
-          };
-          inp.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape") void this.render();
-          });
-          inp.addEventListener("blur", commit);
-        };
-        tw.append(tEl, pen);
-        s.appendChild(tw);
-        s.appendChild(el(
-          "div",
-          "tlt-d-meta",
-          t("{k} \xB7 {n} \u6761", { k: f.personal ? t("\u4E2A\u4EBA\u6E90") : f.mine ? t("\u6211\u53D1\u5E03\u7684\u6E90") : t("\u6211\u8BA2\u9605\u7684\u6E90"), n: f.items.length })
-        ));
-        if (f.remote && f.remoteTitle) {
-          s.appendChild(el("div", "tlt-d-meta", t("\u539F\u540D\uFF1A{n}{owner}", { n: f.remoteTitle, owner: f.owner ? t(" \xB7 \u6765\u81EA {o}", { o: f.owner }) : "" })));
-        }
-        const act = el("div", "tlt-d-act");
-        if (f.personal) {
-          s.appendChild(el("div", "tlt-d-body", t("\u65B0\u6D88\u606F\u9ED8\u8BA4\u8FDB\u8FD9\u91CC\uFF0C\u53EA\u6709\u81EA\u5DF1\u770B\u3002\u70B9\u5F00\u67D0\u6761\u8349\u7A3F\u53EF\u4EE5\u300C\u53D1\u5E03\u4E3A\u6D88\u606F\u6E90\u300D\u3002")));
-          const n = el("button", "tlt-btn pri", t("\u65B0\u5EFA\u6D88\u606F\u5230\u8FD9\u4E2A\u6E90"));
-          n.onclick = () => new ComposeModal(this.app, this.store, () => this.refresh(), f.id).open();
-          act.appendChild(n);
-          const pub = el("button", "tlt-btn", t("\u53D1\u5E03\u6D88\u606F\u6E90\u2026"));
-          pub.title = t("\u628A\u8FD9\u91CC\u7684\u8349\u7A3F\u53D8\u6210\u4E00\u4E2A\u522B\u4EBA\u80FD\u8BA2\u9605\u7684\u6E90");
-          pub.onclick = () => new PublishFeedModal(this.app, this.store, this.plugin, f, () => this.refresh()).open();
-          act.appendChild(pub);
-        } else if (f.mine) {
-          const st = this.plugin.hubState();
-          const pid = (this.cfg.feedIds || {})[f.id] || f.id;
-          const url = `${st.publish}/feed?id=${encodeURIComponent(pid)}`;
-          const urow = el("div", "tlt-urrow");
-          const uin = el("input", "tlt-input tlt-input-url");
-          uin.readOnly = true;
-          uin.value = url;
-          uin.title = t("\u9009\u4E2D\u590D\u5236\uFF0C\u6216\u70B9\u53F3\u8FB9\u7684\u300C\u590D\u5236\u300D");
-          const copy = el("button", "tlt-btn tiny", t("\u590D\u5236"));
-          copy.onclick = () => {
-            void (async () => {
-              try {
-                if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(url);
-                else {
-                  uin.select();
-                }
-                new Notice(t("\u8BA2\u9605\u5730\u5740\u5DF2\u590D\u5236"));
-              } catch {
-                uin.select();
-                new Notice(t("\u590D\u5236\u5931\u8D25\uFF0C\u5DF2\u5E2E\u4F60\u9009\u4E2D\uFF0C\u6309 \u2318C \u590D\u5236"), 4e3);
-              }
-            })();
-          };
-          urow.append(uin, copy);
-          s.appendChild(el("div", "tlt-d-body", t("\u628A\u8FD9\u884C\u5730\u5740\u53D1\u7ED9\u522B\u4EBA\uFF0C\u5BF9\u65B9\u5728\u300C\u8BA2\u9605\u300D\u91CC\u7C98\u8D34\u5373\u53EF")));
-          s.appendChild(urow);
-          const push = el("button", "tlt-btn pri", t("\u624B\u52A8\u63A8\u9001"));
-          push.onclick = () => {
-            void (async () => {
-              try {
-                const clean = await this.store.ensureCleanPublishId(f);
-                if (clean.changed) new Notice(t("\u8BA2\u9605\u5730\u5740\u5DF2\u6362\u6210\u65B0\u7684\u77ED ID\uFF1A{id}", { id: clean.id }), 5e3);
-                const r = await this.store.publishFeed(f, st.publish, clean.id);
-                new Notice(t("\u5DF2\u63A8\u9001 {n} \u6761", { n: r.count }));
-              } catch (e) {
-                new Notice(t("\u63A8\u9001\u5931\u8D25\uFF1A") + errMsg(e));
-              }
-            })();
-          };
-          const unpub = el("button", "tlt-btn danger", t("\u53D6\u6D88\u53D1\u5E03"));
-          unpub.onclick = () => {
-            void (async () => {
-              try {
-                await this.store.unpublishFeed(pid, st.publish);
-              } catch {
-              }
-              if (!Store.isCleanId(pid)) {
-                try {
-                  await this.store.unpublishFeed(f.id, st.publish);
-                } catch {
-                }
-              }
-              const back = f.personal ? 0 : await this.store.demoteToPersonal(f, "\u4E2A\u4EBA");
-              this.selected.delete(f.id);
-              await this.refresh();
-              if (back < 0) new Notice(t("\u5E76\u56DE\u4E2A\u4EBA\u5931\u8D25\uFF0C\u6E90\u6587\u4EF6\u5DF2\u4FDD\u7559\uFF0C\u7A0D\u540E\u518D\u8BD5"));
-              else if (!back) new Notice(t("\u5DF2\u53D6\u6D88\u53D1\u5E03\uFF0C\u8FD9\u4E2A\u6E90\u539F\u6837\u56DE\u5230\u300C\u4E2A\u4EBA\u300D"));
-              else new Notice(t("\u5DF2\u53D6\u6D88\u53D1\u5E03\uFF0C{n} \u6761\u5E76\u56DE\u300C\u4E2A\u4EBA\u300D\uFF08\u539F\u6765\u90A3\u4E2A\u4E2A\u4EBA\u6E90\u91CC\u5DF2\u6709\u5185\u5BB9\uFF09", { n: back }));
-            })();
-          };
-          act.append(push, unpub);
-        } else {
-          const st = this.plugin.hubState();
-          if (f.remote) s.appendChild(el("div", "tlt-d-body", f.remote));
-          const un = el("button", "tlt-btn danger", t("\u53D6\u6D88\u8BA2\u9605"));
-          un.onclick = () => {
-            void (async () => {
-              try {
-                await this.store.unsubscribeRemote(st.sync, f.remote || "");
-              } catch {
-              }
-              this.selected.delete(f.id);
-              const gone = await this.store.trashFeedFile(f);
-              await this.refresh();
-              new Notice(gone ? t("\u5DF2\u53D6\u6D88\u8BA2\u9605\u300C{n}\u300D\uFF0C\u672C\u5730\u6587\u4EF6\u5DF2\u8FDB\u56DE\u6536\u7AD9", { n: f.name }) : t("\u5DF2\u53D6\u6D88\u8BA2\u9605\u300C{n}\u300D", { n: f.name }));
-            })();
-          };
-          act.appendChild(un);
-        }
-        s.appendChild(act);
-        s.appendChild(el("div", "tlt-hint", t("\u5DE6\u680F\u53EF\u591A\u9009\u6E90\u6765\u8FC7\u6EE4\u65F6\u95F4\u7EBF\uFF1B\u8FD9\u91CC\u53EA\u7BA1\u7406\u5F53\u524D\u8FD9\u4E00\u4E2A\u6E90\u3002")));
-        return s;
-      }
-    }
-    if (ids.length > 1) {
-      s.appendChild(el("div", "tlt-d-title", t("\u5DF2\u9009 {n} \u4E2A\u6E90", { n: ids.length })));
-      s.appendChild(el("div", "tlt-d-meta", t("\u8981\u7BA1\u7406\u67D0\u4E2A\u6E90\uFF0C\u53EA\u9009\u5B83\u4E00\u4E2A\u3002")));
-      const list = el("div", "tlt-src-list");
-      ids.forEach((id) => {
-        const f = this.store.feeds.find((x) => x.id === id);
-        if (!f) return;
-        const row2 = el("div", "tlt-src-row");
-        row2.append(
-          el("span", "tlt-src-name", f.name),
-          el("span", "tlt-src-kind", f.personal ? t("\u4E2A\u4EBA") : f.mine ? t("\u6211\u53D1\u5E03") : t("\u8BA2\u9605"))
-        );
-        list.appendChild(row2);
-      });
-      s.appendChild(list);
-      return s;
-    }
-    return this.overviewSide(s);
-  }
-  overviewSide(s) {
-    const unread = this.msgs().filter((x) => !x.read_).length;
-    const star = this.msgs().filter((x) => x.star).length;
-    s.appendChild(el("div", "tlt-d-title", t("\u6D88\u606F\u6E90\u7BA1\u7406")));
-    const stats = el("div", "tlt-d-stats");
-    [[String(unread), t("\u672A\u8BFB")], [String(star), t("\u91CD\u8981")], [String(this.store.feeds.length), t("\u6E90")]].forEach(([v, l]) => {
-      const c = el("div", "tlt-d-stat");
-      c.append(el("b", "", v), el("span", "", l));
-      stats.appendChild(c);
-    });
-    s.appendChild(stats);
-    s.appendChild(this.hubPanel());
-    s.appendChild(el("div", "tlt-hint", t("\u70B9\u5DE6\u680F\u67D0\u4E2A\u6E90\uFF0C\u8FD9\u91CC\u6362\u6210\u5B83\u7684\u7BA1\u7406\u9762\u677F\uFF08\u53EF\u591A\u9009\u7B5B\u9009\u65F6\u95F4\u7EBF\uFF09\u3002")));
-    return s;
-  }
-  hubPanel() {
-    const box = el("div", "tlt-hub-side");
-    const st = this.plugin.hubState();
-    box.appendChild(el("div", "tlt-fgrp", t("\u670D\u52A1")));
-    const row2 = (label, value) => {
-      const d = el("div", "tlt-hub-row");
-      d.append(el("span", "tlt-hub-l", label), el("code", "", value));
-      return d;
-    };
-    box.appendChild(row2(t("\u53D1\u5E03"), st.publish));
-    box.appendChild(row2(t("\u62C9\u53D6"), st.sync));
-    box.appendChild(el(
-      "div",
-      "tlt-hub-note",
-      t("\u81EA\u52A8\u540C\u6B65\uFF1A{a} \xB7 \u81EA\u52A8\u63A8\u9001\uFF1A{b}\uFF08\u5728\u8BBE\u7F6E\u91CC\u6539\uFF09", { a: st.syncMin ? t("\u6BCF {n} \u5206\u949F", { n: st.syncMin }) : t("off"), b: st.pushMin ? t("\u6BCF {n} \u5206\u949F", { n: st.pushMin }) : t("off") })
-    ));
-    const btns = el("div", "tlt-hub-btns");
-    const push = el("button", "tlt-btn", t("\u63A8\u9001\u6211\u7684\u6E90"));
-    push.onclick = () => new PublishModal(this.app, this.store, this.plugin, () => this.render()).open();
-    const sync = el("button", "tlt-btn", t("\u540C\u6B65\u8BA2\u9605"));
-    sync.onclick = () => {
-      void (async () => {
-        try {
-          const r = await this.store.pullFromHub(st.sync);
-          const stamp = (/* @__PURE__ */ new Date()).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-          this.plugin.setHubState({ lastSync: stamp, lastResult: t("\u65B0\u589E {n} \u6761", { n: r.added }), lastError: "" });
-          await this.refresh();
-          new Notice(t("\u540C\u6B65\u5B8C\u6210\uFF1A\u65B0\u589E {n} \u6761", { n: r.added }));
-        } catch (e) {
-          new Notice(t("\u540C\u6B65\u5931\u8D25\uFF1A") + errMsg(e));
-        }
-      })();
-    };
-    btns.append(push, sync);
-    box.appendChild(btns);
-    const input = el("input", "tlt-input");
-    input.placeholder = t("\u8BA2\u9605\u5730\u5740\uFF08\u53EF\u7C98\u8D34 @URL:\u2026\uFF09");
-    box.appendChild(input);
-    const sub = el("button", "tlt-btn", t("\u8BA2\u9605\u8FD9\u4E2A\u6E90"));
-    sub.onclick = () => {
-      void (async () => {
-        const url = cleanFeedUrl(input.value);
-        if (!url) {
-          new Notice(t("\u5148\u586B\u8BA2\u9605\u5730\u5740"));
-          return;
-        }
-        try {
-          const r = await this.store.subscribeRemote(st.sync, url);
-          if (r.reason === "self") {
-            new Notice(t("\u8FD9\u662F\u4F60\u81EA\u5DF1\u53D1\u5E03\u7684\u6E90\uFF0C\u4E0D\u9700\u8981\u8BA2\u9605"));
-            return;
-          }
-          if (r.existed) {
-            new Notice(t("\u5DF2\u7ECF\u8BA2\u9605\u8FC7\u8FD9\u4E2A\u6E90"));
-            input.value = "";
-            return;
-          }
-          input.value = "";
-          const p = await this.store.pullFromHub(st.sync);
-          await this.refresh();
-          new Notice(t("\u5DF2\u8BA2\u9605\u5E76\u540C\u6B65 {n} \u6761", { n: p.added }));
-        } catch (e) {
-          new Notice(t("\u8BA2\u9605\u5931\u8D25\uFF1A") + errMsg(e));
-        }
-      })();
-    };
-    box.appendChild(sub);
-    return box;
-  }
-};
-var PublishFeedModal = class extends TltModal {
-  constructor(app, store, plugin, from, onDone) {
-    super(app);
-    this.store = store;
-    this.plugin = plugin;
-    this.from = from;
-    this.onDone = onDone;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", t("\u53D1\u5E03\u6D88\u606F\u6E90")));
-    contentEl.appendChild(el(
-      "div",
-      "tlt-m-meta",
-      t("\u628A\u300C{n}\u300D\u91CC\u7684\u8349\u7A3F\u53D8\u6210\u4E00\u4E2A\u522B\u4EBA\u80FD\u8BA2\u9605\u7684\u6E90\uFF1B\u53D1\u5E03\u540E\u5B83\u4F1A\u51FA\u73B0\u5728\u300C\u6211\u53D1\u5E03\u7684\u300D\u91CC\u3002", { n: this.from.name })
-    ));
-    contentEl.appendChild(el("div", "tlt-m-meta", t("\u6E90\u540D\u79F0\uFF1A{n}", { n: this.from.name })));
-    const descRow = el("div", "tlt-row");
-    descRow.appendChild(el("span", "tlt-row-l", t("\u8BF4\u660E")));
-    const descIn = el("input", "tlt-input");
-    descIn.placeholder = t("\u8FD9\u4E2A\u6E90\u53D1\u4EC0\u4E48\uFF08\u53EF\u7559\u7A7A\uFF09");
-    descRow.appendChild(descIn);
-    contentEl.append(descRow);
-    contentEl.appendChild(el(
-      "div",
-      "tlt-hint",
-      t("\u540D\u79F0\u53D6\u81EA\u8FD9\u4E2A\u6E90\u672C\u8EAB\uFF08\u8981\u6539\u5728\u53F3\u680F \u270E \u6539\uFF0C\u53D1\u5E03/\u53D6\u6D88\u53D1\u5E03\u90FD\u4E0D\u4F1A\u53D8\uFF09\u3002\u8BA2\u9605\u5730\u5740\u7531\u63D2\u4EF6\u81EA\u52A8\u751F\u6210\uFF0C\u4E0D\u7528\u81EA\u5DF1\u8D77 ID\u3002")
-    ));
-    const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", t("\u53D6\u6D88"));
-    cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", t("\u53D1\u5E03"));
-    ok.onclick = () => {
-      void (async () => {
-        const name = this.from.name;
-        const hub = this.plugin.hubState().publish;
-        if (!hub) {
-          new Notice(t("\u8FD8\u6CA1\u586B\u53D1\u5E03\u670D\u52A1\u5730\u5740\uFF08\u8BBE\u7F6E \u2192 \u6D88\u606F\u670D\u52A1\uFF09"));
-          return;
-        }
-        if (!await this.plugin.pingHub("publish")) return;
-        try {
-          const r = await this.store.publishSource(this.from, {
-            name,
-            desc: descIn.value.trim()
-          });
-          if (!r.ok) {
-            new Notice(t("\u53D1\u5E03\u5931\u8D25\uFF1A\u540D\u79F0\u7A7A\u7740"));
-            return;
-          }
-          await this.store.load();
-          const feed = this.store.feeds.find((f) => f.id === r.id || f.file === r.path);
-          if (!feed) throw new Error(t("\u53D1\u5E03\u540E\u6CA1\u8BFB\u56DE\u8FD9\u4E2A\u6E90"));
-          const pushed = await this.store.publishFeed(feed, hub, r.id);
-          const okRemote = await remoteHasFeed(hub, r.id);
-          this.close();
-          void this.onDone();
-          new Notice(okRemote ? t("\u5DF2\u53D1\u5E03\u5E76\u63A8\u9001\u300C{name}\u300D\xB7 {n} \u6761 \xB7 \u670D\u52A1\u7AEF\u5DF2\u786E\u8BA4", { name, n: pushed.count ?? 0 }) : t("\u5DF2\u63A8\u9001\uFF0C\u4F46\u670D\u52A1\u7AEF\u6CA1\u67E5\u5230\u300C{id}\u300D\uFF0C\u8BF7\u68C0\u67E5\u670D\u52A1\u5730\u5740\uFF1A{hub}", { id: r.id, hub }), 8e3);
-          new Notice(t("\u8BA2\u9605\u5730\u5740\u5DF2\u751F\u6210\uFF0C\u53EF\u5728\u53F3\u680F\u300C\u590D\u5236\u300D\u540E\u53D1\u7ED9\u522B\u4EBA\uFF1A{u}", { u: `${hub}/feed?id=${encodeURIComponent(r.id)}` }), 9e3);
-        } catch (e) {
-          this.close();
-          void this.onDone();
-          new Notice(t("\u6E90\u5DF2\u5EFA\u597D\uFF0C\u4F46\u63A8\u9001\u5931\u8D25\uFF1A{msg}\uFF08\u53EF\u5728\u53F3\u680F\u300C\u624B\u52A8\u63A8\u9001\u300D\u91CD\u8BD5\uFF09", { msg: errMsg(e) }), 8e3);
-        }
-      })();
-    };
-    foot.append(cancel, ok);
-    contentEl.appendChild(foot);
-    window.setTimeout(() => descIn.focus(), 50);
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-};
-var ComposeModal = class extends TltModal {
-  constructor(app, store, onDone, presetFeed) {
-    super(app);
-    this.store = store;
-    this.onDone = onDone;
-    this.presetFeed = presetFeed;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", t("\u65B0\u5EFA\u6D88\u606F")));
-    contentEl.appendChild(el("div", "tlt-m-meta", t("\u53EA\u6709\u6807\u9898\u5FC5\u586B\uFF1B\u65F6\u95F4\u5730\u70B9\u4EBA\u7269\u8FD9\u4E9B\u7559\u7740\u66F4\u597D\u627E\uFF0C\u4E5F\u53EF\u4EE5\u7A7A\u7740\u3002")));
-    const f = buildMsgFields(contentEl, { date: todayISO() }, this.store);
-    const srcRow = el("div", "tlt-row");
-    srcRow.appendChild(el("span", "tlt-row-l", t("\u6D88\u606F\u6E90")));
-    const src = el("select", "tlt-input");
-    const options = [
-      ...this.store.feeds.filter((x) => x.personal),
-      ...this.store.feeds.filter((x) => x.mine && !x.personal)
-    ];
-    options.forEach((x) => {
-      const o = createEl("option");
-      o.value = x.id;
-      o.textContent = `${x.name} (${x.personal ? t("\u4E2A\u4EBA") : t("\u5DF2\u53D1\u5E03")})`;
-      src.appendChild(o);
-    });
-    if (this.presetFeed) src.value = this.presetFeed;
-    srcRow.appendChild(src);
-    contentEl.appendChild(srcRow);
-    const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", t("\u53D6\u6D88"));
-    cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", t("\u521B\u5EFA"));
-    ok.onclick = () => {
-      void (async () => {
-        const v = f.value();
-        if (!v.title) {
-          new Notice(t("\u5148\u5199\u6807\u9898"));
-          return;
-        }
-        if (!src.value) {
-          new Notice(t("\u5148\u9009\u4E00\u4E2A\u6D88\u606F\u6E90"));
-          return;
-        }
-        await this.store.addMessage(src.value, v);
-        this.close();
-        void this.onDone();
-        new Notice(t("\u5DF2\u521B\u5EFA\u6D88\u606F"));
-      })();
-    };
-    foot.append(cancel, ok);
-    contentEl.appendChild(foot);
-    window.setTimeout(() => f.titleEl.focus(), 50);
-    f.titleEl.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) ok.click();
-    });
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-};
-var PublishModal = class extends TltModal {
-  constructor(app, store, plugin, onDone) {
-    super(app);
-    this.store = store;
-    this.plugin = plugin;
-    this.onDone = onDone;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", t("\u63A8\u9001\u5230\u53D1\u5E03\u670D\u52A1")));
-    contentEl.appendChild(el("div", "tlt-m-meta", t("\u4E0B\u9762\u7684 ID \u5C31\u662F\u522B\u4EBA\u8BA2\u9605\u5730\u5740\u91CC\u7684 ?id=\u3002")));
-    const rows = [];
-    this.store.feeds.filter((f) => f.mine && !f.personal).forEach((f) => {
-      const r = el("div", "tlt-row");
-      r.appendChild(el("span", "tlt-row-l", f.name.slice(0, 6)));
-      const box = el("div", "tlt-row-v");
-      const input = el("input", "tlt-input");
-      input.value = (this.store.settings.feedIds || {})[f.id] || f.id;
-      box.append(input, el("div", "tlt-hint", t("{n} \u6761", { n: f.items.length })));
-      r.appendChild(box);
-      contentEl.appendChild(r);
-      rows.push({ feed: f, input });
-    });
-    if (!rows.length) contentEl.appendChild(el("div", "tlt-hint", t("\u6CA1\u6709\u53EF\u53D1\u5E03\u7684\u6E90")));
-    const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", t("\u53D6\u6D88"));
-    cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", t("\u4FDD\u5B58\u5E76\u63A8\u9001"));
-    ok.onclick = () => {
-      void (async () => {
-        const ids = {};
-        rows.forEach(({ feed, input }) => {
-          ids[feed.id] = input.value.trim() || feed.id;
-        });
-        this.store.settings.feedIds = ids;
-        await this.plugin.saveSettings();
-        try {
-          let total = 0;
-          for (const { feed, input } of rows) {
-            const r = await this.store.publishFeed(feed, this.plugin.hubState().publish, input.value.trim() || feed.id);
-            total += r.count || 0;
-          }
-          new Notice(t("\u5DF2\u63A8\u9001 {f} \u4E2A\u6E90\uFF08{n} \u6761\uFF09", { f: rows.length, n: total }));
-        } catch (e) {
-          new Notice(t("\u63A8\u9001\u5931\u8D25\uFF1A") + errMsg(e));
-        }
-        this.close();
-        void this.onDone();
-      })();
-    };
-    foot.append(cancel, ok);
-    contentEl.appendChild(foot);
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 export {

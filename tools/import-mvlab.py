@@ -25,6 +25,7 @@ import re
 import sys
 
 SRC_TASKS, SRC_TEAMS, DST = sys.argv[1], sys.argv[2], sys.argv[3]
+REFRESH_CREW = "--refresh-crew" in sys.argv           # 默认不动已存在的人员档案
 
 PRI = {"⏫": 3, "🔺": 3, "🔼": 2, "🔽": 1, "⏬": 1}
 PRI_RE = re.compile(r"(⏫|🔺|🔼|🔽|⏬)")
@@ -132,22 +133,23 @@ def parse_people(lines):
     return out
 
 
-def parse_blocks(text):
-    """一份文件 → [{name, desc, sections: [[标题, 行]]}]，只有 `# ` 才算工作块"""
-    blocks = []
-    cur = None
-    for ln in text.split("\n"):
-        h1 = None if ln.startswith("##") else H1_RE.match(ln)
-        if h1:
-            cur = {"name": h1.group(1).strip(), "desc": "", "sections": []}
-            blocks.append(cur)
-            continue
-        if cur is None:
-            continue
+def strip_frontmatter(text):
+    lines = text.split("\n")
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                return lines[i + 1:]
+    return lines
+
+
+def parse_chunk(name, chunk):
+    """一段内容 → 一个块：{name, desc, sections: [[小节标题, 行]]}"""
+    cur = {"name": name, "desc": "", "sections": []}
+    for ln in chunk:
         if ln.strip().startswith("> [!abstract]"):
             continue
-        if ln.strip().startswith(">") and not cur["desc"]:
-            cur["desc"] = ln.lstrip("> ").strip()
+        if ln.strip().startswith(">") and not cur["desc"] and not cur["sections"]:
+            cur["desc"] = ln.lstrip("> ").strip()      # 只认小节之前的那句「工作说明」
             continue
         h2 = H2_RE.match(ln)
         if h2:
@@ -157,7 +159,47 @@ def parse_blocks(text):
             cur["sections"][-1][1].append(ln)
         elif ln.strip():
             cur["sections"].append(["", [ln]])
-    return blocks
+    return cur
+
+
+def parse_blocks(text, fallback_name):
+    """一份文件 → [{name, desc, sections}]。
+
+    `# ` 开头的算工作块；一个文件里有多个就是多个块（用户是刻意合并进一个文件的，
+    所以块只用来给里程碑当前缀，项目仍是一份文件一个）。
+    有的文件直接从 `##` 开始（没有 `# 工作块`），这时整份文件当成一个块，块名用文件名。
+    """
+    lines = strip_frontmatter(text)
+    chunks = []                                  # [(块名, [行])]
+    cur = None
+    for ln in lines:
+        h1 = None if ln.startswith("##") else H1_RE.match(ln)
+        if h1:
+            cur = (h1.group(1).strip(), [])
+            chunks.append(cur)
+            continue
+        if cur is None:
+            continue
+        cur[1].append(ln)
+    if not chunks:                               # 没有工作块：整份文件当一个块
+        return [parse_chunk(fallback_name, lines)]
+    return [parse_chunk(name, chunk) for name, chunk in chunks]
+
+
+def section_notes(lines):
+    """小节里（任务之前）的 `>` 说明行，原样留一份"""
+    out = []
+    for ln in lines:
+        t = ln.strip()
+        if t.startswith("-") or not t:
+            if out:
+                break
+            continue
+        if t.startswith(">"):
+            out.append(t.lstrip("> ").strip())
+        elif out:
+            break
+    return out
 
 
 def milestone_label(block, section, multi):
@@ -179,9 +221,9 @@ def main():
             continue
         project = fname[:-3]
         text = io.open(os.path.join(SRC_TASKS, fname), encoding="utf-8").read()
-        blocks = parse_blocks(text)
+        blocks = parse_blocks(text, project)
         if not blocks:
-            print(f"  跳过 {project}（没有 # 工作块）")
+            print(f"  跳过 {project}（没有任何小节）")
             continue
         multi = len(blocks) > 1
 
@@ -212,6 +254,10 @@ def main():
                     continue
                 body_lines.append(f"## {milestone_label(b['name'], title, multi)}")
                 body_lines.append("")
+                for note in section_notes(lines):          # 小节开头的 > 说明
+                    body_lines.append(f"> {note}")
+                if section_notes(lines):
+                    body_lines.append("")
                 body_lines += conv
                 body_lines.append("")
                 n_tasks += len(conv)
@@ -226,12 +272,17 @@ def main():
         print(f"  写入 tasks/{project}.md（{n_tasks} 条任务 · {len(blocks)} 个工作块"
               + ("，块名已作为里程碑前缀" if multi else "") + "）")
 
-    # teams → crew
+    # teams → crew（已存在的不动：人员档案可能在 TLT 里被手工调过产能/岗位）
     n_crew = 0
+    n_kept = 0
     for fname in sorted(os.listdir(SRC_TEAMS)):
         if not fname.endswith(".md"):
             continue
         name = fname[:-3]
+        target = os.path.join(DST, "crew", f"{name}.md")
+        if os.path.exists(target) and not REFRESH_CREW:
+            n_kept += 1
+            continue
         text = io.open(os.path.join(SRC_TEAMS, fname), encoding="utf-8").read()
         fm = {}
         m = re.match(r"^---\n(.*?)\n---", text, re.S)
@@ -275,11 +326,11 @@ def main():
         body = "\n".join(keep).strip()
         if body:
             out += [body, ""]
-        io.open(os.path.join(DST, "crew", f"{name}.md"), "w", encoding="utf-8").write(
-            "\n".join(out).rstrip() + "\n")
+        io.open(target, "w", encoding="utf-8").write("\n".join(out).rstrip() + "\n")
         n_crew += 1
 
-    print(f"\n共 {len(made)} 个项目 / {total_tasks} 条任务 / {n_crew} 位成员 → {DST}")
+    print(f"\n共 {len(made)} 个项目 / {total_tasks} 条任务 / 人员档案：新写 {n_crew}、保留 {n_kept}"
+          + ("（要重写用 --refresh-crew）" if n_kept else "") + f" → {DST}")
     print("项目文件：" + "、".join(made))
 
 

@@ -372,6 +372,15 @@ export class TaskModal extends TltModal {
     };
   }
 
+  /** 子项动过之后：重新读盘拿最新的 steps，再重画这一层（不重读会看不到刚加的那条） */
+  private async refreshSteps() {
+    await this.store.load();
+    const fresh = this.store.tasks.find((x) => x.file === this.task.file && x.title === this.task.title);
+    if (fresh) this.task = fresh;
+    this.contentEl.empty();
+    void this.onOpen();
+  }
+
   /** 就地改子项文字（回车保存，Esc 取消） */
   private editStep(span: HTMLElement, index: number) {
     const input = el("input", "tlt-step-edit");
@@ -383,8 +392,7 @@ export class TaskModal extends TltModal {
       if (done) return;
       done = true;
       if (save) await this.store.setStepText(this.task, index, input.value);
-      this.contentEl.empty();
-      void this.onOpen();
+      await this.refreshSteps();
     })(); };
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); commit(true); }
@@ -451,14 +459,13 @@ export class TaskModal extends TltModal {
     // 子项：只有内容与完成态；改动即时写回，不参与"保存"
     const stepRow = row(contentEl, T("子项"));
     const stepBox = el("div", "tlt-steps in-modal");
-    const refreshSteps = () => { this.contentEl.empty(); void this.onOpen(); };
     if (!this.task.steps.length) {
       stepBox.appendChild(el("div", "tlt-hint", T("还没有子项。加一条就有关键步骤，任务行上会出现进度环。")));
     }
     this.task.steps.forEach((st, i) => {
-      const line = el("div", "tlt-step");
+      const line = el("div", "tlt-step" + (st.done ? " done" : ""));
       const cb = el("i", "tlt-scb" + (st.done ? " on" : ""));
-      cb.onclick = () => { void (async () => { await this.store.setStepDone(this.task, i, !st.done); refreshSteps(); })(); };
+      cb.onclick = () => { void (async () => { await this.store.setStepDone(this.task, i, !st.done); await this.refreshSteps(); })(); };
       const txt = el("span", "tlt-step-t", st.text);
       txt.onclick = () => this.editStep(txt, i);
       const del = el("button", "tlt-step-del", "×");
@@ -467,7 +474,7 @@ export class TaskModal extends TltModal {
         title: T("删掉这条子项"),
         body: `${st.text}\n\n${T("只删子项，任务本身不动。")}`,
         ok: T("删除"),
-      }, async (ok) => { if (ok) { await this.store.deleteStep(this.task, i); refreshSteps(); } }).open(); };
+      }, async (ok) => { if (ok) { await this.store.deleteStep(this.task, i); await this.refreshSteps(); } }).open(); };
       line.append(cb, txt, del);
       stepBox.appendChild(line);
     });
@@ -477,7 +484,7 @@ export class TaskModal extends TltModal {
       if (e.key !== "Enter") return;
       const v = stepAdd.value.trim();
       if (!v) return;
-      void (async () => { await this.store.addStep(this.task, v); refreshSteps(); })();
+      void (async () => { await this.store.addStep(this.task, v); await this.refreshSteps(); })();
     });
     stepBox.appendChild(stepAdd);
     stepRow.appendChild(stepBox);
@@ -496,7 +503,7 @@ export class TaskModal extends TltModal {
       tl.appendChild(r);
     });
     const tlToggle = el("button", "tlt-btn tiny", this.showTimeline ? T("收起") : T("展开"));
-    tlToggle.onclick = () => { this.showTimeline = !this.showTimeline; refreshSteps(); };
+    tlToggle.onclick = () => { this.showTimeline = !this.showTimeline; this.contentEl.empty(); void this.onOpen(); };
     if (!this.showTimeline) tl.addClass("tlt-hidden");
     tlRow.querySelector(".tlt-row-l")?.appendChild(tlToggle);
     tlRow.appendChild(tl);

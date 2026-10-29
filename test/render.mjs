@@ -1406,6 +1406,131 @@ await t("子项：点进度环就地展开，勾一条写回文件", async () =>
   assert.ok(after && after.title.includes("1/2"), `环应跟着更新：${after?.title}`);
 });
 
+await t("任务详情：加子项立刻出现（不用关了再开）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  await view.render();
+  const task = store.tasks.find((x) => x.title.includes("报告定稿"));
+  assert.ok(task, "夹具里应有那条任务");
+  const modal = new TaskModal(leaf.app ?? view.app, store, task, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const before = modal.contentEl.querySelectorAll(".tlt-step").length;
+  const add = modal.contentEl.querySelector(".tlt-step-add");
+  assert.ok(add, "详情里应有加子项的输入框");
+  add.value = "新加的一条";
+  add.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 260));
+  const after = modal.contentEl.querySelectorAll(".tlt-step").length;
+  assert.equal(after, before + 1, `加完应立刻多一行（前 ${before} 后 ${after}），不该等关了再开`);
+  assert.ok(files["TLT/tasks/示例项目.md"].includes("  - [ ] 新加的一条"), "也要写回文件");
+
+  // 删除同理：× → 确认 → 立刻少一行
+  const del = modal.contentEl.querySelector(".tlt-step-del");
+  del.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const okBtn = [...document.querySelectorAll(".modal button")].filter((b) => b.textContent.trim() === "删除").pop();
+  assert.ok(okBtn, "应弹出确认框");
+  okBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 260));
+  const afterDel = modal.contentEl.querySelectorAll(".tlt-step").length;
+  assert.equal(afterDel, before, `删完应立刻少一行，实际 ${afterDel}`);
+});
+
+await t("子项标记是子弹点：完成的一条划掉", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  await view.render();
+  const ring = document.querySelector(".tlt-stepring");
+  ring.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const rows = [...document.querySelectorAll(".tlt-step")];
+  assert.equal(rows.length, 2, "应有 2 条子项");
+  assert.ok(!rows[0].classList.contains("done"), "没勾的不该有 done 类");
+  rows[0].querySelector(".tlt-scb").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  const first = document.querySelector(".tlt-step");
+  assert.ok(first.classList.contains("done"), `勾完那一条应带 done：${first.className}`);
+  const cssStep = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-step\.done \.tlt-step-t[^}]*line-through/.test(cssStep), "完成态应划掉（读 styles.css 断言）");
+  // jsdom 不算样式：圆点这条直接读 styles.css 断言
+  const cssDot = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  const scbRule = /\.tlt-scb \{([^}]*)\}/.exec(cssDot)?.[1] ?? "";
+  assert.ok(/border-radius:\s*999px/.test(scbRule), `子项标记应是小圆点：${scbRule}`);
+  assert.ok(!/border-radius:\s*3px/.test(scbRule), "不该再是方框（勾选框）样式");
+});
+
+await t("侧栏有「新建项目」入口，点了弹表单", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  const add = document.querySelector("[data-newproj]");
+  assert.ok(add, "侧栏应有新建项目入口");
+  document.body.querySelectorAll(".modal").forEach((m) => m.remove());
+  add.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const modal = document.querySelector(".modal");
+  assert.ok(modal, "点了应弹出新建项目表单");
+  assert.ok(/新建项目/.test(modal.textContent || ""), `表单标题应是新建项目：${(modal.textContent || "").slice(0, 40)}`);
+});
+
+await t("排序：项目 / 里程碑 / 任务都能换口径（默认按名称）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  await view.render();
+  assert.equal(view.sortKey(), "name", "默认应是在按名称排");
+  const btn = document.querySelector(".tlt-sortbtn");
+  assert.ok(btn, "任务页工具条上应有排序按钮");
+  assert.ok(btn.textContent.includes("名称"), `按钮应写明当前口径：${btn.textContent}`);
+
+  const groupNames = () => [...document.querySelectorAll(".tlt-mgrp")].map((g) =>
+    [...g.querySelectorAll(".tlt-task")].map((r) => (r.querySelector(".tlt-task-t")?.textContent || "").replace(/^[!！]+/, "").trim()));
+  const byName = groupNames().flat();
+  assert.ok(byName.length >= 2, `本月页应有任务，实际 ${byName.join(" | ")}`);
+  const nameOk = groupNames().every((ns) =>
+    JSON.stringify(ns) === JSON.stringify([...ns].sort((a, b) => a.localeCompare(b, "zh"))));
+  assert.ok(nameOk, `按名称排序后每组内部应是中文序：${JSON.stringify(groupNames())}`);
+
+  await view.pickSort("due");
+  assert.equal(view.sortKey(), "due");
+  const btn2 = document.querySelector(".tlt-sortbtn");
+  assert.ok(btn2.textContent.includes("截止"), `按钮应变成按截止：${btn2.textContent}`);
+  const duesOf = () => [...document.querySelectorAll(".tlt-mgrp")].map((g) =>
+    [...g.querySelectorAll(".tlt-task")].map((r) => store.tasks.find((t) => t.id === r.dataset.task)?.due || "").filter(Boolean));
+  assert.ok(duesOf().every((ds) => ds.every((d, i) => i === 0 || ds[i - 1] <= d)), `按截止排后组内应是升序：${JSON.stringify(duesOf())}`);
+
+  await view.pickSort("due");   // 同一个口径再点一次＝反向
+  assert.equal(view.sortDir(), -1, "再点一次同一个口径应反向");
+  assert.ok(duesOf().every((ds) => ds.every((d, i) => i === 0 || ds[i - 1] >= d)), `反向后应是降序：${JSON.stringify(duesOf())}`);
+});
+
+await t("排序：侧栏有入口；空库时也能新建项目", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  await store.load();
+  assert.equal(store.projects().length, 0, "这一步该没有项目了");
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  assert.ok(document.querySelector("[data-sortproj]"), "侧栏应有排序入口");
+  const empty = document.querySelector(".tlt-pempty");
+  assert.ok(empty, "没有项目时侧栏应给空态");
+  const add = empty.querySelector("[data-newproj]");
+  assert.ok(add, "空态里要有新建项目按钮");
+  add.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const modal = document.querySelector(".modal");
+  assert.ok(modal, "点了应弹新建项目表单");
+  assert.ok(/新建项目/.test(modal.textContent || ""), `表单标题应是新建项目：${(modal.textContent || "").slice(0, 40)}`);
+});
+
 await t("独立消息中心渲染", async () => {
   document.body.empty();
   const mv = mount(MessagesView);

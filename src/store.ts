@@ -36,6 +36,10 @@ export interface TLTSettings {
   /** 工作台两侧栏是否折叠（视图状态，跟着库走） */
   sideCollapsed?: boolean;
   railCollapsed?: boolean;
+  /** 排序口径：名称 / 创建时间 / 截止时间（项目、里程碑、任务共用） */
+  sortBy?: "name" | "created" | "due";
+  /** 1 = 正序，-1 = 反向 */
+  sortDir?: 1 | -1;
   /** 每库一个随机盐：让不同人发布的同名源也不会撞 ID */
   publisherSalt?: string;
   feedNames: Record<string, string>; // 本地源 → 上次用的发布名称
@@ -57,6 +61,8 @@ export const DEFAULT_SETTINGS: TLTSettings = {
   publisherSalt: "",
   sideCollapsed: false,
   railCollapsed: false,
+  sortBy: "name",
+  sortDir: 1,
 };
 
 /**

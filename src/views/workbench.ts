@@ -10,6 +10,7 @@ import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaf
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
 import { setSvgMarkup } from "./dom";
+import { newProjectFlow } from "../actions";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
@@ -132,6 +133,69 @@ export class WorkbenchView extends ItemView {
 
   /* ---------- 左栏 ---------- */
 
+  /* ---------- 排序：项目 / 里程碑 / 任务通用 ---------- */
+
+  private sortKey(): "name" | "created" | "due" { return this.cfg.sortBy || "name"; }
+  private sortDir(): 1 | -1 { return this.cfg.sortDir === -1 ? -1 : 1; }
+
+  /** 一组东西按「名称 / 创建 / 截止」排序；取不到时间的排最后，同名时按名称兜底 */
+  private sortItems<T>(items: T[], keyOf: (x: T) => string, nameOf: (x: T) => string): T[] {
+    const dir = this.sortDir();
+    const byName = this.sortKey() === "name";
+    return [...items].sort((a, b) => {
+      const va = keyOf(a), vb = keyOf(b);
+      if (!va && !vb) return nameOf(a).localeCompare(nameOf(b), "zh");
+      if (!va) return 1;
+      if (!vb) return -1;
+      const c = byName ? va.localeCompare(vb, "zh") : va.localeCompare(vb);
+      return c !== 0 ? c * dir : nameOf(a).localeCompare(nameOf(b), "zh");
+    });
+  }
+
+  /** 一组任务里最早/最晚的那个日期（项目、里程碑用它的任务推算） */
+  private edgeDate(list: Task[], pick: "min" | "max"): string {
+    const k = this.sortKey();
+    if (k === "name") return "";
+    const vals = list.map((t) => (k === "created" ? t.created : t.due) || "").filter(Boolean).sort();
+    if (!vals.length) return "";
+    return pick === "min" ? vals[0] : vals[vals.length - 1];
+  }
+
+  private sortTasks(list: Task[]): Task[] {
+    const k = this.sortKey();
+    return this.sortItems(list,
+      (t) => (k === "created" ? t.created || "" : k === "due" ? t.due || "" : t.title),
+      (t) => t.title);
+  }
+
+  /** 工具条上的排序按钮：当前口径写在按钮上，点开选口径、再点同一个换方向 */
+  private sortControl(): HTMLElement {
+    const btn = el("button", "tlt-btn tiny tlt-sortbtn");
+    const label = { name: T("名称"), created: T("创建"), due: T("截止") }[this.sortKey()];
+    btn.textContent = T("排序：{label} {dir}", { label, dir: this.sortDir() === 1 ? "↑" : "↓" });
+    btn.title = T("按名称 / 创建时间 / 截止时间排；点同一个换方向");
+    btn.dataset.sort = "1";
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const mark = (k: string) => (this.sortKey() === k ? (this.sortDir() === 1 ? " ↑" : " ↓") : "");
+      popMenu(btn, [
+        { label: T("按名称") + mark("name"), onClick: () => void this.pickSort("name") },
+        { label: T("按创建时间") + mark("created"), onClick: () => void this.pickSort("created") },
+        { label: T("按截止时间") + mark("due"), onClick: () => void this.pickSort("due") },
+        { label: T("反向排列"), onClick: () => void this.pickSort(this.sortKey(), true) },
+      ], "right");
+    };
+    return btn;
+  }
+
+  private async pickSort(k: "name" | "created" | "due", flip = false) {
+    if (this.sortKey() === k && !flip) this.cfg.sortDir = this.sortDir() === 1 ? -1 : 1;
+    else { this.cfg.sortBy = k; if (flip) this.cfg.sortDir = this.sortDir() === 1 ? -1 : 1; else this.cfg.sortDir = 1; }
+    const p = this.plugin as unknown as { saveSettings?: () => Promise<void> };
+    try { await p.saveSettings?.(); } catch { /* 存不下也不影响这次排序 */ }
+    await this.render();
+  }
+
   private sidebar(): HTMLElement {
     const s = el("aside", "tlt-side");
     if (this.sideOff) {
@@ -155,9 +219,33 @@ export class WorkbenchView extends ItemView {
     s.appendChild(top);
 
     const scroll = el("div", "tlt-side-scroll");
-    scroll.appendChild(el("div", "tlt-shead", T("项目 · 进度")));
-    const projects = this.store.projects();
+    const shead = el("div", "tlt-shead");
+    shead.appendChild(el("span", "", T("项目 · 进度")));
+    const padd = el("button", "tlt-padd", "＋");
+    padd.title = T("新建项目");
+    padd.dataset.newproj = "1";
+    padd.onclick = () => newProjectFlow(this.app, this.store, () => this.render());
+    const psort = el("button", "tlt-padd", "⇅");
+    psort.title = T("项目排序：按名称 / 创建时间 / 截止时间");
+    psort.dataset.sortproj = "1";
+    psort.onclick = (ev) => { ev.stopPropagation(); this.sidebarSortMenu(psort); };
+    shead.append(psort, padd);
+    scroll.appendChild(shead);
     const all = this.store.tasks;
+    const projTasks = (name: string) => all.filter((t) => t.project === name);
+    const projects = this.sortItems(this.store.projects(),
+      (p2) => (this.sortKey() === "name" ? p2 : this.edgeDate(projTasks(p2), "min")),
+      (p2) => p2);
+    if (!projects.length) {
+      // 空态也得有入口，否则新库里根本没有"新建项目"可点
+      const empty = el("div", "tlt-pempty");
+      empty.appendChild(el("span", "", T("还没有项目")));
+      const add = el("button", "tlt-btn tiny", T("＋ 新建项目"));
+      add.dataset.newproj = "1";
+      add.onclick = () => newProjectFlow(this.app, this.store, () => this.render());
+      empty.appendChild(add);
+      scroll.appendChild(empty);
+    }
     projects.forEach((p) => {
       const list = all.filter((t) => t.project === p);
       const pct = list.length ? Math.round((list.filter((t) => t.done).length / list.length) * 100) : 0;
@@ -183,8 +271,6 @@ export class WorkbenchView extends ItemView {
       card.append(row, bar, meta);
       scroll.appendChild(card);
     });
-    if (!projects.length) scroll.appendChild(el("div", "tlt-empty", T("{dir} 里还没有任务文件", { dir: this.cfg.tasksFolder })));
-
     // 已归档：和里程碑视图一样分组，默认收起
     const archived = this.store.archivedProjects();
     if (archived.length) {
@@ -711,6 +797,7 @@ export class WorkbenchView extends ItemView {
       seg.appendChild(b2);
     });
     head.appendChild(seg);
+    head.appendChild(this.sortControl());
     p.appendChild(head);
     const groups: [string, Task[], string][] = [
       [T("{l}逾期", { l: label }), m.late, "#D98B5F"],
@@ -725,7 +812,7 @@ export class WorkbenchView extends ItemView {
       h.append(dot, el("span", "", name), el("span", "tlt-mgc", String(list.length)));
       g.appendChild(h);
       if (!list.length) g.appendChild(el("div", "tlt-empty", T("没有")));
-      list.forEach((t) => g.appendChild(this.taskRow(t)));
+      this.sortTasks(list).forEach((t) => g.appendChild(this.taskRow(t)));
       p.appendChild(g);
     });
     return p;
@@ -783,7 +870,7 @@ export class WorkbenchView extends ItemView {
   private stepBlock(t: Task): HTMLElement {
     const box = el("div", "tlt-steps");
     t.steps.forEach((st, i) => {
-      const row = el("div", "tlt-step");
+      const row = el("div", "tlt-step" + (st.done ? " done" : ""));
       const cb = el("i", "tlt-scb" + (st.done ? " on" : ""));
       cb.dataset.step = `${t.id}|${i}`;
       const txt = el("span", "tlt-step-t", st.text);
@@ -802,6 +889,17 @@ export class WorkbenchView extends ItemView {
   }
 
   /** 项目菜单：新建里程碑 / 归档项目 / 打开文件 */
+  /** 侧栏窄，排序用一个小菜单 */
+  private sidebarSortMenu(anchor: HTMLElement) {
+    const mark = (k: string) => (this.sortKey() === k ? (this.sortDir() === 1 ? " ↑" : " ↓") : "");
+    popMenu(anchor, [
+      { label: T("按名称") + mark("name"), onClick: () => void this.pickSort("name") },
+      { label: T("按创建时间") + mark("created"), onClick: () => void this.pickSort("created") },
+      { label: T("按截止时间") + mark("due"), onClick: () => void this.pickSort("due") },
+      { label: T("反向排列"), onClick: () => void this.pickSort(this.sortKey(), true) },
+    ], "right");
+  }
+
   private projectMenu(anchor: HTMLElement, p: string, at?: { x: number; y: number }) {
     const file = this.app.vault.getAbstractFileByPath(`${this.cfg.tasksFolder}/${p}.md`);
     popMenu(anchor, [
@@ -1064,6 +1162,8 @@ export class WorkbenchView extends ItemView {
 
     const head = el("div", "tlt-pane-h");
     head.append(el("span", "", T("{a} 个里程碑 · {b} 开展中 · {c} 已完成", { a: ms.length, b: active.length, c: finished.length })));
+    head.appendChild(el("span", "tlt-spacer"));
+    head.appendChild(this.sortControl());
     p.appendChild(head);
     if (!ms.length) p.appendChild(el("div", "tlt-empty", T("任务文件里用「## 里程碑名」分节，这里就会出现里程碑。")));
 
@@ -1096,14 +1196,18 @@ export class WorkbenchView extends ItemView {
         card.appendChild(h);
         if (this.expanded.has(m.name)) {
           const body = el("div", "tlt-ms-b");
-          m.tasks.forEach((t) => body.appendChild(this.taskRow(t)));
+          this.sortTasks(m.tasks).forEach((t) => body.appendChild(this.taskRow(t)));
           card.appendChild(body);
         }
         p.appendChild(card);
       });
     };
-    paintGroup(T("开展中"), active);
-    paintGroup(T("已完成"), finished);
+    const sortMs = (list: { name: string; project: string; tasks: Task[] }[]) =>
+      this.sortItems(list,
+        (m) => (this.sortKey() === "name" ? m.name : this.edgeDate(m.tasks, "min")),
+        (m) => m.name);
+    paintGroup(T("开展中"), sortMs(active));
+    paintGroup(T("已完成"), sortMs(finished));
     return p;
   }
 
