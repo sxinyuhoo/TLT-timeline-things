@@ -1,7 +1,7 @@
 {
   "id": "tlt-timeline-things",
   "name": "TLT - Timeline + Tasks",
-  "version": "0.9.5",
+  "version": "0.9.7",
   "minAppVersion": "1.8.7",
   "description": "Timeline-first task manager: tasks, schedule, calendar, project milestones, workload — plus a message center. 以时间线为中心的任务 / 日程 / 项目管理：日历、里程碑、人员饱和度 + 消息中心. All plain Markdown.",
   "author": "sxinyuhoo",
