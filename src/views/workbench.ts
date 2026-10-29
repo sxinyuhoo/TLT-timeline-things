@@ -66,7 +66,7 @@ export class WorkbenchView extends ItemView {
 
   getViewType() { return VIEW_TYPE_WORKBENCH; }
   getDisplayText() { return T("时间线工作台"); }
-  getIcon() { return "activity"; }
+  getIcon() { return "tlt-timeline"; }
 
   /** 只在自己这个视图是活动叶子时生效；弹窗开着、或焦点在输入框里就交给它们自己处理 */
   private guardEscape(ev: KeyboardEvent) {
@@ -1713,14 +1713,18 @@ export class WorkbenchView extends ItemView {
       if (!t) return;
       await this.store.setField(t, "st", st);
       await this.store.setField(t, "en", en);
+      t.st = st; t.en = en;                 // 内存里同步好，下次渲染自然是对的
       new Notice(T("已改到 {a}–{b}", { a: st, b: en }), 2500);
     } else {
       const l = this.store.logs.find((x) => x.id === id);
       if (!l) return;
       await this.store.setLogTime(l, st, en);
+      l.st = st; l.en = en;
       new Notice(T("已改到 {a}–{b}", { a: st, b: en }), 2500);
     }
-    await this.refresh();
+    // 拖动只改了这一个块的时间：块自己已经画好了，**不要整页重画**——
+    // 重画会重建侧栏与星图，用户看到的就是"拖一下，左边和星图跳一下"。
+    // 改了时间段不影响项目进度、星图（按截止日）与统计数据，所以这里不需要刷新别的面板。
   }
 
   /** 日程块右键菜单：编辑 / 删除（计划块是"取消排期"） */

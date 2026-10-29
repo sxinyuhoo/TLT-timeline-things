@@ -17,6 +17,9 @@ export function normalizePath(p: string): string {
 export function setIcon() {}
 export function debounce<T extends Function>(fn: T) { return fn; }
 
+export const registeredIcons: string[] = [];
+export function addIcon(id: string, _svg: string) { registeredIcons.push(id); }
+
 export class ItemView {
   app: any; leaf: any;
   containerEl: HTMLElement;

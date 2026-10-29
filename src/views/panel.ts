@@ -1,7 +1,7 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS } from "../store";
-import { Task, saturation, inPeriod, todayISO } from "../data";
+import { saturation, inPeriod, todayISO } from "../data";
 import { t as T } from "../i18n";
 import { el } from "./modals";
 import { VIEW_TYPE_WORKBENCH } from "./workbench";
@@ -24,7 +24,7 @@ export class OverviewPanelView extends ItemView {
 
   getViewType() { return VIEW_TYPE_PANEL; }
   getDisplayText() { return T("TLT 概览"); }
-  getIcon() { return "gauge"; }
+  getIcon() { return "tlt-gauge"; }
   get store(): Store { return this.plugin.store; }
   private get cfg() { return (this.plugin as { store?: Store } | undefined)?.store?.settings ?? DEFAULT_SETTINGS; }
 
@@ -130,17 +130,66 @@ export class OverviewPanelView extends ItemView {
       body.appendChild(staffBox);
     }
 
-    /* ---- 四、未指派 ---- */
-    body.appendChild(this.listBlock(T("未指派"), noOwner, { tab: "month", dim: "all" }, 5));
-    /* ---- 五、未排期 ---- */
-    body.appendChild(this.listBlock(T("未排期"), noDue, { tab: "month", dim: "all" }, 3));
+    /* ---- 三、里程碑：开展中 / 已完成 ---- */
+    const msList = this.store.milestones(proj || undefined);
+    const msDone = msList.filter((m) => m.tasks.length > 0 && m.tasks.every((t) => t.done));
+    const msBox = el("div", "tlt-pn-block");
+    msBox.dataset.pngoto = "ms";
+    const mr = el("div", "tlt-pn-blockrow");
+    mr.append(el("span", "tlt-pn-lab", T("里程碑")), el("span", "tlt-pn-val", String(msList.length)));
+    msBox.appendChild(mr);
+    const mbar = el("div", "tlt-pn-bar");
+    const mfill = el("i");
+    mfill.style.width = `${msList.length ? Math.round((msDone.length / msList.length) * 100) : 0}%`;
+    mbar.appendChild(mfill);
+    msBox.appendChild(mbar);
+    msBox.appendChild(el("div", "tlt-pn-sub",
+      T("开展中 {a} · 已完成 {b}", { a: msList.length - msDone.length, b: msDone.length })));
+    body.appendChild(msBox);
+
+    /* ---- 四、子项进度（有子项的任务才计）---- */
+    const stepTasks = all.filter((t) => t.steps.length);
+    const stepTotal = stepTasks.reduce((n, t) => n + t.steps.length, 0);
+    const stepDone = stepTasks.reduce((n, t) => n + t.steps.filter((x) => x.done).length, 0);
+    if (stepTotal) {
+      const stBox = el("div", "tlt-pn-block");
+      const sr = el("div", "tlt-pn-blockrow");
+      sr.append(el("span", "tlt-pn-lab", T("子项")), el("span", "tlt-pn-val", `${stepDone}/${stepTotal}`));
+      stBox.appendChild(sr);
+      const sbar = el("div", "tlt-pn-bar");
+      const sfill = el("i");
+      sfill.style.width = `${Math.round((stepDone / stepTotal) * 100)}%`;
+      sbar.appendChild(sfill);
+      stBox.appendChild(sbar);
+      stBox.appendChild(el("div", "tlt-pn-sub", T("{n} 条任务拆了子项", { n: stepTasks.length })));
+      body.appendChild(stBox);
+    }
+
+    /* ---- 五、最近完成（近 7 天）---- */
+    const week = new Date();
+    week.setDate(week.getDate() - 6);
+    const p2d = (n: number) => String(n).padStart(2, "0");
+    const from = `${week.getFullYear()}-${p2d(week.getMonth() + 1)}-${p2d(week.getDate())}`;
+    const recent = all.filter((t) => t.done && t.doneAt && t.doneAt >= from);
+    const rBox = el("div", "tlt-pn-block");
+    rBox.dataset.pngoto = "month";
+    const rr = el("div", "tlt-pn-blockrow");
+    rr.append(el("span", "tlt-pn-lab", T("近期完成（7 天）")), el("span", "tlt-pn-val", String(recent.length)));
+    rBox.appendChild(rr);
+    rBox.appendChild(el("div", "tlt-pn-sub",
+      recent.length ? T("最近一条：{t}", { t: recent[recent.length - 1].title.slice(0, 18) }) : T("这 7 天还没有完成的")));
+    body.appendChild(rBox);
 
     // 点块跳工作台
     body.addEventListener("click", (ev) => {
       const t = ev.target as HTMLElement;
       const card = t.closest<HTMLElement>("[data-pngoto]");
       const num = t.closest<HTMLElement>("[data-pngoto-tab]");
-      if (card) { void this.jump({ tab: card.dataset.pngoto === "staff" ? "staff" : "month", dim: "all" }); return; }
+      if (card) {
+        const t2 = card.dataset.pngoto === "staff" ? "staff" : card.dataset.pngoto === "ms" ? "ms" : "month";
+        void this.jump({ tab: t2, dim: "all" });
+        return;
+      }
       if (num) {
         void this.jump({
           tab: num.dataset.pngotoTab || "month",
@@ -167,22 +216,6 @@ export class OverviewPanelView extends ItemView {
     c.dataset.pngotoDim = opts.goto.dim;
     c.append(el("span", "tlt-pn-val", value), el("span", "tlt-pn-lab", label));
     return c;
-  }
-
-  private listBlock(title: string, list: Task[], goto: { tab: string; dim: string }, show: number): HTMLElement {
-    const box = el("div", "tlt-pn-block");
-    const r = el("div", "tlt-pn-blockrow");
-    r.append(el("span", "tlt-pn-lab", title), el("span", "tlt-pn-val", String(list.length)));
-    box.dataset.pngotoTab = goto.tab;
-    box.dataset.pngotoDim = goto.dim;
-    box.appendChild(r);
-    list.slice(0, show).forEach((t) => {
-      const line = el("div", "tlt-pn-item");
-      line.append(el("span", "tlt-pn-itemt", t.title), el("span", "tlt-pn-sub", t.project || ""));
-      box.appendChild(line);
-    });
-    if (list.length > show) box.appendChild(el("div", "tlt-pn-sub", T("还有 {n} 条", { n: list.length - show })));
-    return box;
   }
 
   /** 未完成任务的 est 之和 ÷ 该人本期可用人天（和工作台的人员页同一套算法） */

@@ -166,7 +166,10 @@ const app = {
   metadataCache: { getFileCache: (f) => ({ frontmatter: parseFmNow(f.path) }) },
   workspace: { getLeavesOfType: () => [], getLeaf: () => ({}), getActiveViewOfType: () => null },
   // 搬运走 Obsidian 的 renameFile：实测语义照搬（内容跟着路径走）
-  fileManager: { renameFile: async (f, to) => { if (f && f.path in files) { files[to] = files[f.path]; delete files[f.path]; } } },
+  fileManager: {
+    renameFile: async (f, to) => { if (f && f.path in files) { files[to] = files[f.path]; delete files[f.path]; } },
+    trashFile: async (f) => { if (f && f.path in files) delete files[f.path]; },
+  },
 };
 
 const store = new Store(app, {
@@ -1888,10 +1891,20 @@ await t("新建任务：负责人面板里能直接新建人员", async () => {
   const search = modal.contentEl.querySelector("[data-ownersearch]");
   assert.ok(search, "候选面板里应有搜索框");
   assert.ok(modal.contentEl.querySelector("[data-owneradd]"), "候选面板里应有「＋ 新建人员」");
-  search.value = "新来的同事";
-  const ev = new search.ownerDocument.defaultView.KeyboardEvent("keydown", { key: "Enter", bubbles: true });
-  search.dispatchEvent(ev);
-  await new Promise((r) => window.setTimeout(r, 220));
+  // 回车对着一个不存在的人：不该直接建号，只提示
+  search.value = "查无此人";
+  search.dispatchEvent(new search.ownerDocument.defaultView.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 160));
+  assert.ok(!files["TLT/crew/查无此人.md"], "回车不该直接建出人员档案");
+  // 走「＋ 新建人员」弹窗
+  modal.contentEl.querySelector("[data-owneradd]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 100));
+  const staffModal = [...document.querySelectorAll(".tlt-host")].find((m) => m.querySelector("[data-staffname]"));
+  assert.ok(staffModal, "应弹出新建人员面板");
+  staffModal.querySelector("[data-staffname]").value = "新来的同事";
+  staffModal.querySelector("[data-staffrole]").value = "算法工程师";
+  staffModal.querySelector("[data-staffok]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 240));
   assert.ok(files["TLT/crew/新来的同事.md"], `应建出人员档案，实际：${Object.keys(files).filter((k) => k.includes("crew")).join(", ")}`);
   await store.load();
   assert.equal(store.staff.length, before + 1, "人员数应 +1");
@@ -1925,6 +1938,49 @@ await t("输入法合成中的回车不提交（改源名不会被打断）", as
   inp.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 200));
   assert.ok(!document.querySelector(".tlt-d-titlewrap input"), "合成结束后的回车才提交");
+});
+
+await t("概览面板：指标更全（里程碑 / 子项 / 近期完成），不再列明细", async () => {
+  document.body.empty();
+  plugin.activeProject = null;
+  const v = new OverviewPanelView(leaf, plugin);
+  v.containerEl = document.createElement("div");
+  v.contentEl = document.createElement("div");
+  v.containerEl.appendChild(v.contentEl);
+  document.body.appendChild(v.containerEl);
+  await v.onOpen();
+  const txt = v.contentEl.textContent;
+  assert.ok(/里程碑/.test(txt), "应有里程碑指标");
+  assert.ok(/开展中 \d+ · 已完成 \d+/.test(txt), `里程碑应写清开展中/已完成：${txt.slice(0, 120)}`);
+  assert.ok(/近期完成/.test(txt), "应有近 7 天完成");
+  assert.ok(!v.contentEl.querySelector(".tlt-pn-item"), "不该再列 未指派/未排期 的明细");
+  // 里程碑数字与 store 对得上
+  const ms = store.milestones();
+  const card = [...v.contentEl.querySelectorAll(".tlt-pn-block")].find((b) => b.textContent.includes("里程碑"));
+  assert.ok(card.querySelector(".tlt-pn-val").textContent === String(ms.length), "里程碑数应等于 store 里的数量");
+});
+
+await t("个人消息源能删；发布过的/订阅来的不给删", async () => {
+  document.body.empty();
+  const { Store: StoreCls } = { Store };
+  const personal = store.feeds.find((f) => f.personal);
+  assert.ok(personal, "夹具应有个人源");
+  const r1 = await store.removeFeed(personal);
+  assert.ok(r1.ok, "个人源应能删");
+  await store.load();
+  assert.ok(!store.feeds.some((f) => f.personal), "删完列表里不该还有它");
+
+  // 发布过的：拒绝，并给出原因
+  fpsLike: {
+    const p = store.feeds[0];
+    if (p) {
+      const fake = { ...p, personal: false, mine: true, remote: undefined };
+      const r2 = await store.removeFeed(fake);
+      assert.equal(r2.ok, false, "发布过的源不该被直接删");
+      assert.equal(r2.reason, "mine", "应说明是「我发布的」");
+    }
+  }
+  void StoreCls;
 });
 
 await t("独立消息中心渲染", async () => {

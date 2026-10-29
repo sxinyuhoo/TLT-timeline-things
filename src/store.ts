@@ -1460,6 +1460,24 @@ export class Store {
 
   /* ---------------- 人员 ---------------- */
 
+  /**
+   * 删除消息源——**只允许删个人源**。
+   * 发布过的源要先「取消发布」（内容搬回个人），订阅来的源走「取消订阅」——
+   * 这两类都不该被直接删掉（前者服务端还挂着一份，后者是别人的东西）。
+   */
+  async removeFeed(feed: Feed): Promise<{ ok: boolean; reason?: "mine" | "remote" | "missing" }> {
+    if (feed.mine && !feed.personal) return { ok: false, reason: "mine" };
+    if (feed.remote) return { ok: false, reason: "remote" };
+    const file = await this.fileByPath(feed.file);
+    if (!file) return { ok: false, reason: "missing" };
+    await this.app.fileManager.trashFile(file);      // 按用户的删除偏好走（默认进回收站，可恢复）
+    this.feeds = this.feeds.filter((f) => f.file !== feed.file);
+    return { ok: true };
+  }
+
+  /** 这个源里有多少条消息（删之前提示用） */
+  feedItemCount(feed: Feed): number { return feed.items.length; }
+
   /** 新建一个个人消息源（feeds/<名字>.md，personal: true） */
   async createPersonalFeed(name: string): Promise<boolean> {
     const clean = name.trim().replace(/[\\/:*?"<>|]/g, "-");
@@ -1471,11 +1489,13 @@ export class Store {
     return true;
   }
 
-  async addStaff(name: string) {
-    const path = normalizePath(`${this.settings.teamFolder}/${name}.md`);
-    if (this.app.vault.getAbstractFileByPath(path)) return false;
+  async addStaff(name: string, role?: string) {
+    const clean = name.trim().replace(/[\\/:*?"<>|]/g, "-");
+    if (!clean) return false;
+    const path = normalizePath(`${this.settings.teamFolder}/${clean}.md`);
+    if (this.asFile(this.app.vault.getAbstractFileByPath(path))) return false;
     await this.ensureFolder(this.settings.teamFolder);
-    await this.createSafe(path, `---\ntlt: staff\nrole: 算法工程师\ncapacity: 100\ndays: 5\nskills: []\nstatus: active\n---\n\n# ${name}\n`);
+    await this.createSafe(path, `---\ntlt: staff\nrole: ${(role || "算法工程师").trim()}\ncapacity: 100\ndays: 5\nskills: []\nstatus: active\n---\n\n# ${clean}\n`);
     return true;
   }
 

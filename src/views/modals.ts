@@ -259,7 +259,7 @@ function tagPicker(store: Store, parent: HTMLElement, draft: { tags: string[] })
  * 负责人选择：一个「已选 chip + 选择…」的紧凑控件，点开是带搜索的勾选面板。
  * 不再把全体人员平铺在表单里（人多时会撑满整个弹窗）。
  */
-function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[] }) {
+function ownerSelect(app: App, store: Store, parent: HTMLElement, draft: { owners: string[] }) {
   const wrap = el("div", "tlt-ownerbox");
   const line = el("div", "tlt-quick");
   // 就地展开的候选面板：不做浮动定位（真机上浮动面板会被弹窗裁掉/盖住，看着像点了没反应）
@@ -289,49 +289,34 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
         list.appendChild(r);
       });
     };
-    // 没搜到人时：回车把这个名字建成新档案并直接选上（不用先去人员视图建一遍）
-    const createWith = (name: string) => {
-      const clean = name.trim();
-      if (!clean) return;
-      void (async () => {
-        const ok = await store.addStaff(clean);
-        if (ok) {
-          await store.load();
-          draft.owners = [...draft.owners, clean];
-          paint();
-          search.value = "";
-          fill();
-          new Notice(T("已新建人员「{n}」（岗位/产能可以在人员页再改）", { n: clean }));
-        } else {
-          new Notice(T("「{n}」已经有档案了，直接选它就行", { n: clean }));
-          search.value = clean;
-          fill();
-        }
-      })();
+    const createWith = (prefill: string) => {
+      new NewStaffModal(app, store, (created) => {
+        draft.owners = draft.owners.includes(created) ? draft.owners : [...draft.owners, created];
+        paint();
+        fill();
+      }).open();
+      void prefill;
     };
     search.addEventListener("keydown", (ev) => {
       if (ev.isComposing || ev.key === "Process") return;
       if (ev.key !== "Enter") return;
       const q = search.value.trim();
       if (!q) return;
-      const hit = store.staff.find((x) => x.name === q);
-      if (hit) {                         // 已经有这个人：直接选中
-        ev.preventDefault();
-        draft.owners = draft.owners.includes(q) ? draft.owners : [...draft.owners, q];
+      ev.preventDefault();
+      const hit = store.staff.find((x) => x.name === q) ||
+        store.staff.filter((x) => x.name.includes(q))[0];      // 只有一个模糊命中就顺手选它
+      if (hit) {
+        draft.owners = draft.owners.includes(hit.name) ? draft.owners : [...draft.owners, hit.name];
         paint(); fill();
         return;
       }
-      ev.preventDefault();
-      createWith(q);
+      new Notice(T("没有「{n}」这个人，点下面的「＋ 新建人员」建一个", { n: q }), 3500);
     });
     const addRow = el("button", "tlt-pickadd", T("＋ 新建人员"));
     addRow.setAttribute("data-owneradd", "1");
     addRow.onclick = (ev) => {
       ev.stopPropagation();
-      const q = search.value.trim();
-      if (q) { createWith(q); return; }
-      search.focus();
-      new Notice(T("先在搜索框里打上名字，再按回车就能新建"));
+      createWith(search.value.trim());
     };
     search.oninput = fill;
     fill();
@@ -379,6 +364,54 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
  * 项目信息：看/改项目名称（= 文件名）与一段描述。
  * 改名会同步日志里的 [proj:: 旧名]，描述写进项目文件的 frontmatter。
  */
+/** 新建人员：名字 +（可选）岗位，建好后直接选中 */
+export class NewStaffModal extends TltModal {
+  store: Store;
+  onDone: (name: string) => void | Promise<void>;
+
+  constructor(app: App, store: Store, onDone: (name: string) => void | Promise<void>) {
+    super(app); this.store = store; this.onDone = onDone;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", T("新建人员")));
+
+    const nameRow = row(contentEl, T("姓名"));
+    const name = el("input", "tlt-input wide");
+    name.placeholder = T("姓名（会建一个 crew/<姓名>.md）");
+    name.setAttribute("data-staffname", "1");
+    nameRow.appendChild(name);
+
+    const roleRow = row(contentEl, T("岗位"));
+    const role = el("input", "tlt-input wide");
+    role.placeholder = T("算法工程师（可留空）");
+    role.setAttribute("data-staffrole", "1");
+    roleRow.appendChild(role);
+
+    contentEl.appendChild(el("div", "tlt-hint", T("产能、在岗天数、技能在生成的档案文件里改（人员页可打开）。")));
+
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", T("取消"));
+    cancel.onclick = () => this.close();
+    const ok = el("button", "tlt-btn pri", T("创建"));
+    ok.setAttribute("data-staffok", "1");
+    ok.onclick = () => { void (async () => {
+      const n = name.value.trim();
+      if (!n) { new Notice(T("先写名字")); return; }
+      const made = await this.store.addStaff(n, role.value.trim() || undefined);
+      if (!made) { new Notice(T("「{n}」已经有档案了", { n })); this.close(); void this.onDone(n); return; }
+      await this.store.load();
+      this.close();
+      void this.onDone(n);
+    })(); };
+    foot.append(cancel, ok);
+    contentEl.appendChild(foot);
+    window.setTimeout(() => name.focus(), 40);
+  }
+}
+
 /** 新建项目：名称 + 一段描述（描述可选，写进项目文件 frontmatter 的 desc） */
 export class NewProjectModal extends TltModal {
   store: Store;
@@ -595,7 +628,7 @@ export class TaskModal extends TltModal {
     seg<number>(pri, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri || 1, (v) => (this.draft.pri = v as Pri));
 
     const whoRowD = row(contentEl, T("负责人"));
-    ownerSelect(this.store, whoRowD, this.draft);
+    ownerSelect(this.app, this.store, whoRowD, this.draft);
 
     // 子项：只有内容与完成态；改动即时写回，不参与"保存"
     const stepRow = row(contentEl, T("子项"));
@@ -924,8 +957,7 @@ export class QuickTaskModal extends TltModal {
 
     // 负责人：一个紧凑的框选控件（点开是带搜索的勾选列表）
     const whoRow = row(contentEl, T("负责人"));
-    if (!this.store.staff.length) whoRow.appendChild(el("div", "tlt-hint", T("还没有人员档案（人员页可以新建）")));
-    else ownerSelect(this.store, whoRow, this.draft);
+    ownerSelect(this.app, this.store, whoRow, this.draft);
 
     const foot = el("div", "tlt-m-foot");
     const cancel = el("button", "tlt-btn", T("取消"));

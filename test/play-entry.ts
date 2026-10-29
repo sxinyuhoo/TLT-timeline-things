@@ -91,6 +91,7 @@ const vault = {
   process: async (f: any, fn: any) => { files[f.path] = fn(files[f.path]); },
   create: async (p: string, c: string) => { files[p] = c; },
   createFolder: async () => {},
+  trash: async (f: any) => { delete files[f.path]; },      // 测试台：删除＝直接从内存里去掉
   on: () => ({}),
 };
 
@@ -117,6 +118,7 @@ const app = {
   vault,
   metadataCache: { getFileCache: (f: any) => ({ frontmatter: parseFm(files[f.path] || "") }) },
   workspace: {},
+  fileManager: { trashFile: async (f: any) => { delete files[f.path]; }, renameFile: async (f: any, to: string) => { files[to] = files[f.path]; delete files[f.path]; } },
 };
 
 const store = new Store(app as any, {

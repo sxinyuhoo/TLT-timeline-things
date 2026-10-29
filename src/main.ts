@@ -5,6 +5,7 @@ import {
 import { Store, TLTSettings, DEFAULT_SETTINGS, pathsFromRoot, PATH_KEYS } from "./store";
 import { WorkbenchView, VIEW_TYPE_WORKBENCH } from "./views/workbench";
 import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
+import { addIcon } from "obsidian";
 import { OverviewPanelView, VIEW_TYPE_PANEL } from "./views/panel";
 import { MoveDataModal } from "./views/modals";
 import {
@@ -206,6 +207,12 @@ export class TLTPlugin extends Plugin {
     setLanguage(this.settings.language);
     this.store = new Store(this.app, this.settings);
     this.store.onSettingsChange = () => this.saveSettings();
+
+    // 自带的图标：不复用 activity/rss/gauge 这类通用 id——别的插件用 addIcon 注册同名 id 会把它们覆盖掉，
+    // 页签上就会显示成别人的图标。用 tlt-* 前缀，谁也撞不上。
+    addIcon("tlt-timeline", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>');
+    addIcon("tlt-messages", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>');
+    addIcon("tlt-gauge", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>');
 
     this.registerView(VIEW_TYPE_WORKBENCH, (leaf: WorkspaceLeaf) => new WorkbenchView(leaf, this));
     this.registerView(VIEW_TYPE_MESSAGES, (leaf: WorkspaceLeaf) => new MessagesView(leaf, this));

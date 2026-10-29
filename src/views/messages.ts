@@ -3,7 +3,7 @@ import { ItemView, WorkspaceLeaf, Notice, App, requestUrl } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS } from "../store";
 import { Msg, Feed, todayISO, addDays, D, cleanFeedUrl, errMsg } from "../data";
-import { el, MsgModal, buildMsgFields, popMenu, TltModal, PromptModal } from "./modals";
+import { el, MsgModal, buildMsgFields, popMenu, TltModal, PromptModal, ConfirmModal } from "./modals";
 import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_MESSAGES = "tlt-messages";
@@ -66,7 +66,7 @@ export class MessagesView extends ItemView {
 
   getViewType() { return VIEW_TYPE_MESSAGES; }
   getDisplayText() { return T("消息中心"); }
-  getIcon() { return "rss"; }
+  getIcon() { return "tlt-messages"; }
 
   async onOpen() {
     // 本视图里按 Esc：先收掉自己的浮层，然后吃掉这个键——别让 Obsidian 把活动标签页切走
@@ -707,6 +707,30 @@ export class MessagesView extends ItemView {
           pub.title = T("把这里的草稿变成一个别人能订阅的源");
           pub.onclick = () => new PublishFeedModal(this.app, this.store, this.plugin, f, () => this.refresh()).open();
           act.appendChild(pub);
+          // 个人源可以直接删（发布过的要先取消发布，订阅来的走取消订阅）
+          const del = el("button", "tlt-btn danger", T("删除消息源"));
+          del.title = T("删掉这个源（进回收站，可恢复）；里面的消息一起走");
+          del.onclick = () => {
+            new ConfirmModal(this.app, {
+              title: T("删除消息源"),
+              body: T("「{n}」里的 {c} 条消息会一起进回收站（可恢复）。", { n: f.name, c: this.store.feedItemCount(f) }),
+              ok: T("删除"),
+            }, async (ok) => {
+              if (!ok) return;
+              const r = await this.store.removeFeed(f);
+              if (!r.ok) {
+                new Notice(r.reason === "mine"
+                  ? T("发布过的源要先「取消发布」，回到个人后才能删")
+                  : T("订阅来的源请用「取消订阅」"));
+                return;
+              }
+              this.selected.delete(f.id);
+              await this.store.load();
+              await this.refresh();
+              new Notice(T("已删除消息源「{n}」（在回收站里）", { n: f.name }));
+            }).open();
+          };
+          act.appendChild(del);
         } else if (f.mine) {
           const st = this.plugin.hubState();
           const pid = (this.cfg.feedIds || {})[f.id] || f.id;
@@ -739,7 +763,9 @@ export class MessagesView extends ItemView {
           })(); };
           const unpub = el("button", "tlt-btn danger", T("取消发布"));
           unpub.onclick = () => { void (async () => {
-            try { await this.store.unpublishFeed(pid, st.publish); } catch { /* 服务没起也不影响本地 */ }
+            // 服务端那条也要删掉，否则别人还能拉到旧内容
+            let serverGone = false;
+            try { serverGone = await this.store.unpublishFeed(pid, st.publish); } catch { /* 服务没起 */ }
             if (!Store.isCleanId(pid)) { try { await this.store.unpublishFeed(f.id, st.publish); } catch { /* 同上 */ } }
             const back = f.personal ? 0 : await this.store.demoteToPersonal(f, "个人");
             this.selected.delete(f.id);
@@ -747,6 +773,7 @@ export class MessagesView extends ItemView {
             if (back < 0) new Notice(T("并回个人失败，源文件已保留，稍后再试"));
             else if (!back) new Notice(T("已取消发布，这个源原样回到「个人」"));
             else new Notice(T("已取消发布，{n} 条并回「个人」（原来那个个人源里已有内容）", { n: back }));
+            if (!serverGone) new Notice(T("服务端那条还没删掉（服务连不上）：订阅过的人暂时还能拉到旧内容，等连上后再点一次「取消发布」即可"), 7000);
           })(); };
           act.append(push, unpub);
         } else {
