@@ -1563,13 +1563,14 @@ await t("负责人：候选就地展开（不是浮动面板），再点收起",
   assert.ok(modal.contentEl.querySelector(".tlt-pickpop").classList.contains("tlt-hidden"), "再点一次应收起");
 });
 
-await t("新建任务：改工作量会把截止排到「开始 + 工作量」", async () => {
+await t("新建任务：工作量与截止各填各的（互不影响）", async () => {
   document.body.empty();
   const modal = new QuickTaskModal(leaf.app ?? plugin.app, store, () => {});
   modal.open();
   await new Promise((r) => window.setTimeout(r, 60));
   const dueEl = () => modal.contentEl.querySelector(".tlt-dline input[type=date]:last-of-type");
   const startEl = modal.contentEl.querySelector(".tlt-dline input[type=date]");
+  const segBtn = (label) => [...modal.contentEl.querySelectorAll(".tlt-seg-b")].find((b) => b.textContent.trim() === label);
   const addDays = (iso, n) => {
     const [y, m, d] = iso.split("-").map(Number);
     const dt = new Date(y, m - 1, d + n);
@@ -1579,32 +1580,20 @@ await t("新建任务：改工作量会把截止排到「开始 + 工作量」",
   const today = startEl.value;
   assert.equal(dueEl().value, today, "默认 1 天：开始＝截止＝今天");
 
-  const segBtn = (label) => [...modal.contentEl.querySelectorAll(".tlt-seg-b")].find((b) => b.textContent.trim() === label);
-  segBtn("2 天").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  segBtn("3 天").dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 40));
-  assert.equal(dueEl().value, addDays(today, 1), "选 2 天：截止应排到次日");
+  assert.equal(dueEl().value, today, "改工作量不该动截止");
 
+  // 反过来：改截止也不该动工作量
   const custom = modal.contentEl.querySelector(".tlt-est-custom");
-  custom.value = "5";
-  custom.dispatchEvent(new custom.ownerDocument.defaultView.Event("change", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 40));
-  assert.equal(dueEl().value, addDays(today, 4), "自定义 5 天：截止应是开始 + 4");
-
-  // 反过来也成立：自己选截止日，天数要跟着适配（10-29 → 11-02 ＝ 5 天）
-  const manual = addDays(today, 4);
   const due2 = dueEl();
-  due2.value = manual;
+  due2.value = addDays(today, 4);
   due2.dispatchEvent(new due2.ownerDocument.defaultView.Event("change", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 40));
+  assert.equal(custom.value, "", "改截止不该动工作量（3 天还是常用档，自定义框应留空）");
   const estRowEl = modal.contentEl.querySelector(".tlt-est-custom")?.closest(".tlt-row") ?? modal.contentEl;
   const picked = [...estRowEl.querySelectorAll(".tlt-seg-b")].filter((b) => b.classList.contains("on")).map((b) => b.textContent.trim());
-  assert.deepEqual(picked, ["5 天"], `选到 5 天后，工作量应自动变成 5 天，实际选中：${picked.join(",")}`);
-  assert.equal(modal.contentEl.querySelector(".tlt-est-custom").value, "", "5 天是常用档，自定义框应留空");
-
-  // 再改工作量，截止重新跟着走
-  segBtn("2 天").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 40));
-  assert.equal(dueEl().value, addDays(today, 1), "再选 2 天，截止应回到开始 + 1");
+  assert.deepEqual(picked, ["3 天"], `工作量应还是 3 天：${picked.join(",")}`);
 });
 
 await t("项目信息：看得到、改得动名称与描述", async () => {
@@ -1626,7 +1615,7 @@ await t("项目信息：看得到、改得动名称与描述", async () => {
   assert.equal(store.projectDesc("示例项目"), "示例项目：演示用的假项目", "重新读盘后描述应读得到");
 });
 
-await t("任务详情：改工作量 / 改截止，两边互相对齐", async () => {
+await t("任务详情：工作量与截止各填各的（互不影响）", async () => {
   document.body.empty();
   const task = store.tasks.find((x) => x.title.includes("报告定稿"));
   assert.ok(task, "夹具里应有那条任务");
@@ -1641,27 +1630,17 @@ await t("任务详情：改工作量 / 改截止，两边互相对齐", async ()
     const p2 = (x) => String(x).padStart(2, "0");
     return `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())}`;
   };
-  const fire = (el) => el.dispatchEvent(new el.ownerDocument.defaultView.Event("change", { bubbles: true }));
-  const start0 = dates()[0].value;
+  const due0 = dates()[1].value;
 
   segBtn("3 天").dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 40));
-  assert.equal(dates()[1].value, addDays(start0, 2), "选 3 天：截止应是开始 + 2");
+  assert.equal(dates()[1].value, due0, "改工作量不该动截止");
 
-  // 改截止 → 天数跟着适配（7 天不是常用档，落到自定义框里）
   const dueEl = dates()[1];
-  dueEl.value = addDays(start0, 6);
-  fire(dueEl);
+  dueEl.value = addDays(due0, 5);
+  dueEl.dispatchEvent(new dueEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 40));
-  assert.equal(modal.contentEl.querySelector(".tlt-est-custom").value, "7", `截止改成 7 天跨度后，工作量应变成 7，实际 ${modal.contentEl.querySelector(".tlt-est-custom").value}`);
-
-  // 改开始 → 天数不变，截止跟着顺延
-  const startEl = dates()[0];
-  startEl.value = addDays(start0, 1);
-  fire(startEl);
-  await new Promise((r) => window.setTimeout(r, 40));
-  assert.equal(dates()[1].value, addDays(start0, 7), `改开始后截止应顺延到 ${addDays(start0, 7)}`);
-  assert.equal(modal.contentEl.querySelector(".tlt-est-custom").value, "7", "顺延不该改动天数");
+  assert.equal(modal.contentEl.querySelector(".tlt-est-custom").value, "", "改截止不该动工作量");
 });
 
 await t("日历：切换项目/重渲时保住你滚到的位置，换天才自动定位", async () => {
@@ -1705,6 +1684,87 @@ await t("侧栏项目卡：有描述就显示一行（不用悬停）", async ()
   // 没有描述的项目不该多出这一行
   const other = document.querySelector('.tlt-proj[data-proj="示例工具"]');
   assert.ok(other && !other.querySelector(".tlt-pdesc"), "没描述的项目不该有这一行");
+});
+
+await t("置顶：项目排在最前、卡片有标记、星图里排前面", async () => {
+  document.body.empty();
+  await store.setProjectInfo("示例项目", "示例项目", "");
+  await store.setProjectPin("示例工具", true);       // 置顶「示例工具」（侧栏里它本来排后面）
+  await store.load();
+  assert.ok(store.isPinned("示例工具"), "置顶状态应读得回来");
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  const names = [...document.querySelectorAll(".tlt-proj")].map((c) => c.dataset.proj);
+  assert.equal(names[0], "示例工具", `置顶的项目应排最前：${names.join(" / ")}`);
+  assert.ok(document.querySelector('.tlt-proj[data-proj="示例工具"]').classList.contains("pin"), "卡片应有置顶标记");
+  assert.ok(!document.querySelector('.tlt-proj[data-proj="示例项目"]').classList.contains("pin"), "没置顶的不该有标记");
+
+  // 星图：置顶项目的扇形排在最前面（第一块就是它）
+  view.tab = "today";
+  await view.render();
+  const firstWedge = document.querySelector('.tlt-star .tlt-wedge');
+  assert.equal(firstWedge?.getAttribute("data-proj"), "示例工具", "星图里置顶项目应排第一块");
+});
+
+await t("任务视图：维度里多了「今天」，且只显示今天与逾期的", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  view.taskDim = "d";
+  await view.render();
+  const dims = [...document.querySelectorAll("[data-dim]")].map((b) => b.textContent.trim());
+  assert.deepEqual(dims, ["今天", "本周", "本月", "本季度", "全部"], `维度顺序应是今天在最前：${dims.join(",")}`);
+  assert.ok(document.querySelector('[data-dim="d"]').classList.contains("on"), "今天应是选中态");
+  const today = new Date();
+  const p2 = (n) => String(n).padStart(2, "0");
+  const iso = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDate())}`;
+  const shown = [...document.querySelectorAll(".tlt-task")].map((r) => store.tasks.find((t) => t.id === r.dataset.task)).filter(Boolean);
+  assert.ok(shown.length > 0, "今天维度下应有任务");
+  assert.ok(shown.every((t) => !t.due || t.due <= iso || t.due === iso), `不该出现未来的任务：${shown.map((t) => t.due).join(",")}`);
+});
+
+await t("新建任务：点了项目和里程碑后，表单自动带上", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "ms";
+  await view.render();
+  // 点一个里程碑卡（展开它，同时记住它）
+  const card = document.querySelector(".tlt-ms");
+  assert.ok(card, "应有里程碑卡");
+  card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  // 再点「＋ 新建任务」
+  view.tab = "month";
+  await view.render();
+  document.querySelector("[data-newtask]")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const projSel = document.querySelector(".tlt-host [data-qproject]");
+  const msSel = document.querySelector(".tlt-host [data-qmilestone]");
+  assert.ok(projSel && msSel, "应弹出新建任务表单");
+  const msName = card.dataset.ms;
+  assert.equal(msSel.value, msName, `里程碑应预选成刚点的那个（${msName}），实际 ${msSel.value}`);
+  assert.ok(projSel.value && projSel.value !== "未归属", `项目也应预选：${projSel.value}`);
+});
+
+await t("完成的任务在行上带完成日期", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  view.taskDim = "all";
+  await view.render();
+  const openRow = [...document.querySelectorAll(".tlt-task")].find((r) => !r.classList.contains("done"));
+  assert.ok(openRow, "应有未完成的任务");
+  openRow.querySelector("[data-ck]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  const doneRow = [...document.querySelectorAll(".tlt-task")].find((r) => r.classList.contains("done"));
+  assert.ok(doneRow, "应出现已完成的行");
+  const tag = doneRow.querySelector(".tlt-doneat");
+  assert.ok(tag, `已完成的行应写明完成日期，实际：${doneRow.textContent.slice(0, 60)}`);
+  assert.ok(/完成 \d{2}-\d{2}/.test(tag.textContent), `文案应是「完成 MM-DD」：${tag.textContent}`);
 });
 
 await t("独立消息中心渲染", async () => {

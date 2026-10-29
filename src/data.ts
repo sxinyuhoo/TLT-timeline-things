@@ -355,27 +355,6 @@ export function newLogLine(t: { st?: string; en?: string; title: string; project
   return s;
 }
 
-/* ---------------- 项目描述：标题下那段 > 引用 ---------------- */
-
-/**
- * 从项目文件里读「标题下那段 > 说明」——早期版本把项目描述存在这里，
- * 现在统一走 frontmatter 的 desc，这个只作为老数据的回退。
- */
-export function readProjectDesc(text: string): string {
-  const lines = text.split(/\r?\n/);
-  const h1 = lines.findIndex((l) => /^#\s+/.test(l));
-  if (h1 < 0) return "";
-  const out: string[] = [];
-  for (let i = h1 + 1; i < lines.length; i++) {
-    const l = lines[i];
-    if (!l.trim()) { if (out.length) break; continue; }       // 描述内部允许空行，遇到非 > 就停
-    const q = /^\s*>\s?(.*)$/.exec(l);
-    if (q) { out.push(q[1].trim()); continue; }
-    break;                                                     // 标题下的第一段正文不是引用 ⇒ 没描述
-  }
-  return out.join("\n").trim();
-}
-
 /* ---------------- 想法 ---------------- */
 
 export function parseIdeaLine(line: string, file: string, idx: number, body: string): Idea | null {

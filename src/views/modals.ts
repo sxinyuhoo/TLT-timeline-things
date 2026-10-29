@@ -2,7 +2,7 @@ import { App, Modal, Notice, TFile } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, addDays, minToHHMM, saturation, ideaFilterTags, errMsg } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, saturation, ideaFilterTags, errMsg } from "../data";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, cls?: string, text?: string
@@ -35,59 +35,6 @@ function seg<T extends string | number>(parent: HTMLElement, opts: { v: T; t: st
   });
   parent.appendChild(wrap);
   return wrap;
-}
-
-/** 把分段控件的选中态刷成某个值（按钮顺序与 opts 一致） */
-function segSetter<T extends string | number>(wrap: HTMLElement, opts: { v: T }[]) {
-  return (v: T) => {
-    const btns = Array.from(wrap.querySelectorAll<HTMLElement>(".tlt-seg-b"));
-    btns.forEach((b, i) => b.classList.toggle("on", opts[i]?.v === v));
-  };
-}
-
-/**
- * 工作量 ⇄ 截止日期：改一个，另一个跟着算。
- * 截止 = 开始 + 工作量 - 1（含开始当天：1 天 ⇒ 当天完成）；
- * 反过来改截止，工作量 = 起止之间的自然日数（当天一天 ⇒ 1 天）。
- */
-function bindDuration(opts: {
-  draft: { start?: string; due?: string; est?: number };
-  startEl: HTMLInputElement;
-  dueEl: HTMLInputElement;
-  setEstUI: (v: number) => void;
-}) {
-  const { draft, startEl, dueEl, setEstUI } = opts;
-  const spanOf = (a?: string, b?: string): number => {
-    if (!a || !b) return 1;
-    const A = new Date(`${a}T00:00:00`), B = new Date(`${b}T00:00:00`);
-    if (Number.isNaN(+A) || Number.isNaN(+B)) return 1;
-    return Math.max(1, Math.round((+B - +A) / 864e5) + 1);
-  };
-
-  const applyEst = (v: number) => {
-    draft.est = v;
-    setEstUI(v);
-    if (!draft.start) { draft.start = todayISO(); startEl.value = draft.start; }
-    draft.due = addDays(draft.start, Math.max(0, Math.ceil(v) - 1));
-    dueEl.value = draft.due;
-  };
-  const applyDue = (d?: string) => {
-    draft.due = d || undefined;
-    if (!d) return;
-    const span = spanOf(draft.start, d);
-    draft.est = span;
-    setEstUI(span);
-  };
-  const applyStart = (s?: string) => {
-    const span = spanOf(draft.start, draft.due);
-    draft.start = s || undefined;
-    if (!draft.start) return;
-    draft.due = addDays(draft.start, Math.max(0, span - 1));
-    dueEl.value = draft.due;
-    draft.est = span;
-    setEstUI(span);
-  };
-  return { applyEst, applyDue, applyStart };
 }
 
 /* ================= 任务 ================= */
@@ -201,6 +148,7 @@ function projectPicker(app: App, store: Store, parent: HTMLElement, init: { proj
   const projRow = row(parent, T("项目"));
   const projWrap = el("div", "tlt-pick");
   const proj = el("select", "tlt-input");
+  proj.setAttribute("data-qproject", "1");
   const fillProjects = (keep?: string) => {
     proj.empty();
     [...store.projects(), "未归属"].forEach((p) => {
@@ -222,6 +170,7 @@ function projectPicker(app: App, store: Store, parent: HTMLElement, init: { proj
   const msRow = row(parent, T("里程碑"));
   const msWrap = el("div", "tlt-pick");
   const msSel = el("select", "tlt-input");
+  msSel.setAttribute("data-qmilestone", "1");
   const msNew = el("input", "tlt-input");
   msNew.placeholder = T("新里程碑名");
   msNew.addClass("tlt-hidden");
@@ -385,6 +334,54 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
  * 项目信息：看/改项目名称（= 文件名）与一段描述。
  * 改名会同步日志里的 [proj:: 旧名]，描述写进项目文件的 frontmatter。
  */
+/** 新建项目：名称 + 一段描述（描述可选，写进项目文件 frontmatter 的 desc） */
+export class NewProjectModal extends TltModal {
+  store: Store;
+  onDone: () => void | Promise<void>;
+
+  constructor(app: App, store: Store, onDone: () => void | Promise<void>) {
+    super(app); this.store = store; this.onDone = onDone;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", T("新建项目")));
+
+    const nameRow = row(contentEl, T("名称"));
+    const name = el("input", "tlt-input wide");
+    name.placeholder = T("项目名（会建成一个 md，## 是里程碑）");
+    name.setAttribute("data-newname", "1");
+    nameRow.appendChild(name);
+
+    const descRow = row(contentEl, T("描述"));
+    const desc = el("textarea", "tlt-input tlt-textarea");
+    desc.placeholder = T("这个项目是做什么的、交付什么…（可留空，之后也能改）");
+    desc.setAttribute("data-newdesc", "1");
+    descRow.appendChild(desc);
+
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", T("取消"));
+    cancel.onclick = () => this.close();
+    const ok = el("button", "tlt-btn pri", T("创建"));
+    ok.setAttribute("data-newok", "1");
+    ok.onclick = () => { void (async () => {
+      const n = name.value.trim();
+      const okMade = await this.store.createProject(n);
+      if (!okMade) { new Notice(T("没建成：名字空了，或者同名项目已存在")); return; }
+      if (desc.value.trim()) await this.store.setProjectInfo(n, n, desc.value);
+      await this.store.load();
+      this.close();
+      void this.onDone();
+      new Notice(T("已新建项目：{n}", { n }));
+    })(); };
+    foot.append(cancel, ok);
+    contentEl.appendChild(foot);
+    window.setTimeout(() => name.focus(), 40);
+    name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") ok.click(); });
+  }
+}
+
 export class ProjectInfoModal extends TltModal {
   store: Store;
   from: string;
@@ -523,41 +520,34 @@ export class TaskModal extends TltModal {
     start.type = "date";
     start.value = this.draft.start || "";
     start.title = T("开始");
-    let dur: ReturnType<typeof bindDuration> | undefined;
-    start.onchange = () => { if (dur) dur.applyStart(start.value); else this.draft.start = start.value || undefined; };
+    start.onchange = () => { this.draft.start = start.value || undefined; };
     const arrow = el("span", "tlt-darrow", "→");
     const dIn = el("input", "tlt-input date");
     dIn.type = "date";
     dIn.value = this.draft.due || "";
     dIn.title = T("截止");
-    dIn.onchange = () => { if (dur) dur.applyDue(dIn.value); else this.draft.due = dIn.value || undefined; };
+    dIn.onchange = () => { this.draft.due = dIn.value || undefined; };
     dline.append(start, arrow, dIn);
     dates.appendChild(dline);
 
 
     // 工作量（人天）：与新建一致
     const estRow = row(contentEl, T("工作量"));
-    const estOptsD = [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") }));
-    const estSeg = seg<number>(estRow, estOptsD, this.draft.est || 1, () => { /* 统一处理 */ });
-    const setSegD = segSetter(estSeg, estOptsD);
+    // 工作量（人天）：与截止时间互不影响
+    seg<number>(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") })), this.draft.est || 1, (v) => {
+      this.draft.est = v;
+    });
     // 常用档之外的值：一个小的「自定义」入口，平时不占地方
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0";
-    estInput.value = this.draft.est !== undefined && !estOptsD.some((o) => o.v === this.draft.est) ? String(this.draft.est) : "";
+    estInput.value = this.draft.est !== undefined && ![0.5, 1, 2, 3, 5].includes(this.draft.est) ? String(this.draft.est) : "";
     estInput.placeholder = T("自定义");
-    estRow.appendChild(estInput);
-
-    dur = bindDuration({
-      draft: this.draft, startEl: start, dueEl: dIn,
-      setEstUI: (v) => { setSegD(v); estInput.value = estOptsD.some((o) => o.v === v) ? "" : String(v); },
-    });
-    estSeg.querySelectorAll<HTMLElement>(".tlt-seg-b").forEach((b, i) => {
-      b.onclick = () => { setSegD(estOptsD[i].v); dur?.applyEst(estOptsD[i].v); };
-    });
     estInput.onchange = () => {
       const v = Number(estInput.value);
-      dur?.applyEst(Number.isFinite(v) && v > 0 ? v : 1);
+      this.draft.est = Number.isFinite(v) && v > 0 ? v : undefined;
+      estRow.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
     };
+    estRow.appendChild(estInput);
 
     const pri = row(contentEl, T("优先级"));
     seg<number>(pri, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri || 1, (v) => (this.draft.pri = v as Pri));
@@ -724,13 +714,16 @@ export class QuickTaskModal extends TltModal {
   store: Store;
   onChange: () => void | Promise<void>;
   private draft: QuickDraft;
-  private preset: { title?: string; due?: string } = {};
+  private preset: { title?: string; due?: string; project?: string; milestone?: string } = {};
 
-  constructor(app: App, store: Store, onChange: () => void | Promise<void>, preset?: { title?: string; due?: string }) {
+  constructor(app: App, store: Store, onChange: () => void | Promise<void>, preset?: { title?: string; due?: string; project?: string; milestone?: string }) {
     super(app); this.store = store; this.onChange = onChange;
     this.preset = preset || {};
-    const proj = store.projects()[0] || "未归属";
-    const ms = store.milestones(proj)[0]?.name || "";
+    // 已经点了某个项目 / 里程碑，就直接用它，别再让人手选一遍
+    const pinned = preset?.project && store.projects().includes(preset.project) ? preset.project : "";
+    const proj = pinned || store.projects()[0] || "未归属";
+    const msList = store.milestones(proj).map((m) => m.name);
+    const ms = preset?.milestone && msList.includes(preset.milestone) ? preset.milestone : msList[0] || "";
     this.draft = {
       start: todayISO(), due: preset?.due || todayISO(),
       est: 1, pri: 1, owners: [],
@@ -753,6 +746,7 @@ export class QuickTaskModal extends TltModal {
     const projRow = row(contentEl, T("项目"));
     const projWrap = el("div", "tlt-pick");
     const proj = el("select", "tlt-input");
+    proj.setAttribute("data-qproject", "1");
     const fillProjects = (keep?: string) => {
       proj.empty();
       [...this.store.projects(), "未归属"].forEach((p) => {
@@ -788,6 +782,7 @@ export class QuickTaskModal extends TltModal {
     const msRow = row(contentEl, T("里程碑"));
     const msWrap = el("div", "tlt-pick");
     const msSel = el("select", "tlt-input");
+  msSel.setAttribute("data-qmilestone", "1");
     const msNew = el("input", "tlt-input");
     msNew.placeholder = T("新里程碑名");
     msNew.addClass("tlt-hidden");
@@ -851,40 +846,35 @@ export class QuickTaskModal extends TltModal {
     paintTags();
     tagRow.appendChild(tagWrap);
 
-    // 开始 / 截止 / 工作量：三样互相跟着算（改哪个都行，截止 = 开始 + 工作量 - 1）
+    // 开始 / 截止：同一行（各填各的）
     const dateRow = row(contentEl, T("时间"));
     const dline = el("div", "tlt-dline");
     const start = el("input", "tlt-input date");
     start.type = "date"; start.value = this.draft.start || todayISO(); start.title = T("开始");
+    start.onchange = () => { this.draft.start = start.value; };
     const due = el("input", "tlt-input date");
     due.type = "date"; due.value = this.draft.due || ""; due.title = T("截止");
+    due.onchange = () => { this.draft.due = due.value; };
     dline.append(start, el("span", "tlt-darrow", "→"), due);
     dateRow.appendChild(dline);
 
+    // 人天：与截止时间互不影响，各填各的
     const estRow = row(contentEl, T("工作量"));
     const estOpts = [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + T(" 天") }));
-    const estSeg = seg<number>(estRow, estOpts, this.draft.est || 1, () => { /* 下面统一处理 */ });
-    const setSeg = segSetter(estSeg, estOpts);
+    seg<number>(estRow, estOpts, this.draft.est || 1, (v) => {
+      this.draft.est = v;
+      estInput.value = "";
+    });
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number"; estInput.step = "0.5"; estInput.min = "0";
     estInput.value = estOpts.some((o) => o.v === this.draft.est) ? "" : String(this.draft.est ?? "");
     estInput.placeholder = T("自定义");
-    estRow.appendChild(estInput);
-
-    const dur = bindDuration({
-      draft: this.draft, startEl: start, dueEl: due,
-      setEstUI: (v) => { setSeg(v); estInput.value = estOpts.some((o) => o.v === v) ? "" : String(v); },
-    });
-    // 分段按钮点下去要真的算：seg 的 onPick 已经切了选中态，这里只算日期
-    estSeg.querySelectorAll<HTMLElement>(".tlt-seg-b").forEach((b, i) => {
-      b.onclick = () => { setSeg(estOpts[i].v); dur.applyEst(estOpts[i].v); };
-    });
     estInput.onchange = () => {
       const v = Number(estInput.value);
-      dur.applyEst(Number.isFinite(v) && v > 0 ? v : 1);
+      this.draft.est = Number.isFinite(v) && v > 0 ? v : 1;
+      estRow.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
     };
-    start.onchange = () => dur.applyStart(start.value);
-    due.onchange = () => dur.applyDue(due.value);
+    estRow.appendChild(estInput);
 
     // 优先级
     const priRow = row(contentEl, T("优先级"));

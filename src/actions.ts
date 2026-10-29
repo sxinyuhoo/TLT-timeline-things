@@ -1,7 +1,7 @@
 import { App, Notice, TFile } from "obsidian";
 import { Store } from "./store";
 import { PickerModal, type PickItem } from "./views/picker";
-import { IdeaModal, PromptModal, QuickTaskModal } from "./views/modals";
+import { IdeaModal, NewProjectModal, PromptModal, QuickTaskModal } from "./views/modals";
 import { confirmArchiveProject, confirmDeleteTask } from "./archive";
 import { ComposeModal } from "./views/messages";
 import { t as T } from "./i18n";
@@ -61,13 +61,8 @@ export function newMessageFlow(app: App, store: Store, refresh: Refresh) {
 /* ---------------- ② 新建项目 ---------------- */
 
 export function newProjectFlow(app: App, store: Store, refresh: Refresh) {
-  new PromptModal(app, T("新建项目"), T("项目名（会建成一个 md，## 是里程碑）"), async (name) => {
-    const ok = await store.createProject(name);
-    if (!ok) { new Notice(T("没建成：名字空了，或者同名项目已存在")); return; }
-    await store.load();
-    await refresh();
-    new Notice(T("已新建项目：{n}", { n: name }));
-  }).open();
+  // 名称 + 一段描述，都在同一个弹窗里填（描述可留空）
+  new NewProjectModal(app, store, refresh).open();
 }
 
 /* ---------------- ③ 新建里程碑 ---------------- */

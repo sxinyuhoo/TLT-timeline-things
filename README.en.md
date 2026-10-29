@@ -12,7 +12,7 @@ People find this plugin by many names — **tasks, timeline, schedule, task mana
 
 | You're looking for | What TLT gives you |
 | --- | --- |
-| Task management / Tasks / To-do / Task manager | One `- [ ]` line inside a project note; tick to finish. Grouped as **overdue / to do / done / unscheduled**, filterable by tag |
+| Task management / Tasks / To-do / Task manager | One `- [ ]` line inside a project note; tick to finish. Grouped as **overdue / to do / done / unscheduled**, with a range switch **today / this week / this month / this quarter / all**, filterable by tag |
 | Timeline | Opens on *today*: what happened at what hour, what's still due. Entries pile up per day into a monthly file |
 | Schedule / Calendar / Planner | A day laid out as time blocks and planned blocks; click empty space to slot a task into that day |
 | Project / Milestone | One project = one markdown file, each `##` section is a milestone; milestone view splits *active* vs *done* |
@@ -21,6 +21,7 @@ People find this plugin by many names — **tasks, timeline, schedule, task mana
 | Workload / Capacity / Effort | Tasks carry person-day estimates; the team view computes each person's load (open person-days ÷ capacity) |
 | Checklist / Sub-task | A task can carry indented sub-tasks (content + done state only). **A small ring at the end of the task row shows the done ratio** — click it to expand in place and tick / rename / delete / add |
 | Progress / Timeline | Every task keeps its own created & done dates (`[created::]` / `[done::]`, hidden by default); project, milestone and task lifecycle events are appended to the stream in `TLT/events/` — the raw material for a timeline graph |
+| Pin / Favourite projects | Project card `⋯` → “Pin project”: pinned projects float to the top of the sidebar and take the first sector in the star map (stored as `pin: true` in the project file) |
 | Project description | **Click a project card** to open “Project info”: a quick summary (milestones / tasks / done %), rename the project (file, heading and log references follow) and write a description — kept as `desc` in the project file's frontmatter, shown as a line on the card and above the milestone view |
 | Sort / Order by date | Projects, milestones and tasks all sort by **name / created / due** — pick the same one again to flip direction (↑ / ↓); the choice is remembered per vault |
 | Daily note / Log / Weekly review | Entries are filed under `## date` into `TLT/logs/YYYY-MM.md` — copy from it when writing your weekly report |

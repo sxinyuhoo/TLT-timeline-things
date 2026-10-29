@@ -114,17 +114,22 @@ await t("登记任务：命令跑通并写进项目文件", async () => {
 });
 
 /* ---------------- ② 新建项目 / 新建里程碑 ---------------- */
-await t("新建项目：PromptModal 落成一个文件", async () => {
+await t("新建项目：填名称（可带描述）落成一个文件", async () => {
   const { app, store, refresh } = await NEW();
   mod.newProjectFlow(app, store, refresh);
   await flush(30);
-  const input = document.querySelector(".modal input.tlt-input-title");
-  assert.ok(input, "应弹输入框");
-  input.value = "贝塔项目";
-  document.querySelector(".modal .tlt-btn.pri").click();
-  await flush(80);
-  assert.ok(fps.files["TLT/tasks/贝塔项目.md"], "应建出 TLT/tasks/贝塔项目.md");
-  assert.ok(fps.files["TLT/tasks/贝塔项目.md"].startsWith("# 贝塔项目"), "文件首行应是 # 项目名");
+  const name = document.querySelector('.modal [data-newname]');
+  assert.ok(name, "应弹新建项目弹窗（名称框）");
+  const desc = document.querySelector('.modal [data-newdesc]');
+  assert.ok(desc, "新建时就该有描述框");
+  name.value = "贝塔项目";
+  desc.value = "演示用的项目";
+  document.querySelector(".modal [data-newok]").click();
+  await flush(120);
+  const f = fps.files["TLT/tasks/贝塔项目.md"];
+  assert.ok(f, "应建出 TLT/tasks/贝塔项目.md");
+  assert.ok(/^# 贝塔项目$/m.test(f), "正文里应有 # 项目名 这个标题");
+  assert.ok(/^desc: 演示用的项目$/m.test(f), `描述应写进 frontmatter：\n${f.slice(0, 120)}`);
 });
 
 await t("新建里程碑：选项目 → 输入名字 → ## 追加", async () => {

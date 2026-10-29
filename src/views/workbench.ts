@@ -14,7 +14,7 @@ import { newProjectFlow } from "../actions";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
-type TaskDim = "w" | "m" | "q" | "all";
+type TaskDim = "d" | "w" | "m" | "q" | "all";
 const periodLabel = (p: Period) => ({ w: T("本周"), m: T("本月"), q: T("本季度") }[p]);
 const kindLabel = (k: string) => ({ ask: T("要求"), event: T("活动"), risk: T("风险"), note: T("通知") })[k] || k;
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
@@ -47,6 +47,8 @@ export class WorkbenchView extends ItemView {
   /** 日历时间轴滚到哪了（按日期记）：同一天重渲要保住，换天才自动定位 */
   private dayScroll: { day: string; top: number } | null = null;
   private renderedDay = "";
+  /** 最后点过的里程碑：新建任务时默认落在它下面 */
+  private msSel: { project: string; name: string } | null = null;
   private expandedSteps = new Set<string>();
   private get sideOff() { return !!this.cfg.sideCollapsed; }
   private get railOff() { return !!this.cfg.railCollapsed; }
@@ -240,23 +242,25 @@ export class WorkbenchView extends ItemView {
     s.appendChild(top);
 
     const scroll = el("div", "tlt-side-scroll");
-    const shead = el("div", "tlt-shead");
-    shead.appendChild(el("span", "", T("项目 · 进度")));
-    const padd = el("button", "tlt-padd", "＋");
-    padd.title = T("新建项目");
-    padd.dataset.newproj = "1";
-    padd.onclick = () => newProjectFlow(this.app, this.store, () => this.render());
+    const shead = el("div", "tlt-shead tlt-shead-proj");
+    shead.appendChild(el("span", "tlt-shead-t", T("项目 · 进度")));
+    const acts = el("div", "tlt-shead-acts");
     const psort = el("button", "tlt-padd", "⇅");
     psort.title = T("项目排序：按名称 / 创建时间 / 截止时间");
     psort.dataset.sortproj = "1";
     psort.onclick = (ev) => { ev.stopPropagation(); this.sidebarSortMenu(psort); };
-    shead.append(psort, padd);
+    const padd = el("button", "tlt-padd", "＋");
+    padd.title = T("新建项目");
+    padd.dataset.newproj = "1";
+    padd.onclick = () => newProjectFlow(this.app, this.store, () => this.render());
+    acts.append(psort, padd);
+    shead.appendChild(acts);
     scroll.appendChild(shead);
     const all = this.store.tasks;
     const projTasks = (name: string) => all.filter((t) => t.project === name);
     const projects = this.sortItems(this.store.projects(),
       (p2) => (this.sortKey() === "name" ? p2 : this.edgeDate(projTasks(p2), "min")),
-      (p2) => p2);
+      (p2) => p2).sort((a, b) => Number(this.store.isPinned(b)) - Number(this.store.isPinned(a)));   // 置顶的永远在最上面
     if (!projects.length) {
       // 空态也得有入口，否则新库里根本没有"新建项目"可点
       const empty = el("div", "tlt-pempty");
@@ -270,7 +274,9 @@ export class WorkbenchView extends ItemView {
     projects.forEach((p) => {
       const list = all.filter((t) => t.project === p);
       const pct = list.length ? Math.round((list.filter((t) => t.done).length / list.length) * 100) : 0;
-      const card = el("div", "tlt-proj" + (this.proj === p ? " on" : ""));
+      const pinned = this.store.isPinned(p);
+      const card = el("div", "tlt-proj" + (this.proj === p ? " on" : "") + (pinned ? " pin" : ""));
+      if (pinned) card.title = T("已置顶");
       card.dataset.proj = p;
       const row = el("div", "tlt-prow");
       const sw = el("span", "tlt-sw");
@@ -695,7 +701,8 @@ export class WorkbenchView extends ItemView {
     const FROM = -3, TO = 21;
     const tasks = this.store.tasks.filter((t) => t.due);
     // 全部项目都画：扇形数 = 项目数（之前只取前 8 个，项目多了会悄悄少画）
-    const projects = Array.from(new Set(tasks.map((t) => t.project)));
+    const projects = Array.from(new Set(tasks.map((t) => t.project)))
+      .sort((a, b) => Number(this.store.isPinned(b)) - Number(this.store.isPinned(a)));   // 置顶的项目排在前面
     const span = 360 / Math.max(1, projects.length);
     const at = (d: string) => {
       const diff = Math.round((D(d).getTime() - D(todayISO()).getTime()) / 864e5);
@@ -810,7 +817,7 @@ export class WorkbenchView extends ItemView {
     const p = el("div", "tlt-pane");
     const m = this.tasksInDim();
     const head = el("div", "tlt-pane-h");
-    const label = { w: T("本周"), m: T("本月"), q: T("本季度"), all: T("全部") }[this.taskDim];
+    const label = { d: T("今天"), w: T("本周"), m: T("本月"), q: T("本季度"), all: T("全部") }[this.taskDim];
     head.append(el("span", "", T("{l} · {a} 逾期 / {b} 要做 / {c} 已完成 / {d} 待排期", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.pending.length })));
     head.appendChild(el("span", "tlt-spacer"));
     const tags = Array.from(new Set(["工作", "个人", ...this.store.tasks.flatMap((t) => t.tags || [])]));
@@ -822,7 +829,7 @@ export class WorkbenchView extends ItemView {
     });
     head.appendChild(tf);
     const seg = el("div", "tlt-seg tlt-dim-seg");
-    ([["w", T("本周")], ["m", T("本月")], ["q", T("本季度")], ["all", T("全部")]] as const).forEach(([k, t]) => {
+    ([["d", T("今天")], ["w", T("本周")], ["m", T("本月")], ["q", T("本季度")], ["all", T("全部")]] as const).forEach(([k, t]) => {
       const b2 = el("button", "tlt-seg-b" + (this.taskDim === k ? " on" : ""), t);
       b2.dataset.dim = k;
       seg.appendChild(b2);
@@ -859,12 +866,15 @@ export class WorkbenchView extends ItemView {
       .filter((t) => !this.taskTag ||
         (this.taskTag === "工作" || this.taskTag === "个人" ? t.scope === this.taskTag : (t.tags || []).includes(this.taskTag)));
     const dim = this.taskDim;
-    const inDim = (d?: string) => (dim === "all" ? true : !!d && inPeriod(d, dim));
+    const inDim = (d?: string) => (dim === "all" ? true : dim === "d" ? d === todayISO() : !!d && inPeriod(d, dim));
     const today = todayISO();
+    // 「今天」：逾期的一律算今天的活儿；已完成的按"今天完成的"算
+    const lateIn = (d: string) => (dim === "d" ? d < today : inDim(d));
+    const doneIn = (t: Task) => (dim === "d" ? t.doneAt === today || t.due === today : inDim(t.due));
     return {
-      late: all.filter((t) => !t.done && t.due && t.due < today && inDim(t.due)),
+      late: all.filter((t) => !t.done && t.due && t.due < today && lateIn(t.due)),
       todo: all.filter((t) => !t.done && t.due && t.due >= today && inDim(t.due)),
-      done: all.filter((t) => t.done && inDim(t.due)),
+      done: all.filter((t) => t.done && doneIn(t)),
       pending: all.filter((t) => !t.done && !t.due),
     };
   }
@@ -938,6 +948,11 @@ export class WorkbenchView extends ItemView {
     popMenu(anchor, [
       { label: T("项目信息（名称 / 描述）"), onClick: () => new ProjectInfoModal(this.app, this.store, p, () => this.render()).open() },
       { label: T("只看这个项目"), onClick: () => { this.proj = this.proj === p ? null : p; void this.render(); } },
+      { label: this.store.isPinned(p) ? T("取消置顶") : T("置顶项目"), onClick: () => { void (async () => {
+        await this.store.setProjectPin(p, !this.store.isPinned(p));
+        await this.store.load();
+        await this.render();
+      })(); } },
       { label: T("新建里程碑"), onClick: () => this.promptMilestone(p) },
       { label: T("归档项目"), onClick: () => { if (file instanceof TFile) confirmArchiveProject(this.app, this.store, file, () => this.render()); } },
       { label: T("打开项目文件"), onClick: () => {
@@ -997,6 +1012,13 @@ export class WorkbenchView extends ItemView {
     }, m.name).open();
   }
 
+  /** 新建任务：已经点了项目 / 里程碑就把它们带上（不用再手选一遍） */
+  private openNewTask() {
+    const proj = this.proj || this.msSel?.project || undefined;
+    const milestone = proj && this.msSel && this.msSel.project === proj ? this.msSel.name : undefined;
+    new QuickTaskModal(this.app, this.store, () => this.refresh(), { project: proj, milestone }).open();
+  }
+
   private promptMilestone(p: string) {
     new PromptModal(this.app, T("新建里程碑"), T("里程碑名（项目文件里的 ## 小节）"), async (name) => {
       const ok = await this.store.addMilestone(p, name);
@@ -1048,6 +1070,7 @@ export class WorkbenchView extends ItemView {
     (t.tags || []).forEach((tg) => meta.appendChild(el("span", "tlt-tag", tg)));
     if (t.owners.length) meta.appendChild(el("span", "", t.owners.join(T("、"))));
     if (t.files.length) meta.appendChild(el("span", "", `▤ ${t.files.length}`));
+    if (t.done && t.doneAt) meta.appendChild(el("span", "tlt-doneat", T("完成 {d}", { d: t.doneAt.slice(5) })));
     if (t.steps.length) meta.appendChild(this.stepRing(t));
     body.appendChild(meta);
     r.appendChild(body);
@@ -1400,6 +1423,9 @@ export class WorkbenchView extends ItemView {
     // 点的是卡片里的任务/勾选框时，不要当成"折叠这个里程碑"
     if (msCard && !(ev.target as Element).closest("[data-task],[data-ck]")) {
       const key = msCard.dataset.ms ?? "";
+      const hit = this.store.milestones().find((m) => m.name === key);
+      // 记下"最后点的里程碑"：接着点新建任务时直接落到它下面
+      this.msSel = hit ? { project: hit.project, name: hit.name } : null;
       if (this.expanded.has(key)) this.expanded.delete(key); else this.expanded.add(key);
       await this.render();
       return;
@@ -1438,7 +1464,7 @@ export class WorkbenchView extends ItemView {
     if (pick("[data-projclear]")) { this.proj = null; await this.render(); return; }
 
 
-    if (pick("[data-newtask]")) { new QuickTaskModal(this.app, this.store, () => this.refresh()).open(); return; }
+    if (pick("[data-newtask]")) { this.openNewTask(); return; }
 
     if (pick("[data-ideanewmodal]")) { new IdeaModal(this.app, this.store, undefined, () => this.refresh()).open(); return; }
 

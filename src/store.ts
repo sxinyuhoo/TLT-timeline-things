@@ -3,7 +3,7 @@ import {
   Task, Staff, Feed, Idea, Msg, Period,
   parseTaskLine, parseStaff, parseMsgLine, parseLogMonth, parseIdeaLine,
   newTaskLine, newMsgLine, newLogLine, toggleTaskLine, setTaskDue, setTaskField, stripFields,
-  todayISO, monthBounds, asText, readProjectDesc,
+  todayISO, monthBounds, asText,
 } from "./data";
 
 /** 消息服务的线上格式（发布端 / 订阅代理），字段都可缺 */
@@ -191,12 +191,14 @@ export class Store {
 
     // 任务：一个项目一个文件，H2 = 里程碑，缩进 checklist = 步骤
     this.projectDescs = {};
+    this.projectPins = {};
     for (const file of this.filesIn(this.settings.tasksFolder)) {
       const text = await this.app.vault.cachedRead(file);
       const project = file.basename;
       const pfm = (this.app.metadataCache.getFileCache(file)?.frontmatter || {}) as Record<string, unknown>;
-      // 描述存在项目文件的 frontmatter（desc）；更早版本写在标题下的 > 块里，仍认作回退
-      this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]) || readProjectDesc(text);
+      // 描述就存在项目文件的 frontmatter（desc），不做别的回退
+      this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]);
+      this.projectPins[project] = pfm["pin"] === true || pfm["pin"] === "true";
       let milestone: string | undefined;
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
@@ -425,6 +427,27 @@ export class Store {
     return this.projectDescs[name] || "";
   }
   private projectDescs: Record<string, string> = {};
+  private projectPins: Record<string, boolean> = {};
+
+  /** 项目是否置顶（项目文件 frontmatter 的 pin: true） */
+  isPinned(name: string): boolean { return !!this.projectPins[name]; }
+
+  /** 置顶 / 取消置顶：写进项目文件的 frontmatter */
+  async setProjectPin(name: string, on: boolean): Promise<boolean> {
+    const file = await this.fileByPath(`${this.settings.tasksFolder}/${name}.md`);
+    if (!file) return false;
+    await this.app.vault.process(file, (data) => {
+      const stripped = data.replace(/^pin:.*\r?\n/m, "");
+      const hasFm = /^---\r?\n/.test(stripped);
+      const end = hasFm ? stripped.indexOf("\n---", 3) : -1;
+      const head = hasFm && end > 0 ? stripped.slice(0, end) : "";
+      const rest = hasFm && end > 0 ? stripped.slice(end) : stripped;
+      if (!on) return hasFm ? `${head}${rest}` : rest;
+      return hasFm ? `${head}\npin: true${rest}` : `---\npin: true\n---\n\n${stripped}`;
+    });
+    this.projectPins[name] = on;
+    return true;
+  }
 
   /**
    * 项目信息：改名称（= 改文件名）与描述。

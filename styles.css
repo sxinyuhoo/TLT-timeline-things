@@ -1522,7 +1522,10 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-steps.in-modal .tlt-step-t:hover { text-decoration: underline dotted; }
 
 /* 侧栏：新建项目入口 */
-.tlt-padd { margin-left: auto; flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 5px;
+.tlt-shead-proj { display: flex; align-items: center; gap: 8px; padding: 2px 4px 8px 6px; }
+.tlt-shead-proj .tlt-shead-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlt-shead-acts { flex: none; display: flex; align-items: center; gap: 4px; }
+.tlt-padd { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px;
   background: none; color: var(--tlt-ink4); font-size: 12px; line-height: 1; cursor: pointer; }
 .tlt-padd:hover { background: color-mix(in srgb, var(--tlt-acc) 16%, transparent); color: var(--tlt-acc); }
 .tlt-pempty { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 10px; color: var(--tlt-ink5); }
@@ -1576,3 +1579,12 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-daily-step.done span { text-decoration: line-through; opacity: .6; }
 .tlt-daily-empty { color: var(--d-ink4); font-size: 12px; padding: 4px 0; }
 .tlt-daily-warn { color: var(--d-hot); font-size: 12px; padding: 4px 0; }
+
+/* 置顶的项目：左侧一道细竖条 + 名字更亮一档 */
+.tlt-proj.pin { position: relative; }
+.tlt-proj.pin::before {
+  content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
+  border-radius: 2px; background: var(--tlt-acc);
+}
+.tlt-proj.pin .tlt-pname { color: var(--tlt-ink); }
+.tlt-doneat { color: #4FB59A; opacity: .85; }
