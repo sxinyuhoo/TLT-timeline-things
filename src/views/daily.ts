@@ -79,7 +79,8 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
   host.appendChild(box);
   const store = plugin.store;
   if (!store || !store.loaded) {
-    box.appendChild(el("div", "tlt-daily-empty", T("TLT 数据还没就绪，稍等或重开这篇笔记")));
+    // 数据还没读完（冷启动常见）：先给一句提示，store 读完那一刻 refreshDailyBlocks() 会重画
+    box.appendChild(el("div", "tlt-daily-warn", T("TLT 数据还没就绪，稍等或重开这篇笔记")));
     return;
   }
   const o = parseDailyOptions(source);
@@ -133,14 +134,22 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
   }
 }
 
-/** 注册 `tlt-daily` 代码块；把渲染函数记在 plugin 上，数据一变就整体重画 */
+/**
+ * 注册 `tlt-daily` 代码块。
+ *
+ * 注意两件事：
+ *  ① 首次渲染**不能**因为 `host.isConnected === false` 就跳过——Obsidian 有时先在离屏片段里渲染、
+ *     再挂到文档上；按 isConnected 提前返回会得到一个空块（实测就是这样"看不见事项"的）。
+ *     所以只记「画过没有」，清理留到数据刷新那一轮。
+ *  ② 渲染函数与宿主元素一起记，数据一变全部重画；宿主已经离线的（笔记关了）顺手摘掉，别攒内存。
+ */
 export function registerDailyBlocks(plugin: TLTPlugin) {
   plugin.registerMarkdownCodeBlockProcessor("tlt-daily", (source: string, host: HTMLElement, ctx: MarkdownPostProcessorContext) => {
-    const draw = () => {
-      if (!host.isConnected) { plugin.dailyBlocks.delete(draw); return; }   // 笔记关了就把自己摘掉
-      renderDaily(plugin, host, source, ctx.sourcePath);
+    const entry = {
+      host,
+      draw: () => renderDaily(plugin, host, source, ctx.sourcePath),
     };
-    plugin.dailyBlocks.add(draw);
-    draw();
+    plugin.dailyBlocks.add(entry);
+    entry.draw();
   });
 }

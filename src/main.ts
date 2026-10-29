@@ -56,12 +56,13 @@ export class TLTPlugin extends Plugin {
   /** 已注册的命令 + 取名字的函数：切语言时原地改名，不用重载插件 */
   private cmdNames: { cmd: { name: string }; full: () => string }[] = [];
   private settingTab?: TLTSettingTab;
-  /** 日记里 tlt-daily 块的渲染函数（数据一变就整体重画） */
-  dailyBlocks = new Set<() => void>();
+  /** 日记里 tlt-daily 块的渲染入口（数据一变就整体重画；宿主已离线的顺手摘掉） */
+  dailyBlocks = new Set<{ host: HTMLElement; draw: () => void }>();
 
   refreshDailyBlocks() {
-    [...this.dailyBlocks].forEach((fn) => {
-      try { fn(); } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
+    [...this.dailyBlocks].forEach((entry) => {
+      if (!entry.host.isConnected) { this.dailyBlocks.delete(entry); return; }
+      try { entry.draw(); } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
     });
   }
 

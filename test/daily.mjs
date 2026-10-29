@@ -42,7 +42,7 @@ EP.setText = function (t) { this.textContent = t; };
 EP.createEl = function (tag, o = {}) { const e = dom.window.document.createElement(tag); if (o.text) e.textContent = o.text; if (o.cls) e.className = o.cls; this.appendChild(e); return e; };
 
 const mod = await import(out);
-const { fps, makeStore, renderDaily, parseDailyOptions, dateFromPath } = mod;
+const { fps, makeStore, renderDaily, parseDailyOptions, dateFromPath, registerDailyBlocks } = mod;
 
 let pass = 0, fail = 0;
 const lines = [];
@@ -186,6 +186,35 @@ await t("选项：关掉逾期 / 只看个人 / 关掉树", async () => {
   const c = document.createElement("div"); document.body.appendChild(c);
   renderDaily(plugin, c, "tree: false", "70-生活/diary/2026/20261029.md");
   assert.equal(c.querySelectorAll(".tlt-daily-step").length, 0, "tree: false 不该渲染子步骤");
+});
+
+await t("离屏渲染：宿主还没挂到文档上也要先画出来（Obsidian 会先离屏渲染再挂载）", async () => {
+  fixture();
+  const { app, store } = await makeStore();
+  const registered = [];
+  const plugin = {
+    store, dailyBlocks: new Set(), refreshDailyBlocks() {},
+    registerMarkdownCodeBlockProcessor: (lang, fn) => registered.push({ lang, fn }),
+  };
+  registerDailyBlocks(plugin);
+  assert.equal(registered.length, 1, "应注册一个 tlt-daily 处理器");
+
+  const detached = document.createElement("div");        // 故意不 append 到 document
+  assert.equal(detached.isConnected, false);
+  registered[0].fn("date: auto", detached, { sourcePath: "70-生活/diary/2026/20261029.md" });
+  assert.ok(detached.querySelectorAll(".tlt-daily-row").length > 0,
+    "离屏渲染也要出内容（曾经因为按 isConnected 提前返回而显示空白）");
+  assert.equal(detached.querySelectorAll(".tlt-daily-h").length, 4, "四组标题都该在");
+});
+
+await t("数据没就绪时给提示，而不是空白", async () => {
+  fixture();
+  const { app, store } = await makeStore();
+  store.loaded = false;
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  renderDaily({ store, dailyBlocks: new Set(), refreshDailyBlocks() {} }, host, "", "x.md");
+  assert.ok(host.querySelector(".tlt-daily-warn"), "应显示「数据还没就绪」");
 });
 
 await t("空状态：这天什么都没有时给一句话，不留空白", async () => {

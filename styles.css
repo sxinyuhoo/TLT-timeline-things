@@ -1539,29 +1539,40 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-pdesc { font-size: 9px; color: var(--tlt-ink5); line-height: 1.5; margin-top: 3px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-/* ---- 日记里的 tlt-daily 块（只用插件自己的令牌，和主题切换保持一致） ---- */
-.tlt-daily { font-size: 13px; line-height: 1.5; color: var(--tlt-ink2); }
+/* ---- 日记里的 tlt-daily 块 ----
+   这一块出现在笔记里，而插件的主题开关可能与笔记主题不一致（比如插件深色、笔记浅色），
+   所以它不跟 --tlt-* 走，而是按**笔记/应用**当前的深浅色自己定一套局部变量。
+   （仍然不用 Obsidian 的原生变量，保持本仓库"样式自持"的约定。） */
+.tlt-daily {
+  --d-ink: #16181F; --d-ink2: #4C5260; --d-ink3: #6B7280; --d-ink4: #767D8C;
+  --d-line: rgba(18, 22, 38, .17); --d-acc: #4B5AE0; --d-hot: #C2554F;
+  font-size: 13px; line-height: 1.5; color: var(--d-ink2);
+}
+.theme-dark .tlt-daily {
+  --d-ink: #E9EAEF; --d-ink2: #C2C3CE; --d-ink3: #A6A9B6; --d-ink4: #8A8E9C;
+  --d-line: rgba(255, 255, 255, .14); --d-acc: #5B6CFF; --d-hot: #D98B8B;
+}
 .tlt-daily-h {
   display: flex; align-items: center; gap: 6px;
-  margin: 10px 0 3px; font-size: 11.5px; letter-spacing: .2px;
-  color: var(--tlt-ink4);
+  margin: 10px 0 3px; font-size: 11.5px; letter-spacing: .2px; color: var(--d-ink4);
 }
 .tlt-daily-h:first-child { margin-top: 2px; }
-.tlt-daily-h b { font-weight: 600; color: var(--tlt-ink5); }
-.tlt-daily-h.late { color: var(--tlt-hot); }
+.tlt-daily-h b { font-weight: 600; color: var(--d-ink4); opacity: .75; }
+.tlt-daily-h.late { color: var(--d-hot); }
 .tlt-daily-row { display: flex; gap: 8px; padding: 3px 0; align-items: flex-start; }
 .tlt-daily-cb {
   width: 14px; height: 14px; margin-top: 3px; flex: none;
-  border-radius: 4px; border: 1.2px solid var(--tlt-ink5); cursor: pointer;
+  border-radius: 4px; border: 1.2px solid var(--d-ink4); cursor: pointer;
 }
-.tlt-daily-cb:hover { border-color: var(--tlt-acc); }
-.tlt-daily-cb.on { background: var(--tlt-acc); border-color: var(--tlt-acc); }
+.tlt-daily-cb:hover { border-color: var(--d-acc); }
+.tlt-daily-cb.on { background: var(--d-acc); border-color: var(--d-acc); }
 .tlt-daily-cb.small { width: 11px; height: 11px; margin-top: 4px; border-radius: 3px; }
 .tlt-daily-b { min-width: 0; }
-.tlt-daily-t { color: var(--tlt-ink); }
-.tlt-daily-row.done .tlt-daily-t { color: var(--tlt-ink4); text-decoration: line-through; }
-.tlt-daily-m { font-size: 11px; color: var(--tlt-ink4); }
-.tlt-daily-steps { margin: 3px 0 1px 2px; padding-left: 9px; border-left: 1px solid var(--tlt-line2); }
-.tlt-daily-step { display: flex; gap: 7px; align-items: flex-start; font-size: 12px; color: var(--tlt-ink3); }
+.tlt-daily-t { color: var(--d-ink); }
+.tlt-daily-row.done .tlt-daily-t { color: var(--d-ink4); text-decoration: line-through; }
+.tlt-daily-m { font-size: 11px; color: var(--d-ink4); }
+.tlt-daily-steps { margin: 3px 0 1px 2px; padding-left: 9px; border-left: 1px solid var(--d-line); }
+.tlt-daily-step { display: flex; gap: 7px; align-items: flex-start; font-size: 12px; color: var(--d-ink3); }
 .tlt-daily-step.done span { text-decoration: line-through; opacity: .6; }
-.tlt-daily-empty { color: var(--tlt-ink4); font-size: 12px; padding: 4px 0; }
+.tlt-daily-empty { color: var(--d-ink4); font-size: 12px; padding: 4px 0; }
+.tlt-daily-warn { color: var(--d-hot); font-size: 12px; padding: 4px 0; }

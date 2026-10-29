@@ -56,6 +56,8 @@ const files = new Map();
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (e.name.startsWith(".")) continue;
     const p = path.join(dir, e.name);
+    // 隐私：日记目录一律不读（只做 TLT 相关检查，测试也不需要日记内容）
+    if (p.includes("70-生活/diary") || p.endsWith("/diary")) continue;
     if (e.isDirectory()) walk(p);
     else if (e.name.endsWith(".md")) files.set(path.relative(root, p), fs.readFileSync(p, "utf8"));
   }
@@ -169,6 +171,15 @@ try {
     w.document.body.appendChild(host);
     const diaryDate = process.env.TLT_DIARY_DATE || "20261029";
     cb.fn(process.env.TLT_DIARY_OPTS || "date: auto", host, { sourcePath: `70-生活/diary/2026/${diaryDate}.md` });
+    // 「宿主还没挂到文档上」也要先画出来（Obsidian 有时离屏渲染，曾经因此显示空白）
+    const off = w.document.createElement("div");
+    cb.fn("date: auto", off, { sourcePath: `70-生活/diary/2026/${diaryDate}.md` });
+    console.log("DEBUG off 子节点:", off.childNodes.length, "| dailyBlocks:", inst.dailyBlocks?.size, "| innerHTML:", JSON.stringify(off.innerHTML.slice(0, 80)));
+    if (!off.querySelector(".tlt-daily-row") && !off.querySelector(".tlt-daily-empty") && !off.querySelector(".tlt-daily-warn")) {
+      console.error("离屏渲染时块是空的 ✗（Obsidian 会先离屏渲染再挂载）");
+      console.error("   离屏 DOM:", JSON.stringify(off.innerHTML.slice(0, 200)), "| 子节点", off.childNodes.length);
+      process.exitCode = 1;
+    }
     const rows = host.querySelectorAll(".tlt-daily-row").length;
     const heads = [...host.querySelectorAll(".tlt-daily-h")].map((h) => h.textContent).join(" / ");
     console.log(`日记块 ✓  ${rows} 条（分组：${heads || "无"}）`);
