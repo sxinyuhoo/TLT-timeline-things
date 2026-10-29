@@ -94,7 +94,7 @@ export function attachFolderSuggest(app: App, input: HTMLInputElement): void {
     if (pop.classList.contains("tlt-hidden")) return;
     if (e.key === "ArrowDown") { active = Math.min(active + 1, items.length - 1); paint(); e.preventDefault(); }
     else if (e.key === "ArrowUp") { active = Math.max(active - 1, 0); paint(); e.preventDefault(); }
-    else if (e.key === "Tab" || e.key === "Enter") {
+    else if ((e.key === "Tab" || e.key === "Enter") && !e.isComposing) {
       if (active >= 0 && items[active]) { pick(items[active]); e.preventDefault(); }
       else close();
     } else if (e.key === "Escape") close();

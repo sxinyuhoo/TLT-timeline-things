@@ -53,7 +53,7 @@ export class PickerModal<T> extends TltModal {
     input.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown") { e.preventDefault(); this.move(1); }
       else if (e.key === "ArrowUp") { e.preventDefault(); this.move(-1); }
-      else if (e.key === "Enter") { e.preventDefault(); this.commit(); }
+      else if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); this.commit(); }
       else if (e.key === "Escape") { e.preventDefault(); this.finish(null); }
     });
     this.draw();

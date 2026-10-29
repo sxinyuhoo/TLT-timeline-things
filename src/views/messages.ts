@@ -3,7 +3,7 @@ import { ItemView, WorkspaceLeaf, Notice, App, requestUrl } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS } from "../store";
 import { Msg, Feed, todayISO, addDays, D, cleanFeedUrl, errMsg } from "../data";
-import { el, MsgModal, buildMsgFields, popMenu, TltModal } from "./modals";
+import { el, MsgModal, buildMsgFields, popMenu, TltModal, PromptModal } from "./modals";
 import { setSvgMarkup } from "./dom";
 
 export const VIEW_TYPE_MESSAGES = "tlt-messages";
@@ -87,6 +87,19 @@ export class MessagesView extends ItemView {
     }
   }
 
+  /** 新建一个个人消息源（发布之后原来那个就搬走了，得能再建） */
+  private promptNewFeed() {
+    new PromptModal(this.app, T("新建消息源"), T("源名称（会建一个 feeds/<名字>.md，只有自己看）"), async (name) => {
+      const clean = name.trim();
+      if (!clean) return;
+      const ok = await this.store.createPersonalFeed(clean);
+      if (!ok) { new Notice(T("没建成：这个名字的源已经有了")); return; }
+      await this.store.load();
+      await this.render();
+      new Notice(T("已新建消息源：{n}", { n: clean }));
+    }).open();
+  }
+
   private msgs(): Msg[] {
     return this.store.feeds.flatMap((f) => f.items);
   }
@@ -153,7 +166,14 @@ export class MessagesView extends ItemView {
     const mine = this.store.feeds.filter((f) => f.mine && !f.personal);
     const subs = this.store.feeds.filter((f) => !f.mine && !f.personal);
 
-    r.appendChild(el("div", "tlt-fgrp", T("个人")));
+    const pgrp = el("div", "tlt-fgrp");
+    pgrp.appendChild(el("span", "", T("个人")));
+    const addFeed = el("button", "tlt-fgrp-add", "＋");
+    addFeed.title = T("新建消息源");
+    addFeed.dataset.newfeed = "1";
+    addFeed.onclick = (ev) => { ev.stopPropagation(); this.promptNewFeed(); };
+    pgrp.appendChild(addFeed);
+    r.appendChild(pgrp);
     personal.forEach((f) => r.appendChild(this.railRow(f)));
     r.appendChild(el("div", "tlt-fgrp", T("我发布的")));
     mine.forEach((f) => r.appendChild(this.railRow(f)));
@@ -657,8 +677,13 @@ export class MessagesView extends ItemView {
             }
             await this.refresh();
           })(); };
+          // 中文输入法里回车是"上屏"，不是"确认"——合成期间的 Enter 一律放过
+          let composing = false;
+          inp.addEventListener("compositionstart", () => { composing = true; });
+          inp.addEventListener("compositionend", () => { composing = false; });
           inp.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") commit();
+            if (e.isComposing || composing || e.key === "Process") return;
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
             if (e.key === "Escape") void this.render();
           });
           inp.addEventListener("blur", commit);

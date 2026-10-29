@@ -2052,6 +2052,18 @@ var EN = {
   "\u53D1\u5E03": "Publish",
   "\u786E\u5B9A": "OK",
   "\u672A\u77E5\u9519\u8BEF": "Unknown error",
+  "\u641C\u7D22\uFF1A{q} \u2715": "Search: {q} \u2715",
+  "\u6E05\u6389\u641C\u7D22\u8BCD": "Clear the search",
+  "TLT \u6982\u89C8": "TLT overview",
+  "\u5F53\u524D\u662F\u5168\u5E93": "Showing every project",
+  "TLT \u6982\u89C8\u9762\u677F\uFF08\u53F3\u4FA7\u680F\uFF09": "TLT overview panel (right sidebar)",
+  "\u53F3\u4FA7\u680F\u6253\u4E0D\u5F00\uFF0C\u5148\u5728\u53F3\u4FA7\u7559\u4E00\u4E2A\u9762\u677F\u4F4D\u7F6E": "Can't open the right sidebar \u2014 leave a panel slot there first",
+  "\u4EBA\u5458\uFF08\u672A\u5B8C\u6210\u4EBA\u5929 / \u4EA7\u80FD\uFF09": "People (open person-days / capacity)",
+  "\u70B9\u5F00\u4EBA\u5458\u9875": "Open the people tab",
+  "\u8FD8\u6709 {n} \u6761": "{n} more",
+  "\u8FD8\u6709 {n} \u4F4D": "{n} more people",
+  "\u5DF2\u5B8C\u6210 {a} / \u5171 {b} \u6761": "{a} done of {b}",
+  "\u6253\u5F00/\u5173\u95ED TLT \u6982\u89C8\u9762\u677F\uFF08\u53F3\u4FA7\u680F\uFF09": "Open/close the TLT overview panel (right sidebar)",
   "\u8FD9\u4E2A\u9879\u76EE\u662F\u505A\u4EC0\u4E48\u7684\u3001\u4EA4\u4ED8\u4EC0\u4E48\u2026\uFF08\u53EF\u7559\u7A7A\uFF0C\u4E4B\u540E\u4E5F\u80FD\u6539\uFF09": "What this project is for, what it delivers\u2026 (can be left empty and edited later)",
   "\u7F6E\u9876\u9879\u76EE": "Pin project",
   "\u53D6\u6D88\u7F6E\u9876": "Unpin",
@@ -3055,7 +3067,7 @@ var ProjectInfoModal = class extends TltModal {
         }
         await this.store.load();
         this.close();
-        void this.onDone();
+        void this.onDone({ from: this.from, to: to || this.from, renamed: r.renamed });
         new Notice(r.renamed ? t("\u5DF2\u6539\u540D\u4E3A\u300C{n}\u300D{logs}", { n: to, logs: r.logs ? t("\uFF0C{n} \u6761\u65E5\u5FD7\u91CC\u7684\u9879\u76EE\u540D\u4E5F\u6539\u4E86", { n: r.logs }) : "" }) : t("\u5DF2\u4FDD\u5B58\u9879\u76EE\u4FE1\u606F"));
       })();
     };
@@ -5656,6 +5668,13 @@ var WorkbenchView = class _WorkbenchView extends ItemView {
     if (prevGrid && this.renderedDay) this.dayScroll = { day: this.renderedDay, top: prevGrid.scrollTop };
     const ae = document.activeElement;
     const focusKey = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey ? { key: ae.dataset.focuskey, start: ae.selectionStart ?? 0, end: ae.selectionEnd ?? 0 } : null;
+    const aliveProjects = this.store.projects();
+    if (this.proj && !aliveProjects.includes(this.proj)) this.proj = null;
+    if (this.msSel && !aliveProjects.includes(this.msSel.project)) this.msSel = null;
+    const aliveMs = new Set(this.store.milestones().map((m) => m.name));
+    [...this.expanded].forEach((k) => {
+      if (!aliveMs.has(k)) this.expanded.delete(k);
+    });
     root.empty();
     root.addClass("tlt-root");
     const app = el("div", "tlt");
@@ -5926,6 +5945,13 @@ var WorkbenchView = class _WorkbenchView extends ItemView {
       who.title = t("\u53EA\u770B\u8FD9\u4E00\u4E2A\u9879\u76EE\uFF0C\u70B9\u51FB\u56DE\u5230\u5168\u90E8");
     }
     crumbs.append(who, el("span", "tlt-sep", "/"), el("span", "", this.tabName()));
+    const panelBtn = el("button", "tlt-pn-open", "\u25A4");
+    panelBtn.title = t("TLT \u6982\u89C8\u9762\u677F\uFF08\u53F3\u4FA7\u680F\uFF09");
+    panelBtn.dataset.panelopen = "1";
+    panelBtn.onclick = () => {
+      void this.plugin.togglePanel();
+    };
+    crumbs.appendChild(panelBtn);
     if (this.proj) crumbs.appendChild(el("span", "tlt-hint2", t("\u5DF2\u6309\u9879\u76EE\u7B5B\u9009")));
     top.appendChild(crumbs);
     top.appendChild(el("div", "tlt-spacer"));
@@ -6350,6 +6376,13 @@ var WorkbenchView = class _WorkbenchView extends ItemView {
     return body;
   }
   /* ---------- 本月 ---------- */
+  qChip(host) {
+    if (!this.q) return;
+    const chip = el("button", "tlt-qchip", t("\u641C\u7D22\uFF1A{q} \u2715", { q: this.q }));
+    chip.dataset.qclear = "1";
+    chip.title = t("\u6E05\u6389\u641C\u7D22\u8BCD");
+    host.appendChild(chip);
+  }
   paneMonth() {
     const p = el("div", "tlt-pane");
     const m = this.tasksInDim();
@@ -6374,6 +6407,7 @@ var WorkbenchView = class _WorkbenchView extends ItemView {
     head.appendChild(seg2);
     head.appendChild(this.sortControl());
     p.appendChild(head);
+    this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
     if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
     const groups = [
@@ -6543,6 +6577,12 @@ var WorkbenchView = class _WorkbenchView extends ItemView {
       await this.render();
       new Notice(t("\u5DF2\u91CD\u547D\u540D\u4E3A\uFF1A{n}", { n: name }), 3e3);
     }, m.name).open();
+  }
+  /** 面板跳转入口：切页签 / 维度（可选） */
+  async focusOn(opts) {
+    if (opts.tab) this.tab = opts.tab;
+    if (opts.dim) this.taskDim = opts.dim;
+    await this.render();
   }
   /** 新建任务：已经点了项目 / 里程碑就把它们带上（不用再手选一遍） */
   openNewTask() {
@@ -6750,6 +6790,7 @@ var WorkbenchView = class _WorkbenchView extends ItemView {
     head.appendChild(el("span", "tlt-spacer"));
     head.appendChild(this.sortControl());
     p.appendChild(head);
+    this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
     if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
     if (!ms.length) p.appendChild(el("div", "tlt-empty", t("\u4EFB\u52A1\u6587\u4EF6\u91CC\u7528\u300C## \u91CC\u7A0B\u7891\u540D\u300D\u5206\u8282\uFF0C\u8FD9\u91CC\u5C31\u4F1A\u51FA\u73B0\u91CC\u7A0B\u7891\u3002")));
@@ -7008,19 +7049,36 @@ var WorkbenchView = class _WorkbenchView extends ItemView {
     const pedit = pick("[data-projedit]");
     if (pedit) {
       const name = pedit.dataset.projedit ?? "";
-      new ProjectInfoModal(this.app, this.store, name, () => this.render()).open();
+      new ProjectInfoModal(this.app, this.store, name, (info) => {
+        if (info?.renamed && this.proj === info.from) {
+          this.proj = info.to;
+          this.plugin.setActiveProject(this.proj);
+        }
+        void this.render();
+      }).open();
       return;
     }
     const proj = pick("[data-proj]");
     if (proj) {
       const name = proj.dataset.proj ?? "";
       this.proj = this.proj === name ? null : name;
+      this.plugin.setActiveProject(this.proj);
       await this.render();
       return;
     }
     if (pick("[data-projclear]")) {
       this.proj = null;
+      this.plugin.setActiveProject(null);
       await this.render();
+      return;
+    }
+    if (pick("[data-qclear]")) {
+      this.q = "";
+      await this.render();
+      return;
+    }
+    if (pick("[data-panelopen]")) {
+      void this.plugin.togglePanel();
       return;
     }
     if (pick("[data-newtask]")) {

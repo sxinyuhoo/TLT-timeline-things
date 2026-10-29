@@ -148,6 +148,7 @@ export class TLTPlugin extends Plugin {
     // 所以 settings / store 这两个字段必须**立刻**有值，不能等 loadSettings()。
     this.settings = { ...DEFAULTS };
     this.store = new Store(this.app, this.settings);
+    this.store.onSettingsChange = () => this.saveSettings();
     try {
       await this.boot();
     } catch (e) {
@@ -204,6 +205,7 @@ export class TLTPlugin extends Plugin {
     this.store.settings = this.settings;
     setLanguage(this.settings.language);
     this.store = new Store(this.app, this.settings);
+    this.store.onSettingsChange = () => this.saveSettings();
 
     this.registerView(VIEW_TYPE_WORKBENCH, (leaf: WorkspaceLeaf) => new WorkbenchView(leaf, this));
     this.registerView(VIEW_TYPE_MESSAGES, (leaf: WorkspaceLeaf) => new MessagesView(leaf, this));
@@ -407,15 +409,39 @@ export class TLTPlugin extends Plugin {
     }
   }
 
-  /** 右侧栏的 TLT 概览面板：开着就关，关着就开 */
+  /**
+   * 右侧栏的 TLT 概览面板：开着就关，关着就开。
+   * 注意：**不能拿"已有的那个右侧叶子"来换视图**——那里通常挂着别的插件（比如 pickme）的面板，
+   * 换掉等于把人家拆了，而某些插件会自己再弹回来，用户看到的就是"打开 TLT 却显示别人的内容"。
+   * 所以：优先新建一个右侧叶子（getRightLeaf(true)），换完还要校验真的换上了。
+   */
   async togglePanel() {
     const { workspace } = this.app;
     const open = workspace.getLeavesOfType(VIEW_TYPE_PANEL);
     if (open.length) { for (const l of open) l.detach(); return; }
-    const leaf = workspace.getRightLeaf(false);
-    if (!leaf) { new Notice(T("右侧栏打不开，先在右侧留一个面板位置")); return; }
-    await leaf.setViewState({ type: VIEW_TYPE_PANEL, active: true });
-    await workspace.revealLeaf(leaf);
+
+    const tryOpen = async (leaf: WorkspaceLeaf | null) => {
+      if (!leaf) return false;
+      try {
+        await leaf.setViewState({ type: VIEW_TYPE_PANEL, active: true });
+      } catch (e) {
+        console.error("TLT: 打开概览面板失败", e);
+        return false;
+      }
+      const type = leaf.view?.getViewType?.();
+      if (type !== VIEW_TYPE_PANEL) return false;
+      await workspace.revealLeaf(leaf);
+      return true;
+    };
+
+    // ① 右侧栏新建一个叶子（不碰别人的面板）
+    if (await tryOpen(workspace.getRightLeaf(true))) return;
+    // ② 右侧实在开不出来（右侧栏被收起来了之类）：退回主区开一个页签，别静默失败
+    if (await tryOpen(workspace.getLeaf("tab"))) {
+      new Notice(T("右侧栏开不出来，概览面板先开在主区了"));
+      return;
+    }
+    new Notice(T("概览面板没打开：这个窗口可能不支持分屏"));
   }
 
   async activateMessages() {
@@ -858,7 +884,7 @@ export class TLTSettingTab extends PluginSettingTab {
         };
         attachFolderSuggest(p.app, tc.inputEl);
         tc.inputEl.addEventListener("blur", commit);
-        tc.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") tc.inputEl.blur(); });
+        tc.inputEl.addEventListener("keydown", (e) => { if (e.isComposing || e.key === "Process") return; if (e.key === "Enter") tc.inputEl.blur(); });
       });
 
     const folder = (name: PathKey, label: string, desc: string, dflt: string) =>
@@ -878,7 +904,7 @@ export class TLTSettingTab extends PluginSettingTab {
           };
           attachFolderSuggest(p.app, tc.inputEl);          // 边打边给候选：Tab / 点击选中
           tc.inputEl.addEventListener("blur", commit);
-          tc.inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") tc.inputEl.blur(); });
+          tc.inputEl.addEventListener("keydown", (e) => { if (e.isComposing || e.key === "Process") return; if (e.key === "Enter") tc.inputEl.blur(); });
         });
     folder("tasksFolder", t("任务目录"), t("一个项目一个文件，## 小节是里程碑，任务一行一条。"), d.tasksFolder);
     folder("teamFolder", t("人员目录"), t("一人一个文件，frontmatter 写 role / capacity / days / skills。"), d.teamFolder);

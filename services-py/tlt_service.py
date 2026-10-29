@@ -39,7 +39,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 from urllib.request import Request, urlopen
 
 DB_LOCK = threading.Lock()
@@ -220,7 +220,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802
         u = urlparse(self.path)
-        q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        q_all = parse_qs(u.query)
+        q = {k: v[0] for k, v in q_all.items()}
         path = u.path.rstrip("/") or "/"
 
         if path == "/health":
@@ -256,8 +257,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"subs": [dict(r) for r in rows]})
 
         if path in ("/pull", "/api/pull"):
+            # urls= 可以重复传：只回这些订阅（客户端只该拿自己订的；不传＝全量，留给调试用）
+            only = set(q_all.get("urls", []))
             with DB_LOCK, db() as conn:
                 rows = conn.execute("SELECT * FROM subs").fetchall()
+            if only:
+                def _norm(u: str) -> str:
+                    try:
+                        x = urlparse(u)
+                        return f"{x.scheme}://{x.netloc}{x.pathname}?{unquote(x.query)}"
+                    except Exception:  # noqa: BLE001
+                        return u
+                want = {_norm(u) for u in only}
+                rows = [r for r in rows if _norm(r["url"]) in want]
             feeds = []
             for r in rows:
                 cache = json.loads(r["cache"]) if r["cache"] else None
@@ -339,7 +351,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):  # noqa: N802
         u = urlparse(self.path)
-        q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        q_all = parse_qs(u.query)
+        q = {k: v[0] for k, v in q_all.items()}
         path = u.path.rstrip("/") or "/"
 
         if path in ("/feed", "/api/feed"):

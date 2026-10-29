@@ -1639,3 +1639,14 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-qchip { align-self: flex-start; font-size: 9.5px; color: var(--tlt-ink3); background: color-mix(in srgb, var(--tlt-acc) 10%, transparent);
   border: 1px solid var(--tlt-line); border-radius: 999px; padding: 2px 8px; margin-bottom: 6px; cursor: pointer; }
 .tlt-qchip:hover { color: var(--tlt-ink); border-color: var(--tlt-line2); }
+
+/* 消息中心左栏：分组标题上的「＋ 新建源」 */
+.tlt-fgrp { display: flex; align-items: center; gap: 6px; }
+.tlt-fgrp-add { margin-left: auto; flex: none; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px;
+  background: none; color: var(--tlt-ink5); font-size: 11px; line-height: 1; cursor: pointer; }
+.tlt-fgrp-add:hover { background: var(--tlt-surface2); color: var(--tlt-acc); }
+
+/* 负责人候选面板里的「＋ 新建人员」 */
+.tlt-pickadd { flex: none; width: 100%; text-align: left; font-size: 10px; color: var(--tlt-ink3);
+  background: none; border: 1px dashed var(--tlt-line2); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+.tlt-pickadd:hover { color: var(--tlt-acc); border-color: var(--tlt-acc); }

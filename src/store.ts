@@ -40,6 +40,8 @@ export interface TLTSettings {
   sortBy?: "name" | "created" | "due";
   /** 1 = 正序，-1 = 反向 */
   sortDir?: 1 | -1;
+  /** 我订阅了哪些源的地址（拉取只认这一份；服务端那张订阅表是所有人共用的） */
+  subs?: string[];
   /** 每库一个随机盐：让不同人发布的同名源也不会撞 ID */
   publisherSalt?: string;
   feedNames: Record<string, string>; // 本地源 → 上次用的发布名称
@@ -91,6 +93,9 @@ export type PathSettingKey = (typeof PATH_KEYS)[number];
 export const PEOPLE_COLORS = ["#F0C24B", "#6C8CFF", "#27C1A3", "#B57BFF", "#F2994A", "#FF7A9C", "#5FD6B4", "#7C8BA1"];
 
 export class Store {
+  /** 由插件注入：store 内部改了设置（如订阅清单）时落盘 */
+  onSettingsChange?: () => void | Promise<void>;
+  private async saveSettingsSafe() { try { await this.onSettingsChange?.(); } catch { /* 存不下不影响功能 */ } }
   app: App;
   settings: TLTSettings;
   tasks: Task[] = [];
@@ -1455,6 +1460,17 @@ export class Store {
 
   /* ---------------- 人员 ---------------- */
 
+  /** 新建一个个人消息源（feeds/<名字>.md，personal: true） */
+  async createPersonalFeed(name: string): Promise<boolean> {
+    const clean = name.trim().replace(/[\\/:*?"<>|]/g, "-");
+    if (!clean) return false;
+    const path = normalizePath(`${this.settings.feedsFolder}/${clean}.md`);
+    if (this.asFile(this.app.vault.getAbstractFileByPath(path))) return false;
+    await this.ensureFolder(this.settings.feedsFolder);
+    await this.createSafe(path, `---\ntitle: ${clean}\npersonal: true\nowner: me\n---\n\n# ${clean}\n\n`);
+    return true;
+  }
+
   async addStaff(name: string) {
     const path = normalizePath(`${this.settings.teamFolder}/${name}.md`);
     if (this.app.vault.getAbstractFileByPath(path)) return false;
@@ -1556,22 +1572,64 @@ export class Store {
       return { ok: true, count: subs.length, existed: true };
     }
     const res = await this.httpJson<SubscribeResult>(`${base}/subscribe`, { method: "POST", body: { url: feedUrl, name } });
+    // 本地记一笔：拉取时以这份为准（服务端那张表是所有人共用的）
+    const list = this.settings.subs || [];
+    const key = norm(feedUrl);
+    if (!list.some((u) => norm(u) === key)) {
+      this.settings.subs = [...list, feedUrl];
+      await this.saveSettingsSafe();
+    }
     return { ...res, existed: false };
   }
 
   async unsubscribeRemote(syncUrl: string, feedUrl: string) {
     const base = syncUrl.replace(/\/$/, "");
+    const norm = (u: string) => {
+      try { const x = new URL(u); return `${x.origin}${x.pathname}?${decodeURIComponent(x.search.replace(/^\?/, ""))}`; }
+      catch { return u; }
+    };
+    this.settings.subs = (this.settings.subs || []).filter((u) => norm(u) !== norm(feedUrl));
+    await this.saveSettingsSafe();
     try { await this.httpJson<unknown>(`${base}/subscribe?url=${encodeURIComponent(feedUrl)}`, { method: "DELETE" }); return true; }
     catch { return false; }
   }
 
   /** 从拉取服务同步：把远端消息写进 TLT/feeds/<id>.md（按 mid 去重） */
+  /**
+   * 我订阅了哪些源。
+   * 以前靠服务端的 /pull（那是**全服务器共用的一张订阅表**，别人订的也会回来），
+   * 于是"订阅一个源却收到所有人发布的所有源"。现在以本地记录为准：
+   * settings.subs（显式订阅过的 URL）＋ 库里已有的远程源（老数据的迁移来源）。
+   */
+  mySubs(): string[] {
+    const fromSettings = this.settings.subs || [];
+    const fromFiles = this.feeds.map((f) => f.remote).filter((u): u is string => !!u);
+    const norm = (u: string) => {
+      try { const x = new URL(u); return `${x.origin}${x.pathname}?${decodeURIComponent(x.search.replace(/^\?/, ""))}`; }
+      catch { return u; }
+    };
+    const out: string[] = [];
+    [...fromSettings, ...fromFiles].forEach((u) => { if (u && !out.includes(norm(u))) out.push(norm(u)); });
+    return out;
+  }
+
   async pullFromHub(syncUrl: string) {
     const base = syncUrl.replace(/\/$/, "");
-    const data = await this.httpJson<PullResponse>(`${base}/pull`);
+    const mine = this.mySubs();
+    if (!mine.length) return { added: 0, updated: 0, at: new Date().toISOString() };   // 没订阅就什么都不拉
+    const norm = (u: string) => {
+      try { const x = new URL(u); return `${x.origin}${x.pathname}?${decodeURIComponent(x.search.replace(/^\?/, ""))}`; }
+      catch { return u; }
+    };
+    // 让服务端只回我订阅的那几个；老服务端不认这个参数时会回全量，所以下面还要再筛一遍
+    const qs = mine.map((u) => `urls=${encodeURIComponent(u)}`).join("&");
+    const data = await this.httpJson<PullResponse>(`${base}/pull?${qs}`);
     let added = 0, updated = 0;
+    const want = new Set(mine.map(norm));
 
     for (const feed of data.feeds ?? []) {
+      if (feed.url && !want.has(norm(asText(feed.url)))) continue;      // 不是自己订的，跳过
+
       const items = feed.items ?? [];
       if (!feed.ok || !items.length) continue;
       const title = asText(feed.title) || asText(feed.id) || "远程源";

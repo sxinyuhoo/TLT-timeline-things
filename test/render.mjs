@@ -1857,6 +1857,76 @@ await t("项目改名后：筛选要么跟着换名、要么干净地退回全�
   await store.load();
 });
 
+await t("消息中心：个人栏有「＋ 新建消息源」，建完能用", async () => {
+  document.body.empty();
+  const mv = mount(MessagesView);
+  await mv.onOpen();
+  const add = document.querySelector("[data-newfeed]");
+  assert.ok(add, "个人分组上应有新建消息源按钮");
+  add.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
+  const input = document.querySelector(".modal input");
+  assert.ok(input, "应弹出名称输入框");
+  input.value = "第二本";
+  const ok = [...document.querySelectorAll(".modal button")].find((b) => /确认|创建|确定/.test(b.textContent));
+  ok.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 160));
+  assert.ok(files["TLT/feeds/第二本.md"], `应建出 feeds/第二本.md，实际：${Object.keys(files).filter((k) => k.includes("feeds")).join(", ")}`);
+  assert.ok(/personal: true/.test(files["TLT/feeds/第二本.md"]), "应是个人源");
+  await store.load();
+  assert.ok(store.feeds.some((f) => f.name === "第二本" && f.personal), "读回来应是个个人源");
+});
+
+await t("新建任务：负责人面板里能直接新建人员", async () => {
+  document.body.empty();
+  const before = store.staff.length;
+  const modal = new QuickTaskModal(leaf.app ?? plugin.app, store, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  modal.contentEl.querySelector("[data-ownerpick]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
+  const search = modal.contentEl.querySelector("[data-ownersearch]");
+  assert.ok(search, "候选面板里应有搜索框");
+  assert.ok(modal.contentEl.querySelector("[data-owneradd]"), "候选面板里应有「＋ 新建人员」");
+  search.value = "新来的同事";
+  const ev = new search.ownerDocument.defaultView.KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+  search.dispatchEvent(ev);
+  await new Promise((r) => window.setTimeout(r, 220));
+  assert.ok(files["TLT/crew/新来的同事.md"], `应建出人员档案，实际：${Object.keys(files).filter((k) => k.includes("crew")).join(", ")}`);
+  await store.load();
+  assert.equal(store.staff.length, before + 1, "人员数应 +1");
+  assert.ok(store.staff.some((x) => x.name === "新来的同事"), "应读得到新人员");
+});
+
+await t("输入法合成中的回车不提交（改源名不会被打断）", async () => {
+  document.body.empty();
+  const mv = mount(MessagesView);
+  await mv.onOpen();
+  // 选中一个自己的源（个人源），右栏才会出现改名入口
+  const personal = store.feeds.find((f) => f.personal);
+  assert.ok(personal, "夹具里应有个人源");
+  const row = [...document.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes(personal.name));
+  assert.ok(row, `应有「${personal.name}」这一行，实际：${[...document.querySelectorAll(".tlt-fr")].map((r) => r.textContent).join(" | ")}`);
+  row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const pen = document.querySelector(".tlt-rename");
+  assert.ok(pen, "右栏应有改名按钮");
+  pen.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const inp = document.querySelector(".tlt-d-titlewrap input");
+  assert.ok(inp, "应进入就地编辑");
+  inp.value = "abc";
+  const win = inp.ownerDocument.defaultView;
+  inp.dispatchEvent(new win.CompositionEvent("compositionstart", { bubbles: true }));
+  inp.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.ok(document.querySelector(".tlt-d-titlewrap input"), "合成期间的回车不该提交（输入框应还在）");
+  inp.dispatchEvent(new win.CompositionEvent("compositionend", { bubbles: true }));
+  inp.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  assert.ok(!document.querySelector(".tlt-d-titlewrap input"), "合成结束后的回车才提交");
+});
+
 await t("独立消息中心渲染", async () => {
   document.body.empty();
   const mv = mount(MessagesView);

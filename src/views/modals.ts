@@ -268,7 +268,8 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
   const draw = () => {
     pop.empty();
     const search = el("input", "tlt-input tlt-picksearch");
-    search.placeholder = T("搜名字或岗位");
+    search.placeholder = T("搜名字或岗位，没有就回车新建");
+    search.setAttribute("data-ownersearch", "1");
     const list = el("div", "tlt-picklist");
     const fill = () => {
       list.empty();
@@ -288,9 +289,53 @@ function ownerSelect(store: Store, parent: HTMLElement, draft: { owners: string[
         list.appendChild(r);
       });
     };
+    // 没搜到人时：回车把这个名字建成新档案并直接选上（不用先去人员视图建一遍）
+    const createWith = (name: string) => {
+      const clean = name.trim();
+      if (!clean) return;
+      void (async () => {
+        const ok = await store.addStaff(clean);
+        if (ok) {
+          await store.load();
+          draft.owners = [...draft.owners, clean];
+          paint();
+          search.value = "";
+          fill();
+          new Notice(T("已新建人员「{n}」（岗位/产能可以在人员页再改）", { n: clean }));
+        } else {
+          new Notice(T("「{n}」已经有档案了，直接选它就行", { n: clean }));
+          search.value = clean;
+          fill();
+        }
+      })();
+    };
+    search.addEventListener("keydown", (ev) => {
+      if (ev.isComposing || ev.key === "Process") return;
+      if (ev.key !== "Enter") return;
+      const q = search.value.trim();
+      if (!q) return;
+      const hit = store.staff.find((x) => x.name === q);
+      if (hit) {                         // 已经有这个人：直接选中
+        ev.preventDefault();
+        draft.owners = draft.owners.includes(q) ? draft.owners : [...draft.owners, q];
+        paint(); fill();
+        return;
+      }
+      ev.preventDefault();
+      createWith(q);
+    });
+    const addRow = el("button", "tlt-pickadd", T("＋ 新建人员"));
+    addRow.setAttribute("data-owneradd", "1");
+    addRow.onclick = (ev) => {
+      ev.stopPropagation();
+      const q = search.value.trim();
+      if (q) { createWith(q); return; }
+      search.focus();
+      new Notice(T("先在搜索框里打上名字，再按回车就能新建"));
+    };
     search.oninput = fill;
     fill();
-    pop.append(search, list);
+    pop.append(search, list, addRow);
   };
 
   const paint = () => {
@@ -489,6 +534,7 @@ export class TaskModal extends TltModal {
       await this.refreshSteps();
     })(); };
     input.addEventListener("keydown", (e) => {
+      if (e.isComposing || e.key === "Process") return;      // 输入法合成中的回车是"上屏"，不是确认
       if (e.key === "Enter") { e.preventDefault(); commit(true); }
       if (e.key === "Escape") { e.preventDefault(); commit(false); }
     });
@@ -1176,7 +1222,7 @@ export class AddStaffModal extends TltModal {
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
     window.setTimeout(() => name.focus(), 50);
-    name.addEventListener("keydown", (e) => { if (e.key === "Enter") ok.click(); });
+    name.addEventListener("keydown", (e) => { if (e.isComposing || e.key === "Process") return; if (e.key === "Enter") ok.click(); });
   }
   onClose() { this.contentEl.empty(); }
 }
@@ -1701,6 +1747,7 @@ export class PromptModal extends TltModal {
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
     input.addEventListener("keydown", (e) => {
+      if (e.isComposing || e.key === "Process") return;
       if (e.key === "Enter") { e.preventDefault(); ok.click(); }
     });
     window.setTimeout(() => { input.focus(); input.select(); }, 50);

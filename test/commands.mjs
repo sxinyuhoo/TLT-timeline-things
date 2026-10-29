@@ -602,6 +602,49 @@ await t("项目信息：只改描述（不改名）也能存", async () => {
   assert.ok(fps.files["TLT/tasks/贝塔.md"].includes("# 贝塔"), "正文不能被吃掉");
 });
 
+/* ---------------- 订阅：只拉自己订的那一个源（0.9.10） ---------------- */
+await t("拉取只写自己订阅的源，别人订的不进本库", async () => {
+  const { store } = await NEW();
+  fps.files["TLT/feeds/远程-甲.md"] = `---\ntitle: 甲\nremote: http://hub/feed?id=aaa\nown: false\n---\n\n# 甲\n\n`;
+  await store.load();
+  // 服务端老版本：不认 urls=，照样回全量（含别人订的乙）
+  store.httpJson = async () => ({
+    feeds: [
+      { url: "http://hub/feed?id=aaa", ok: true, id: "aaa", title: "甲", owner: "小王",
+        items: [{ mid: "a1", date: "2026-10-29", title: "甲的消息", kind: "note", place: "", who: [], star: false, state: "live", until: "", body: "" }] },
+      { url: "http://hub/feed?id=bbb", ok: true, id: "bbb", title: "乙", owner: "小李",
+        items: [{ mid: "b1", date: "2026-10-29", title: "别人的消息", kind: "note", place: "", who: [], star: false, state: "live", until: "", body: "" }] },
+    ],
+  });
+  const r = await store.pullFromHub("http://hub");
+  assert.equal(r.added, 1, `只该写 1 条（自己订的那个），实际 ${r.added}`);
+  assert.ok(/甲的消息/.test(fps.files["TLT/feeds/远程-甲.md"]), "自己订的源应有内容");
+  const leaked = Object.keys(fps.files).filter((k) => /远程-乙/.test(k));
+  assert.equal(leaked.length, 0, `不该为别人订的源建文件：${leaked.join(", ")}`);
+  const leakedMsg = Object.values(fps.files).some((v) => /别人的消息/.test(v));
+  assert.ok(!leakedMsg, "别人订的消息不该出现在本库任何文件里");
+});
+
+await t("没订阅就什么都不拉", async () => {
+  const { store } = await NEW();
+  store.httpJson = async () => { throw new Error("不该发请求"); };
+  const r = await store.pullFromHub("http://hub");
+  assert.equal(r.added, 0, "没订阅时不该拉取");
+});
+
+await t("订阅清单存在设置里：订阅后进、退订后出", async () => {
+  const { store } = await NEW();
+  store.settings.subs = [];
+  store.httpJson = async (url) => {
+    if (String(url).endsWith("/subscriptions")) return { subs: [] };
+    return { ok: true, count: 0 };
+  };
+  await store.subscribeRemote("http://hub", "http://hub/feed?id=ccc");
+  assert.deepEqual(store.settings.subs, ["http://hub/feed?id=ccc"], "订阅后应记进设置");
+  await store.unsubscribeRemote("http://hub", "http://hub/feed?id=ccc");
+  assert.deepEqual(store.settings.subs, [], "退订后应移除");
+});
+
 /* ---------------- 订阅来的源：只能起别名，不能改发布者的名字 ---------------- */
 await t("订阅别人的源：改名只写本地别名，对方 title 不动", async () => {
   const { store } = await NEW();

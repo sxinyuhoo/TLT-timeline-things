@@ -1832,6 +1832,7 @@ export class WorkbenchView extends ItemView {
       await this.refresh();
     })(); };
     input.addEventListener("keydown", (e) => {
+      if (e.isComposing || e.key === "Process") return;
       if (e.key === "Enter") { e.preventDefault(); commit(true); }
       if (e.key === "Escape") { e.preventDefault(); commit(false); }
     });
