@@ -159,7 +159,6 @@ overdue: true   # list overdue tasks in their own group
 tree: true      # expand sub-steps
 who: true       # show owners
 scope: all      # all | work | personal
-approx: true    # older tasks have no completion date → file them by due date
 ```
 ````
 

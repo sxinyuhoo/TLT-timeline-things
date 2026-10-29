@@ -366,7 +366,9 @@ body.tlt-light {
 }
 .tlt-task.done .tlt-task-t { color: var(--tlt-ink4); text-decoration: line-through; }
 .tlt-pd { width: 5px; height: 5px; border-radius: 50%; background: #D9A05F; flex: none; }
-.tlt-pd.u { background: var(--tlt-hot); box-shadow: 0 0 0 2.5px rgba(217, 106, 106, .16); }
+.tlt-pd.u { width: 6px; height: 6px; background: #E5534B; box-shadow: 0 0 0 2px rgba(229, 83, 75, .22); }
+.tlt-priflag { font-size: 8.5px; color: #D9A05F; }
+.tlt-priflag.u { color: #E5534B; }
 .tlt-task-m {
   display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 8.5px;
   color: var(--tlt-ink4); font-variant-numeric: tabular-nums; flex-wrap: wrap;

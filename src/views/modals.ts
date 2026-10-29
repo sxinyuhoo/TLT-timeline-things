@@ -625,7 +625,8 @@ export class TaskModal extends TltModal {
     estRow.appendChild(estInput);
 
     const pri = row(contentEl, T("优先级"));
-    seg<number>(pri, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri || 1, (v) => (this.draft.pri = v as Pri));
+    // 用 ?? 而不是 ||：优先级「低」是 0，用 || 会被当成"没选"，显示成「普通」
+    seg<number>(pri, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri ?? 1, (v) => (this.draft.pri = v as Pri));
 
     const whoRowD = row(contentEl, T("负责人"));
     ownerSelect(this.app, this.store, whoRowD, this.draft);

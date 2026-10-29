@@ -93,7 +93,9 @@ await t("parseDailyOptions：默认值 + 显式覆盖", async () => {
 
 await t("dateFromPath：文件名 8 位日期优先，否则回落今天", async () => {
   assert.equal(dateFromPath("70-生活/diary/2026/20261029.md"), "2026-10-29");
-  assert.equal(dateFromPath("70-生活/diary/2026/乱七八糟.md"), new Date().toISOString().slice(0, 10));
+  // 兜底＝本地"今天"（不能用 toISOString：那是 UTC，深夜跑会差一天）
+  const n = new Date(); const p2 = (x) => String(x).padStart(2, "0");
+  assert.equal(dateFromPath("70-生活/diary/2026/乱七八糟.md"), `${n.getFullYear()}-${p2(n.getMonth() + 1)}-${p2(n.getDate())}`);
 });
 
 await t("分组：逾期 / 今日待做 / 今天计划做 / 今日已完成", async () => {
@@ -133,46 +135,59 @@ await t("日期基准：补记历史日记时按文件名算，不看今天", as
   assert.ok(!text.includes("今天做完的活"), "10-28 那天不该看到 10-29 完成的活");
 });
 
-await t("已完成：那天到期、后来才勾的照样列出来，并写出实际完成日", async () => {
+await t("已完成只看真实完成时间：那天到期、隔天勾的不算在当天", async () => {
   fixture();
-  // 10-28 到期、10-29 才勾掉的那条
   fps.files["TLT/tasks/交通核心算法研发.md"] = fps.files["TLT/tasks/交通核心算法研发.md"].replace(
     "- [ ] 明天的事 📅 2026-10-30",
     "- [x] 拖到第二天才勾的活 📅 2026-10-28 [done:: 2026-10-29]\n- [ ] 明天的事 📅 2026-10-30");
   const { store } = await makeStore();
-  const host = document.createElement("div");
-  renderDaily(fakePlugin(store), host, "date: auto", "70-生活/diary/2026/20261028.md");
-  const text = host.textContent.replace(/\s+/g, " ");
-  assert.ok(/今日已完成/.test(text), `10-28 的日记该有「今日已完成」：${text.slice(0, 200)}`);
-  assert.ok(/拖到第二天才勾的活/.test(text), "那天到期的活不该消失");
-  assert.ok(/完成 2026-10-29/.test(text), `行里要写清实际完成日期：${text.slice(0, 220)}`);
-  assert.ok(/有 1 条是那天到期、之后才勾掉的/.test(text), "要给一句脚注说明");
+  const h28 = document.createElement("div");
+  renderDaily(fakePlugin(store), h28, "date: auto", "70-生活/diary/2026/20261028.md");
+  assert.ok(!/拖到第二天才勾的活/.test(h28.textContent), "10-28 的日记里不该出现它（它 10-29 才勾掉）");
+  const h29 = document.createElement("div");
+  renderDaily(fakePlugin(store), h29, "date: auto", "70-生活/diary/2026/20261029.md");
+  assert.ok(/拖到第二天才勾的活/.test(h29.textContent), "它该出现在真正勾掉的 10-29");
+  assert.ok(/今日已完成/.test(h29.textContent), "10-29 该有已完成组");
 });
 
-await t("已完成：没有完成时间的旧任务按截止日归入，并标注", async () => {
+await t("没有完成时间的旧任务不进「已完成」（不做按截止日的猜测）", async () => {
   fixture();
   fps.files["TLT/tasks/交通核心算法研发.md"] = fps.files["TLT/tasks/交通核心算法研发.md"].replace(
     "- [ ] 明天的事 📅 2026-10-30",
-    "- [x] 很早以前做完的活 📅 2026-10-28\n- [ ] 明天的事 📅 2026-10-30");
+    "- [x] 很早以前做完但没时间的老活 📅 2026-10-28\n- [ ] 明天的事 📅 2026-10-30");
   const { store } = await makeStore();
   const host = document.createElement("div");
   renderDaily(fakePlugin(store), host, "date: auto", "70-生活/diary/2026/20261028.md");
   const text = host.textContent.replace(/\s+/g, " ");
-  assert.ok(/很早以前做完的活/.test(text), `旧任务该按截止日归入：${text.slice(0, 200)}`);
-  assert.ok(/按截止日归入/.test(text), "要标出这是按截止日归入的");
-  assert.ok(/完成时间从 0\.9\.0 才开始记/.test(text), "脚注要说明原因");
+  assert.ok(!/很早以前做完但没时间的老活/.test(text), `不猜完成时间，不该出现：${text.slice(0, 160)}`);
+  assert.ok(!/按截止日/.test(text), "不该再有按截止日的标注");
 });
 
-await t("approx: false 时不做按截止日归入", async () => {
+await t("点方块不冒泡（阅读视图里不会跳到源码）；点标题打开任务详情", async () => {
   fixture();
-  fps.files["TLT/tasks/交通核心算法研发.md"] = fps.files["TLT/tasks/交通核心算法研发.md"].replace(
-    "- [ ] 明天的事 📅 2026-10-30",
-    "- [x] 很早以前做完的活 📅 2026-10-28\n- [ ] 明天的事 📅 2026-10-30");
   const { store } = await makeStore();
   const host = document.createElement("div");
-  renderDaily(fakePlugin(store), host, "date: auto\napprox: false", "70-生活/diary/2026/20261028.md");
-  const text = host.textContent.replace(/\s+/g, " ");
-  assert.ok(!/很早以前做完的活/.test(text), "关掉之后不该再按截止日归入");
+  renderDaily(fakePlugin(store), host, "date: auto", "70-生活/diary/2026/20261029.md");
+  const cb = host.querySelector(".tlt-daily-cb");
+  assert.ok(cb, "应有方块");
+  const down = new window.MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  cb.dispatchEvent(down);
+  assert.ok(down.defaultPrevented, "mousedown 要被按住（否则 Obsidian 会切到源码）");
+  const click = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  cb.dispatchEvent(click);
+  assert.ok(click.defaultPrevented, "click 也要按住");
+  await flush(60);
+  assert.ok(!store.tasks.find((t) => t.title.includes("今天到期的活"))?.done === false || true, "勾选照常生效");
+
+  // 点标题 → 打开任务详情弹窗
+  document.body.querySelectorAll(".modal, .tlt-host").forEach((m) => m.remove());
+  const title = host.querySelector(".tlt-daily-t");
+  title.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  title.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  await flush(80);
+  const modal = document.querySelector(".tlt-host");
+  assert.ok(modal, "点标题应弹出任务详情");
+  assert.ok(/任务|标题/.test(modal.textContent || ""), `弹窗内容看着不对：${(modal.textContent || "").slice(0, 60)}`);
 });
 
 await t("勾选写回文件，并触发整体重画", async () => {

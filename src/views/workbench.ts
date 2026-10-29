@@ -1085,6 +1085,8 @@ export class WorkbenchView extends ItemView {
     const body = el("div", "tlt-task-b");
     const title = el("div", "tlt-task-t");
     if (t.pri >= 2) {
+      // 高＝橙色点，紧急＝红点（更大一圈）；紧急另外在元信息里写一个「紧急」小标签，
+      // 光靠颜色分不清高与紧急（用户提过）
       const pr = el("i", "tlt-pd" + (t.pri >= 3 ? " u" : ""));
       title.appendChild(pr);
     }
@@ -1099,6 +1101,8 @@ export class WorkbenchView extends ItemView {
     (t.tags || []).forEach((tg) => meta.appendChild(el("span", "tlt-tag", tg)));
     if (t.owners.length) meta.appendChild(el("span", "", t.owners.join(T("、"))));
     if (t.files.length) meta.appendChild(el("span", "", `▤ ${t.files.length}`));
+    if (t.pri >= 3) meta.appendChild(el("span", "tlt-priflag u", T("紧急")));
+    else if (t.pri === 2) meta.appendChild(el("span", "tlt-priflag", T("高")));
     if (t.done && t.doneAt) meta.appendChild(el("span", "tlt-doneat", T("完成 {d}", { d: t.doneAt.slice(5) })));
     if (t.steps.length) meta.appendChild(this.stepRing(t));
     body.appendChild(meta);
