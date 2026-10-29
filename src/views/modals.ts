@@ -385,9 +385,9 @@ export class NewProjectModal extends TltModal {
 export class ProjectInfoModal extends TltModal {
   store: Store;
   from: string;
-  onDone: () => void | Promise<void>;
+  onDone: (info?: { from: string; to: string; renamed: boolean }) => void | Promise<void>;
 
-  constructor(app: App, store: Store, from: string, onDone: () => void | Promise<void>) {
+  constructor(app: App, store: Store, from: string, onDone: (info?: { from: string; to: string; renamed: boolean }) => void | Promise<void>) {
     super(app); this.store = store; this.from = from; this.onDone = onDone;
   }
 
@@ -429,7 +429,7 @@ export class ProjectInfoModal extends TltModal {
       if (!r.ok) { new Notice(T("没保存：名字不能为空")); return; }
       await this.store.load();
       this.close();
-      void this.onDone();
+      void this.onDone({ from: this.from, to: to || this.from, renamed: r.renamed });
       new Notice(r.renamed
         ? T("已改名为「{n}」{logs}", { n: to, logs: r.logs ? T("，{n} 条日志里的项目名也改了", { n: r.logs }) : "" })
         : T("已保存项目信息"));

@@ -39,6 +39,19 @@ var ItemView = class {
   }
   async onClose() {
   }
+  /** Obsidian 的 Component.registerDomEvent：真挂监听，卸载时摘掉（视图里用它绑按键） */
+  _cleanups = [];
+  registerDomEvent(target, type, cb, opts) {
+    target.addEventListener(type, cb, opts);
+    this._cleanups.push(() => target.removeEventListener(type, cb, opts));
+  }
+  register(cb) {
+    this._cleanups.push(cb);
+  }
+  unload() {
+    this._cleanups.forEach((f) => f());
+    this._cleanups = [];
+  }
 };
 var Modal = class {
   app;
@@ -335,54 +348,6 @@ function newLogLine(t2) {
   > ${t2.body.replace(/\n/g, "\n  > ")}`;
   return s;
 }
-function readProjectDesc(text) {
-  const lines = text.split(/\r?\n/);
-  const h1 = lines.findIndex((l) => /^#\s+/.test(l));
-  if (h1 < 0) return "";
-  const out = [];
-  for (let i = h1 + 1; i < lines.length; i++) {
-    const l = lines[i];
-    if (!l.trim()) {
-      if (out.length) break;
-      continue;
-    }
-    const q = /^\s*>\s?(.*)$/.exec(l);
-    if (q) {
-      out.push(q[1].trim());
-      continue;
-    }
-    break;
-  }
-  return out.join("\n").trim();
-}
-function writeProjectDesc(text, desc) {
-  const lines = text.split(/\r?\n/);
-  const h1 = lines.findIndex((l) => /^#\s+/.test(l));
-  if (h1 < 0) return desc ? `${text.replace(/\s*$/, "")}
-` : text;
-  let start = h1 + 1;
-  while (start < lines.length && !lines[start].trim()) start++;
-  let end = start;
-  if (start < lines.length && /^\s*>/.test(lines[start])) {
-    while (end < lines.length && (/^\s*>/.test(lines[end]) || !lines[end].trim())) end++;
-    while (end > start && !lines[end - 1].trim()) end--;
-  } else {
-    end = start;
-  }
-  const block = desc.trim() ? desc.trim().split("\n").map((l) => `> ${l}`.trimEnd()) : [];
-  const head = lines.slice(0, h1 + 1);
-  const tail = lines.slice(end);
-  const mid = block.length ? ["", ...block] : [];
-  const out = [...head, ...mid];
-  if (tail.length) {
-    if (out.length && out[out.length - 1].trim()) out.push("");
-    out.push(...tail);
-  }
-  let res = out.join("\n").replace(/\n{3,}/g, "\n\n");
-  if (!res.endsWith("\n")) res += "\n";
-  res = res.replace(/^desc:.*\r?\n/m, "");
-  return res;
-}
 function parseIdeaLine(line, file, idx, body) {
   const m = /^\s*[-*+]\s+(.+)$/.exec(line);
   if (!m) return null;
@@ -497,6 +462,7 @@ var Store = class _Store {
     /** 里程碑完成状态快照（key: 项目::里程碑）——只在"这一轮刚变成完成"时记事件 */
     this.msDone = {};
     this.projectDescs = {};
+    this.projectPins = {};
     /* ---------- 标签库（TLT/tags.md，一行一个） ---------- */
     this.tags = [];
     this.app = app;
@@ -586,11 +552,13 @@ owner: me
     this.ideas = [];
     this.tags = [];
     this.projectDescs = {};
+    this.projectPins = {};
     for (const file of this.filesIn(this.settings.tasksFolder)) {
       const text = await this.app.vault.cachedRead(file);
       const project = file.basename;
       const pfm = this.app.metadataCache.getFileCache(file)?.frontmatter || {};
-      this.projectDescs[project] = readProjectDesc(text) || asText(pfm["desc"]) || asText(pfm["description"]);
+      this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]);
+      this.projectPins[project] = pfm["pin"] === true || pfm["pin"] === "true";
       let milestone;
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
@@ -810,6 +778,31 @@ ${line}
   projectDesc(name) {
     return this.projectDescs[name] || "";
   }
+  /** 项目是否置顶（项目文件 frontmatter 的 pin: true） */
+  isPinned(name) {
+    return !!this.projectPins[name];
+  }
+  /** 置顶 / 取消置顶：写进项目文件的 frontmatter */
+  async setProjectPin(name, on) {
+    const file = await this.fileByPath(`${this.settings.tasksFolder}/${name}.md`);
+    if (!file) return false;
+    await this.app.vault.process(file, (data) => {
+      const stripped = data.replace(/^pin:.*\r?\n/m, "");
+      const hasFm = /^---\r?\n/.test(stripped);
+      const end = hasFm ? stripped.indexOf("\n---", 3) : -1;
+      const head = hasFm && end > 0 ? stripped.slice(0, end) : "";
+      const rest = hasFm && end > 0 ? stripped.slice(end) : stripped;
+      if (!on) return hasFm ? `${head}${rest}` : rest;
+      return hasFm ? `${head}
+pin: true${rest}` : `---
+pin: true
+---
+
+${stripped}`;
+    });
+    this.projectPins[name] = on;
+    return true;
+  }
   /**
    * 项目信息：改名称（= 改文件名）与描述。
    * 改名会顺带把日志里的 [proj:: 旧名] 一起改掉，否则原来记的"做了什么"会对不上项目。
@@ -820,7 +813,21 @@ ${line}
     let file = await this.fileByPath(`${this.settings.tasksFolder}/${from}.md`);
     if (!file) return { ok: false, renamed: false, logs: 0 };
     const wantDesc = desc.trim();
-    await this.app.vault.process(file, (data) => writeProjectDesc(data, wantDesc));
+    await this.app.vault.process(file, (data) => {
+      const stripped = data.replace(/^desc:.*\r?\n/m, "");
+      const hasFm = /^---\r?\n/.test(stripped);
+      const end = hasFm ? stripped.indexOf("\n---", 3) : -1;
+      const head = hasFm && end > 0 ? stripped.slice(0, end) : "";
+      const rest = hasFm && end > 0 ? stripped.slice(end) : stripped;
+      if (!wantDesc) return hasFm ? `${head}${rest}` : rest;
+      const line = `desc: ${wantDesc.replace(/\r?\n/g, " ")}`;
+      return hasFm ? `${head}
+${line}${rest}` : `---
+${line}
+---
+
+${stripped}`;
+    });
     this.projectDescs[clean] = wantDesc;
     if (clean === from) return { ok: true, renamed: false, logs: 0 };
     let target = normalizePath(`${this.settings.tasksFolder}/${clean}.md`);
@@ -2045,6 +2052,20 @@ var EN = {
   "\u53D1\u5E03": "Publish",
   "\u786E\u5B9A": "OK",
   "\u672A\u77E5\u9519\u8BEF": "Unknown error",
+  "\u8FD9\u4E2A\u9879\u76EE\u662F\u505A\u4EC0\u4E48\u7684\u3001\u4EA4\u4ED8\u4EC0\u4E48\u2026\uFF08\u53EF\u7559\u7A7A\uFF0C\u4E4B\u540E\u4E5F\u80FD\u6539\uFF09": "What this project is for, what it delivers\u2026 (can be left empty and edited later)",
+  "\u7F6E\u9876\u9879\u76EE": "Pin project",
+  "\u53D6\u6D88\u7F6E\u9876": "Unpin",
+  "\u5DF2\u7F6E\u9876": "Pinned",
+  "\u5B8C\u6210 {d}": "Done {d}",
+  "TLT \u6570\u636E\u8FD8\u6CA1\u5C31\u7EEA\uFF0C\u7A0D\u7B49\u6216\u91CD\u5F00\u8FD9\u7BC7\u7B14\u8BB0": "TLT data isn't ready yet \u2014 wait a moment or reopen this note",
+  "TLT: \u65E5\u8BB0\u5757\u6E32\u67D3\u5931\u8D25": "TLT: failed to render a daily block",
+  "\u4ECA\u65E5\u5F85\u505A": "Due today",
+  "\u4ECA\u5929\u8BA1\u5212\u505A": "Planned for today",
+  "\u4ECA\u65E5\u5DF2\u5B8C\u6210": "Done today",
+  "\u4ECA\u5929\u5230\u671F": "due today",
+  "\u8FD9\u5929\u6CA1\u6709\u5F85\u529E\uFF0C\u4E5F\u6CA1\u6709\u5B8C\u6210\u7684\u8BB0\u5F55": "Nothing due and nothing finished on this day",
+  "{m} \u4E2A\u91CC\u7A0B\u7891 \xB7 {n} \u6761\u4EFB\u52A1 \xB7 \u5B8C\u6210 {p}%": "{m} milestones \xB7 {n} tasks \xB7 {p}% done",
+  "\u8FD9\u4E2A\u9879\u76EE\u662F\u505A\u4EC0\u4E48\u7684\u3001\u4EA4\u4ED8\u4EC0\u4E48\u3001\u6709\u8C01\u5728\u53C2\u4E0E\u2026\uFF08\u5B58\u8FDB\u9879\u76EE\u6587\u4EF6\u7684 frontmatter\uFF1Adesc\uFF09": "What this project is for, what it delivers, who is on it\u2026 (stored as `desc` in the project file's frontmatter)",
   "\u9879\u76EE\u4FE1\u606F": "Project info",
   "\u63CF\u8FF0": "Description",
   "\u9879\u76EE\u4FE1\u606F\uFF08\u540D\u79F0 / \u63CF\u8FF0\uFF09": "Project info (name / description)",
@@ -2712,48 +2733,6 @@ function seg(parent, opts, cur, onPick) {
   parent.appendChild(wrap);
   return wrap;
 }
-function segSetter(wrap, opts) {
-  return (v) => {
-    const btns = Array.from(wrap.querySelectorAll(".tlt-seg-b"));
-    btns.forEach((b, i) => b.classList.toggle("on", opts[i]?.v === v));
-  };
-}
-function bindDuration(opts) {
-  const { draft, startEl, dueEl, setEstUI } = opts;
-  const spanOf = (a, b) => {
-    if (!a || !b) return 1;
-    const A = /* @__PURE__ */ new Date(`${a}T00:00:00`), B = /* @__PURE__ */ new Date(`${b}T00:00:00`);
-    if (Number.isNaN(+A) || Number.isNaN(+B)) return 1;
-    return Math.max(1, Math.round((+B - +A) / 864e5) + 1);
-  };
-  const applyEst = (v) => {
-    draft.est = v;
-    setEstUI(v);
-    if (!draft.start) {
-      draft.start = todayISO();
-      startEl.value = draft.start;
-    }
-    draft.due = addDays(draft.start, Math.max(0, Math.ceil(v) - 1));
-    dueEl.value = draft.due;
-  };
-  const applyDue = (d) => {
-    draft.due = d || void 0;
-    if (!d) return;
-    const span = spanOf(draft.start, d);
-    draft.est = span;
-    setEstUI(span);
-  };
-  const applyStart = (s) => {
-    const span = spanOf(draft.start, draft.due);
-    draft.start = s || void 0;
-    if (!draft.start) return;
-    draft.due = addDays(draft.start, Math.max(0, span - 1));
-    dueEl.value = draft.due;
-    draft.est = span;
-    setEstUI(span);
-  };
-  return { applyEst, applyDue, applyStart };
-}
 var TltModal = class extends Modal {
   constructor(app) {
     super(app);
@@ -2797,6 +2776,7 @@ function projectPicker(app, store, parent, init, draft) {
   const projRow = row(parent, t("\u9879\u76EE"));
   const projWrap = el("div", "tlt-pick");
   const proj = el("select", "tlt-input");
+  proj.setAttribute("data-qproject", "1");
   const fillProjects = (keep) => {
     proj.empty();
     [...store.projects(), "\u672A\u5F52\u5C5E"].forEach((p) => {
@@ -2819,6 +2799,7 @@ function projectPicker(app, store, parent, init, draft) {
   const msRow = row(parent, t("\u91CC\u7A0B\u7891"));
   const msWrap = el("div", "tlt-pick");
   const msSel = el("select", "tlt-input");
+  msSel.setAttribute("data-qmilestone", "1");
   const msNew = el("input", "tlt-input");
   msNew.placeholder = t("\u65B0\u91CC\u7A0B\u7891\u540D");
   msNew.addClass("tlt-hidden");
@@ -2983,6 +2964,54 @@ function ownerSelect(store, parent, draft) {
   wrap.append(line, pop);
   parent.appendChild(wrap);
 }
+var NewProjectModal = class extends TltModal {
+  constructor(app, store, onDone) {
+    super(app);
+    this.store = store;
+    this.onDone = onDone;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", t("\u65B0\u5EFA\u9879\u76EE")));
+    const nameRow = row(contentEl, t("\u540D\u79F0"));
+    const name = el("input", "tlt-input wide");
+    name.placeholder = t("\u9879\u76EE\u540D\uFF08\u4F1A\u5EFA\u6210\u4E00\u4E2A md\uFF0C## \u662F\u91CC\u7A0B\u7891\uFF09");
+    name.setAttribute("data-newname", "1");
+    nameRow.appendChild(name);
+    const descRow = row(contentEl, t("\u63CF\u8FF0"));
+    const desc = el("textarea", "tlt-input tlt-textarea");
+    desc.placeholder = t("\u8FD9\u4E2A\u9879\u76EE\u662F\u505A\u4EC0\u4E48\u7684\u3001\u4EA4\u4ED8\u4EC0\u4E48\u2026\uFF08\u53EF\u7559\u7A7A\uFF0C\u4E4B\u540E\u4E5F\u80FD\u6539\uFF09");
+    desc.setAttribute("data-newdesc", "1");
+    descRow.appendChild(desc);
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", t("\u53D6\u6D88"));
+    cancel.onclick = () => this.close();
+    const ok = el("button", "tlt-btn pri", t("\u521B\u5EFA"));
+    ok.setAttribute("data-newok", "1");
+    ok.onclick = () => {
+      void (async () => {
+        const n = name.value.trim();
+        const okMade = await this.store.createProject(n);
+        if (!okMade) {
+          new Notice(t("\u6CA1\u5EFA\u6210\uFF1A\u540D\u5B57\u7A7A\u4E86\uFF0C\u6216\u8005\u540C\u540D\u9879\u76EE\u5DF2\u5B58\u5728"));
+          return;
+        }
+        if (desc.value.trim()) await this.store.setProjectInfo(n, n, desc.value);
+        await this.store.load();
+        this.close();
+        void this.onDone();
+        new Notice(t("\u5DF2\u65B0\u5EFA\u9879\u76EE\uFF1A{n}", { n }));
+      })();
+    };
+    foot.append(cancel, ok);
+    contentEl.appendChild(foot);
+    window.setTimeout(() => name.focus(), 40);
+    name.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") ok.click();
+    });
+  }
+};
 var ProjectInfoModal = class extends TltModal {
   constructor(app, store, from, onDone) {
     super(app);
@@ -2994,6 +3023,11 @@ var ProjectInfoModal = class extends TltModal {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
     contentEl.appendChild(el("div", "tlt-m-title", t("\u9879\u76EE\u4FE1\u606F")));
+    const list = this.store.tasks.filter((t2) => t2.project === this.from);
+    const msCount = this.store.milestones(this.from).length;
+    const doneCount = list.filter((t2) => t2.done).length;
+    const pct = list.length ? Math.round(doneCount / list.length * 100) : 0;
+    contentEl.appendChild(el("div", "tlt-hint", t("{m} \u4E2A\u91CC\u7A0B\u7891 \xB7 {n} \u6761\u4EFB\u52A1 \xB7 \u5B8C\u6210 {p}%", { m: msCount, n: list.length, p: pct })));
     const nameRow = row(contentEl, t("\u540D\u79F0"));
     const name = el("input", "tlt-input wide");
     name.value = this.from;
@@ -3002,7 +3036,7 @@ var ProjectInfoModal = class extends TltModal {
     const descRow = row(contentEl, t("\u63CF\u8FF0"));
     const desc = el("textarea", "tlt-input tlt-textarea");
     desc.value = this.store.projectDesc(this.from);
-    desc.placeholder = t("\u8FD9\u4E2A\u9879\u76EE\u662F\u505A\u4EC0\u4E48\u7684\u3001\u4EA4\u4ED8\u4EC0\u4E48\u3001\u6709\u8C01\u5728\u53C2\u4E0E\u2026\uFF08\u4F1A\u5199\u8FDB\u9879\u76EE\u6587\u4EF6\u7684 desc\uFF09");
+    desc.placeholder = t("\u8FD9\u4E2A\u9879\u76EE\u662F\u505A\u4EC0\u4E48\u7684\u3001\u4EA4\u4ED8\u4EC0\u4E48\u3001\u6709\u8C01\u5728\u53C2\u4E0E\u2026\uFF08\u5B58\u8FDB\u9879\u76EE\u6587\u4EF6\u7684 frontmatter\uFF1Adesc\uFF09");
     desc.setAttribute("data-projdesc", "1");
     descRow.appendChild(desc);
     const hint = el("div", "tlt-hint", t("\u6539\u540D\u79F0\u4F1A\u8FDE\u6587\u4EF6\u4E00\u8D77\u6539\u540D\uFF0C\u65E5\u5FD7\u91CC\u8BB0\u7684\u300C[proj:: \u65E7\u540D]\u300D\u4E5F\u4F1A\u8DDF\u7740\u6539\u3002"));
@@ -3105,10 +3139,8 @@ var TaskModal = class extends TltModal {
     start.type = "date";
     start.value = this.draft.start || "";
     start.title = t("\u5F00\u59CB");
-    let dur;
     start.onchange = () => {
-      if (dur) dur.applyStart(start.value);
-      else this.draft.start = start.value || void 0;
+      this.draft.start = start.value || void 0;
     };
     const arrow = el("span", "tlt-darrow", "\u2192");
     const dIn = el("input", "tlt-input date");
@@ -3116,42 +3148,26 @@ var TaskModal = class extends TltModal {
     dIn.value = this.draft.due || "";
     dIn.title = t("\u622A\u6B62");
     dIn.onchange = () => {
-      if (dur) dur.applyDue(dIn.value);
-      else this.draft.due = dIn.value || void 0;
+      this.draft.due = dIn.value || void 0;
     };
     dline.append(start, arrow, dIn);
     dates.appendChild(dline);
     const estRow = row(contentEl, t("\u5DE5\u4F5C\u91CF"));
-    const estOptsD = [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + t(" \u5929") }));
-    const estSeg = seg(estRow, estOptsD, this.draft.est || 1, () => {
+    seg(estRow, [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + t(" \u5929") })), this.draft.est || 1, (v) => {
+      this.draft.est = v;
     });
-    const setSegD = segSetter(estSeg, estOptsD);
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number";
     estInput.step = "0.5";
     estInput.min = "0";
-    estInput.value = this.draft.est !== void 0 && !estOptsD.some((o) => o.v === this.draft.est) ? String(this.draft.est) : "";
+    estInput.value = this.draft.est !== void 0 && ![0.5, 1, 2, 3, 5].includes(this.draft.est) ? String(this.draft.est) : "";
     estInput.placeholder = t("\u81EA\u5B9A\u4E49");
-    estRow.appendChild(estInput);
-    dur = bindDuration({
-      draft: this.draft,
-      startEl: start,
-      dueEl: dIn,
-      setEstUI: (v) => {
-        setSegD(v);
-        estInput.value = estOptsD.some((o) => o.v === v) ? "" : String(v);
-      }
-    });
-    estSeg.querySelectorAll(".tlt-seg-b").forEach((b, i) => {
-      b.onclick = () => {
-        setSegD(estOptsD[i].v);
-        dur?.applyEst(estOptsD[i].v);
-      };
-    });
     estInput.onchange = () => {
       const v = Number(estInput.value);
-      dur?.applyEst(Number.isFinite(v) && v > 0 ? v : 1);
+      this.draft.est = Number.isFinite(v) && v > 0 ? v : void 0;
+      estRow.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
     };
+    estRow.appendChild(estInput);
     const pri = row(contentEl, t("\u4F18\u5148\u7EA7"));
     seg(pri, [{ v: 0, t: t("\u4F4E") }, { v: 1, t: t("\u666E\u901A") }, { v: 2, t: t("\u9AD8") }, { v: 3, t: t("\u7D27\u6025") }], this.draft.pri || 1, (v) => this.draft.pri = v);
     const whoRowD = row(contentEl, t("\u8D1F\u8D23\u4EBA"));
@@ -3341,8 +3357,10 @@ var QuickTaskModal = class extends TltModal {
     this.store = store;
     this.onChange = onChange;
     this.preset = preset || {};
-    const proj = store.projects()[0] || "\u672A\u5F52\u5C5E";
-    const ms = store.milestones(proj)[0]?.name || "";
+    const pinned = preset?.project && store.projects().includes(preset.project) ? preset.project : "";
+    const proj = pinned || store.projects()[0] || "\u672A\u5F52\u5C5E";
+    const msList = store.milestones(proj).map((m) => m.name);
+    const ms = preset?.milestone && msList.includes(preset.milestone) ? preset.milestone : msList[0] || "";
     this.draft = {
       start: todayISO(),
       due: preset?.due || todayISO(),
@@ -3365,6 +3383,7 @@ var QuickTaskModal = class extends TltModal {
     const projRow = row(contentEl, t("\u9879\u76EE"));
     const projWrap = el("div", "tlt-pick");
     const proj = el("select", "tlt-input");
+    proj.setAttribute("data-qproject", "1");
     const fillProjects = (keep) => {
       proj.empty();
       [...this.store.projects(), "\u672A\u5F52\u5C5E"].forEach((p) => {
@@ -3402,6 +3421,7 @@ var QuickTaskModal = class extends TltModal {
     const msRow = row(contentEl, t("\u91CC\u7A0B\u7891"));
     const msWrap = el("div", "tlt-pick");
     const msSel = el("select", "tlt-input");
+    msSel.setAttribute("data-qmilestone", "1");
     const msNew = el("input", "tlt-input");
     msNew.placeholder = t("\u65B0\u91CC\u7A0B\u7891\u540D");
     msNew.addClass("tlt-hidden");
@@ -3476,45 +3496,36 @@ var QuickTaskModal = class extends TltModal {
     start.type = "date";
     start.value = this.draft.start || todayISO();
     start.title = t("\u5F00\u59CB");
+    start.onchange = () => {
+      this.draft.start = start.value;
+    };
     const due = el("input", "tlt-input date");
     due.type = "date";
     due.value = this.draft.due || "";
     due.title = t("\u622A\u6B62");
+    due.onchange = () => {
+      this.draft.due = due.value;
+    };
     dline.append(start, el("span", "tlt-darrow", "\u2192"), due);
     dateRow.appendChild(dline);
     const estRow = row(contentEl, t("\u5DE5\u4F5C\u91CF"));
     const estOpts = [0.5, 1, 2, 3, 5].map((v) => ({ v, t: v + t(" \u5929") }));
-    const estSeg = seg(estRow, estOpts, this.draft.est || 1, () => {
+    seg(estRow, estOpts, this.draft.est || 1, (v) => {
+      this.draft.est = v;
+      estInput.value = "";
     });
-    const setSeg = segSetter(estSeg, estOpts);
     const estInput = el("input", "tlt-input small tlt-est-custom");
     estInput.type = "number";
     estInput.step = "0.5";
     estInput.min = "0";
     estInput.value = estOpts.some((o) => o.v === this.draft.est) ? "" : String(this.draft.est ?? "");
     estInput.placeholder = t("\u81EA\u5B9A\u4E49");
-    estRow.appendChild(estInput);
-    const dur = bindDuration({
-      draft: this.draft,
-      startEl: start,
-      dueEl: due,
-      setEstUI: (v) => {
-        setSeg(v);
-        estInput.value = estOpts.some((o) => o.v === v) ? "" : String(v);
-      }
-    });
-    estSeg.querySelectorAll(".tlt-seg-b").forEach((b, i) => {
-      b.onclick = () => {
-        setSeg(estOpts[i].v);
-        dur.applyEst(estOpts[i].v);
-      };
-    });
     estInput.onchange = () => {
       const v = Number(estInput.value);
-      dur.applyEst(Number.isFinite(v) && v > 0 ? v : 1);
+      this.draft.est = Number.isFinite(v) && v > 0 ? v : 1;
+      estRow.querySelectorAll(".tlt-seg-b").forEach((x) => x.classList.remove("on"));
     };
-    start.onchange = () => dur.applyStart(start.value);
-    due.onchange = () => dur.applyDue(due.value);
+    estRow.appendChild(estInput);
     const priRow = row(contentEl, t("\u4F18\u5148\u7EA7"));
     seg(priRow, [{ v: 0, t: t("\u4F4E") }, { v: 1, t: t("\u666E\u901A") }, { v: 2, t: t("\u9AD8") }, { v: 3, t: t("\u7D27\u6025") }], this.draft.pri, (v) => this.draft.pri = v);
     const whoRow = row(contentEl, t("\u8D1F\u8D23\u4EBA"));
@@ -3992,16 +4003,23 @@ function popMenu(anchor, items, align = "left", at) {
     m.appendChild(b);
   });
   document.body.appendChild(m);
+  const PAD = 8;
   const r = anchor.getBoundingClientRect();
   const w = m.offsetWidth || 150;
+  const h = m.offsetHeight || 120;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let left, top;
   if (at) {
-    m.style.left = `${Math.round(Math.min(at.x, window.innerWidth - w - 8))}px`;
-    m.style.top = `${Math.round(Math.min(at.y, window.innerHeight - m.offsetHeight - 8))}px`;
+    left = at.x + w + PAD <= vw ? at.x : vw - w - PAD;
+    top = at.y;
   } else {
-    const left = align === "right" ? Math.min(r.right - w, window.innerWidth - w - 8) : Math.max(8, r.left);
-    m.style.left = `${Math.round(left)}px`;
-    m.style.top = `${Math.round(Math.min(r.top - m.offsetHeight - 6, window.innerHeight - m.offsetHeight - 8))}px`;
+    left = align === "right" ? r.right - w : r.left;
+    const above = r.top - h - 6;
+    const below = r.bottom + 6;
+    top = above >= PAD ? above : below + h <= vh - PAD ? below : above;
   }
+  m.style.left = `${Math.round(Math.max(PAD, Math.min(left, vw - w - PAD)))}px`;
+  m.style.top = `${Math.round(Math.max(PAD, Math.min(top, vh - h - PAD)))}px`;
   const off = (e) => {
     if (!m.contains(e.target)) {
       m.remove();
@@ -4475,7 +4493,7 @@ async function remoteHasFeed(hub, id) {
 var KIND_COLOR = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
 var weekday = (i) => [t("\u65E5"), t("\u4E00"), t("\u4E8C"), t("\u4E09"), t("\u56DB"), t("\u4E94"), t("\u516D")][i] || "";
 var escapeXml = (s) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[c]);
-var MessagesView = class extends ItemView {
+var MessagesView = class _MessagesView extends ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     /** 左栏多选：选中哪些源（空 = 全部源） */
@@ -4491,6 +4509,17 @@ var MessagesView = class extends ItemView {
     this.heatDay = "";
     this.q = "";
     this.plugin = plugin;
+  }
+  /** 只在自己这个视图是活动叶子时生效；弹窗开着、或焦点在输入框里就交给它们自己处理 */
+  guardEscape(ev) {
+    if (ev.key !== "Escape") return;
+    if (this.app.workspace.getActiveViewOfType(_MessagesView) !== this) return;
+    if (document.querySelector(".modal-container")) return;
+    const ae = document.activeElement;
+    if (ae && this.contentEl.contains(ae) && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+    this.contentEl.querySelectorAll(".tlt-pickpop:not(.tlt-hidden)").forEach((pop) => pop.addClass("tlt-hidden"));
+    ev.preventDefault();
+    ev.stopPropagation();
   }
   get store() {
     return this.plugin.store;
@@ -4512,6 +4541,7 @@ var MessagesView = class extends ItemView {
     return "rss";
   }
   async onOpen() {
+    this.registerDomEvent(window, "keydown", (ev) => this.guardEscape(ev), true);
     await this.ensureData();
     await this.render();
   }
@@ -5512,16 +5542,7 @@ var PublishModal = class extends TltModal {
 
 // src/actions.ts
 function newProjectFlow(app, store, refresh) {
-  new PromptModal(app, t("\u65B0\u5EFA\u9879\u76EE"), t("\u9879\u76EE\u540D\uFF08\u4F1A\u5EFA\u6210\u4E00\u4E2A md\uFF0C## \u662F\u91CC\u7A0B\u7891\uFF09"), async (name) => {
-    const ok = await store.createProject(name);
-    if (!ok) {
-      new Notice(t("\u6CA1\u5EFA\u6210\uFF1A\u540D\u5B57\u7A7A\u4E86\uFF0C\u6216\u8005\u540C\u540D\u9879\u76EE\u5DF2\u5B58\u5728"));
-      return;
-    }
-    await store.load();
-    await refresh();
-    new Notice(t("\u5DF2\u65B0\u5EFA\u9879\u76EE\uFF1A{n}", { n: name }));
-  }).open();
+  new NewProjectModal(app, store, refresh).open();
 }
 
 // src/views/workbench.ts
@@ -5536,7 +5557,7 @@ var weekday2 = (i) => [t("\u65E5"), t("\u4E00"), t("\u4E8C"), t("\u4E09"), t("\u
 var escapeXml2 = (s) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[c]);
 var labelWidth = (s) => Array.from(s).reduce((w, ch) => w + (/[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? 10 : 5.8), 0);
 var PROJ_COLORS = ["#5B6CFF", "#F0C24B", "#27C1A3", "#B57BFF", "#F2994A", "#FF7A9C", "#5FD6B4", "#7C8BA1"];
-var WorkbenchView = class extends ItemView {
+var WorkbenchView = class _WorkbenchView extends ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.tab = "today";
@@ -5550,6 +5571,8 @@ var WorkbenchView = class extends ItemView {
     /** 日历时间轴滚到哪了（按日期记）：同一天重渲要保住，换天才自动定位 */
     this.dayScroll = null;
     this.renderedDay = "";
+    /** 最后点过的里程碑：新建任务时默认落在它下面 */
+    this.msSel = null;
     this.expandedSteps = /* @__PURE__ */ new Set();
     this.taskTag = null;
     this.starZoom = 1;
@@ -5584,7 +5607,19 @@ var WorkbenchView = class extends ItemView {
   getIcon() {
     return "activity";
   }
+  /** 只在自己这个视图是活动叶子时生效；弹窗开着、或焦点在输入框里就交给它们自己处理 */
+  guardEscape(ev) {
+    if (ev.key !== "Escape") return;
+    if (this.app.workspace.getActiveViewOfType(_WorkbenchView) !== this) return;
+    if (document.querySelector(".modal-container")) return;
+    const ae = document.activeElement;
+    if (ae && this.contentEl.contains(ae) && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+    this.contentEl.querySelectorAll(".tlt-pickpop:not(.tlt-hidden)").forEach((pop) => pop.addClass("tlt-hidden"));
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
   async onOpen() {
+    this.registerDomEvent(window, "keydown", (ev) => this.guardEscape(ev), true);
     this.contentEl.addEventListener("click", (ev) => {
       void this.onClick(ev);
     });
@@ -5745,12 +5780,9 @@ var WorkbenchView = class extends ItemView {
     top.appendChild(fold);
     s.appendChild(top);
     const scroll = el("div", "tlt-side-scroll");
-    const shead = el("div", "tlt-shead");
-    shead.appendChild(el("span", "", t("\u9879\u76EE \xB7 \u8FDB\u5EA6")));
-    const padd = el("button", "tlt-padd", "\uFF0B");
-    padd.title = t("\u65B0\u5EFA\u9879\u76EE");
-    padd.dataset.newproj = "1";
-    padd.onclick = () => newProjectFlow(this.app, this.store, () => this.render());
+    const shead = el("div", "tlt-shead tlt-shead-proj");
+    shead.appendChild(el("span", "tlt-shead-t", t("\u9879\u76EE \xB7 \u8FDB\u5EA6")));
+    const acts = el("div", "tlt-shead-acts");
     const psort = el("button", "tlt-padd", "\u21C5");
     psort.title = t("\u9879\u76EE\u6392\u5E8F\uFF1A\u6309\u540D\u79F0 / \u521B\u5EFA\u65F6\u95F4 / \u622A\u6B62\u65F6\u95F4");
     psort.dataset.sortproj = "1";
@@ -5758,7 +5790,12 @@ var WorkbenchView = class extends ItemView {
       ev.stopPropagation();
       this.sidebarSortMenu(psort);
     };
-    shead.append(psort, padd);
+    const padd = el("button", "tlt-padd", "\uFF0B");
+    padd.title = t("\u65B0\u5EFA\u9879\u76EE");
+    padd.dataset.newproj = "1";
+    padd.onclick = () => newProjectFlow(this.app, this.store, () => this.render());
+    acts.append(psort, padd);
+    shead.appendChild(acts);
     scroll.appendChild(shead);
     const all = this.store.tasks;
     const projTasks = (name) => all.filter((t2) => t2.project === name);
@@ -5766,7 +5803,7 @@ var WorkbenchView = class extends ItemView {
       this.store.projects(),
       (p2) => this.sortKey() === "name" ? p2 : this.edgeDate(projTasks(p2), "min"),
       (p2) => p2
-    );
+    ).sort((a, b) => Number(this.store.isPinned(b)) - Number(this.store.isPinned(a)));
     if (!projects.length) {
       const empty = el("div", "tlt-pempty");
       empty.appendChild(el("span", "", t("\u8FD8\u6CA1\u6709\u9879\u76EE")));
@@ -5779,7 +5816,9 @@ var WorkbenchView = class extends ItemView {
     projects.forEach((p) => {
       const list = all.filter((t2) => t2.project === p);
       const pct = list.length ? Math.round(list.filter((t2) => t2.done).length / list.length * 100) : 0;
-      const card = el("div", "tlt-proj" + (this.proj === p ? " on" : ""));
+      const pinned = this.store.isPinned(p);
+      const card = el("div", "tlt-proj" + (this.proj === p ? " on" : "") + (pinned ? " pin" : ""));
+      if (pinned) card.title = t("\u5DF2\u7F6E\u9876");
       card.dataset.proj = p;
       const row2 = el("div", "tlt-prow");
       const sw = el("span", "tlt-sw");
@@ -5787,7 +5826,10 @@ var WorkbenchView = class extends ItemView {
       const nameEl = el("span", "tlt-pname", p);
       const pdesc = this.store.projectDesc(p);
       if (pdesc) nameEl.title = pdesc;
-      row2.append(sw, nameEl, el("span", "tlt-ppct", pct + "%"));
+      const edit = el("button", "tlt-pedit", "\u270E");
+      edit.title = t("\u9879\u76EE\u4FE1\u606F\uFF08\u540D\u79F0 / \u63CF\u8FF0\uFF09");
+      edit.dataset.projedit = p;
+      row2.append(sw, nameEl, edit, el("span", "tlt-ppct", pct + "%"));
       const more = el("button", "tlt-pmore", "\u22EF");
       more.title = t("\u65B0\u5EFA\u91CC\u7A0B\u7891 / \u5F52\u6863\u9879\u76EE");
       more.dataset.projmenu = p;
@@ -5806,6 +5848,7 @@ var WorkbenchView = class extends ItemView {
       bar.appendChild(fill);
       const meta = el("div", "tlt-pmeta", t("{a} \u9879\u672A\u5B8C\u6210 \xB7 {b} \u4E2A\u91CC\u7A0B\u7891\u4EFB\u52A1", { a: list.filter((t2) => !t2.done).length, b: list.filter((t2) => t2.milestone).length }));
       card.append(row2, bar, meta);
+      if (pdesc) card.appendChild(el("div", "tlt-pdesc", pdesc));
       scroll.appendChild(card);
     });
     const archived = this.store.archivedProjects();
@@ -6208,7 +6251,7 @@ var WorkbenchView = class extends ItemView {
     const r0 = 30 * this.starZoom, R = 76 * this.starZoom;
     const FROM = -3, TO = 21;
     const tasks = this.store.tasks.filter((t2) => t2.due);
-    const projects = Array.from(new Set(tasks.map((t2) => t2.project)));
+    const projects = Array.from(new Set(tasks.map((t2) => t2.project))).sort((a, b) => Number(this.store.isPinned(b)) - Number(this.store.isPinned(a)));
     const span = 360 / Math.max(1, projects.length);
     const at = (d) => {
       const diff = Math.round((D(d).getTime() - D(todayISO()).getTime()) / 864e5);
@@ -6311,7 +6354,7 @@ var WorkbenchView = class extends ItemView {
     const p = el("div", "tlt-pane");
     const m = this.tasksInDim();
     const head = el("div", "tlt-pane-h");
-    const label = { w: t("\u672C\u5468"), m: t("\u672C\u6708"), q: t("\u672C\u5B63\u5EA6"), all: t("\u5168\u90E8") }[this.taskDim];
+    const label = { d: t("\u4ECA\u5929"), w: t("\u672C\u5468"), m: t("\u672C\u6708"), q: t("\u672C\u5B63\u5EA6"), all: t("\u5168\u90E8") }[this.taskDim];
     head.append(el("span", "", t("{l} \xB7 {a} \u903E\u671F / {b} \u8981\u505A / {c} \u5DF2\u5B8C\u6210 / {d} \u5F85\u6392\u671F", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.pending.length })));
     head.appendChild(el("span", "tlt-spacer"));
     const tags = Array.from(/* @__PURE__ */ new Set(["\u5DE5\u4F5C", "\u4E2A\u4EBA", ...this.store.tasks.flatMap((t2) => t2.tags || [])]));
@@ -6323,7 +6366,7 @@ var WorkbenchView = class extends ItemView {
     });
     head.appendChild(tf);
     const seg2 = el("div", "tlt-seg tlt-dim-seg");
-    [["w", t("\u672C\u5468")], ["m", t("\u672C\u6708")], ["q", t("\u672C\u5B63\u5EA6")], ["all", t("\u5168\u90E8")]].forEach(([k, t2]) => {
+    [["d", t("\u4ECA\u5929")], ["w", t("\u672C\u5468")], ["m", t("\u672C\u6708")], ["q", t("\u672C\u5B63\u5EA6")], ["all", t("\u5168\u90E8")]].forEach(([k, t2]) => {
       const b2 = el("button", "tlt-seg-b" + (this.taskDim === k ? " on" : ""), t2);
       b2.dataset.dim = k;
       seg2.appendChild(b2);
@@ -6356,12 +6399,14 @@ var WorkbenchView = class extends ItemView {
   tasksInDim() {
     const all = this.store.tasks.filter((t2) => t2.kind === "task").filter((t2) => !this.proj || t2.project === this.proj).filter((t2) => !this.q || t2.title.includes(this.q) || (t2.project || "").includes(this.q) || (t2.milestone || "").includes(this.q)).filter((t2) => !this.taskTag || (this.taskTag === "\u5DE5\u4F5C" || this.taskTag === "\u4E2A\u4EBA" ? t2.scope === this.taskTag : (t2.tags || []).includes(this.taskTag)));
     const dim = this.taskDim;
-    const inDim = (d) => dim === "all" ? true : !!d && inPeriod(d, dim);
+    const inDim = (d) => dim === "all" ? true : dim === "d" ? d === todayISO() : !!d && inPeriod(d, dim);
     const today = todayISO();
+    const lateIn = (d) => dim === "d" ? d < today : inDim(d);
+    const doneIn = (t2) => dim === "d" ? t2.doneAt === today || t2.due === today : inDim(t2.due);
     return {
-      late: all.filter((t2) => !t2.done && t2.due && t2.due < today && inDim(t2.due)),
+      late: all.filter((t2) => !t2.done && t2.due && t2.due < today && lateIn(t2.due)),
       todo: all.filter((t2) => !t2.done && t2.due && t2.due >= today && inDim(t2.due)),
-      done: all.filter((t2) => t2.done && inDim(t2.due)),
+      done: all.filter((t2) => t2.done && doneIn(t2)),
       pending: all.filter((t2) => !t2.done && !t2.due)
     };
   }
@@ -6429,7 +6474,13 @@ var WorkbenchView = class extends ItemView {
   projectMenu(anchor, p, at) {
     const file = this.app.vault.getAbstractFileByPath(`${this.cfg.tasksFolder}/${p}.md`);
     popMenu(anchor, [
-      { label: t("\u9879\u76EE\u4FE1\u606F\uFF08\u540D\u79F0 / \u63CF\u8FF0\uFF09"), onClick: () => new ProjectInfoModal(this.app, this.store, p, () => this.render()).open() },
+      { label: this.store.isPinned(p) ? t("\u53D6\u6D88\u7F6E\u9876") : t("\u7F6E\u9876\u9879\u76EE"), onClick: () => {
+        void (async () => {
+          await this.store.setProjectPin(p, !this.store.isPinned(p));
+          await this.store.load();
+          await this.render();
+        })();
+      } },
       { label: t("\u65B0\u5EFA\u91CC\u7A0B\u7891"), onClick: () => this.promptMilestone(p) },
       { label: t("\u5F52\u6863\u9879\u76EE"), onClick: () => {
         if (file instanceof TFile) confirmArchiveProject(this.app, this.store, file, () => this.render());
@@ -6467,7 +6518,6 @@ var WorkbenchView = class extends ItemView {
   /** 里程碑菜单：重命名 / 打开详情 / 展开收起 */
   milestoneMenu(anchor, m, at) {
     popMenu(anchor, [
-      { label: t("\u9879\u76EE\u4FE1\u606F\uFF08\u540D\u79F0 / \u63CF\u8FF0\uFF09"), onClick: () => new ProjectInfoModal(this.app, this.store, m.project, () => this.render()).open() },
       { label: t("\u91CD\u547D\u540D\u91CC\u7A0B\u7891"), onClick: () => this.promptRenameMilestone(m) },
       { label: t("\u6253\u5F00\u8BE6\u60C5"), onClick: () => new MilestonePeekModal(this.app, this.store, m, () => {
         this.tab = "ms";
@@ -6493,6 +6543,12 @@ var WorkbenchView = class extends ItemView {
       await this.render();
       new Notice(t("\u5DF2\u91CD\u547D\u540D\u4E3A\uFF1A{n}", { n: name }), 3e3);
     }, m.name).open();
+  }
+  /** 新建任务：已经点了项目 / 里程碑就把它们带上（不用再手选一遍） */
+  openNewTask() {
+    const proj = this.proj || this.msSel?.project || void 0;
+    const milestone = proj && this.msSel && this.msSel.project === proj ? this.msSel.name : void 0;
+    new QuickTaskModal(this.app, this.store, () => this.refresh(), { project: proj, milestone }).open();
   }
   promptMilestone(p) {
     new PromptModal(this.app, t("\u65B0\u5EFA\u91CC\u7A0B\u7891"), t("\u91CC\u7A0B\u7891\u540D\uFF08\u9879\u76EE\u6587\u4EF6\u91CC\u7684 ## \u5C0F\u8282\uFF09"), async (name) => {
@@ -6548,6 +6604,7 @@ var WorkbenchView = class extends ItemView {
     (t2.tags || []).forEach((tg) => meta.appendChild(el("span", "tlt-tag", tg)));
     if (t2.owners.length) meta.appendChild(el("span", "", t2.owners.join(t("\u3001"))));
     if (t2.files.length) meta.appendChild(el("span", "", `\u25A4 ${t2.files.length}`));
+    if (t2.done && t2.doneAt) meta.appendChild(el("span", "tlt-doneat", t("\u5B8C\u6210 {d}", { d: t2.doneAt.slice(5) })));
     if (t2.steps.length) meta.appendChild(this.stepRing(t2));
     body.appendChild(meta);
     r.appendChild(body);
@@ -6908,6 +6965,8 @@ var WorkbenchView = class extends ItemView {
     const msCard = pick("[data-ms]");
     if (msCard && !ev.target.closest("[data-task],[data-ck]")) {
       const key = msCard.dataset.ms ?? "";
+      const hit = this.store.milestones().find((m) => m.name === key);
+      this.msSel = hit ? { project: hit.project, name: hit.name } : null;
       if (this.expanded.has(key)) this.expanded.delete(key);
       else this.expanded.add(key);
       await this.render();
@@ -6946,6 +7005,12 @@ var WorkbenchView = class extends ItemView {
       await this.render();
       return;
     }
+    const pedit = pick("[data-projedit]");
+    if (pedit) {
+      const name = pedit.dataset.projedit ?? "";
+      new ProjectInfoModal(this.app, this.store, name, () => this.render()).open();
+      return;
+    }
     const proj = pick("[data-proj]");
     if (proj) {
       const name = proj.dataset.proj ?? "";
@@ -6959,7 +7024,7 @@ var WorkbenchView = class extends ItemView {
       return;
     }
     if (pick("[data-newtask]")) {
-      new QuickTaskModal(this.app, this.store, () => this.refresh()).open();
+      this.openNewTask();
       return;
     }
     if (pick("[data-ideanewmodal]")) {

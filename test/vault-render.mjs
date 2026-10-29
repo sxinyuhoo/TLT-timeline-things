@@ -122,6 +122,16 @@ for (const [name, Cls] of [["工作台", lib.WorkbenchView], ["消息中心", li
   out.push(`  前 160 字: ${text.slice(0, 160)}`);
   const empties = [...el.querySelectorAll(".tlt-empty")].map((e) => e.textContent);
   out.push(`  空态: ${empties.length ? empties.join(" | ") : "（无）"}`);
+  // 逐页签看一眼：每个页签真的渲染了多少内容
+  if (name === "工作台") {
+    for (const [tab, label] of [["ms", "里程碑"], ["month", "任务"], ["today", "日历"]]) {
+      view.tab = tab;
+      await view.render();
+      const pane = el.querySelector(".tlt-pane");
+      const txt = (pane?.textContent || "").replace(/\s+/g, " ").trim();
+      out.push(`  [${label}] 元素 ${pane ? pane.querySelectorAll("*").length : 0} / 前 120 字: ${txt.slice(0, 120)}`);
+    }
+  }
 }
 console.log(out.join("\n"));
 console.log(`\n数据：任务 ${store.tasks.length} / 人员 ${store.staff.length} / 源 ${store.feeds.length} / 消息 ${store.feeds.flatMap((f) => f.items).length} / 记录 ${store.logs.length} / 随手记 ${store.ideas.length}`);

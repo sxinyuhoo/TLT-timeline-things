@@ -4,6 +4,7 @@
  */
 import { WorkbenchView } from "../src/views/workbench";
 import { MessagesView } from "../src/views/messages";
+import { OverviewPanelView } from "../src/views/panel";
 import { Store } from "../src/store";
 import { TFile } from "obsidian";
 
@@ -130,6 +131,10 @@ const plugin = {
   toggleTheme: () => {},
   activateMessages: async () => {},
   refreshAll: () => {},
+  activeProject: null,
+  setActiveProject(p: string | null) { (plugin as any).activeProject = p; },
+  togglePanel: async () => {},
+  activateWorkbench: async () => {},
   saveSettings: async () => {},
   hubState: () => ({ publish: "http://127.0.0.1:8787", sync: "http://127.0.0.1:8788", lastSync: "", lastResult: "", lastError: "", syncMin: 0, pushMin: 0 }),
   setHubState: () => {},
@@ -138,9 +143,9 @@ const plugin = {
 const host = document.getElementById("host")!;
 let cur: any = null;
 
-async function mount(kind: "workbench" | "messages") {
+async function mount(kind: "workbench" | "messages" | "panel") {
   host.innerHTML = "";
-  const View: any = kind === "messages" ? MessagesView : WorkbenchView;
+  const View: any = kind === "messages" ? MessagesView : kind === "panel" ? OverviewPanelView : WorkbenchView;
   const v = new View({ app, workspace: {} }, plugin as any);
   v.containerEl = document.createElement("div");
   v.contentEl = document.createElement("div");

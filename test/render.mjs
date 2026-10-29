@@ -66,6 +66,7 @@ await esbuild.build({
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
       export { TaskModal, QuickTaskModal, ProjectInfoModal } from "./src/views/modals";
+      export { OverviewPanelView, VIEW_TYPE_PANEL } from "./src/views/panel";
       export { MessagesView as MsgViewForPublish } from "./src/views/messages";
       export { setLanguage, t as tr } from "./src/i18n";
     `,
@@ -80,7 +81,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 
 /* ---------- 3) 假 vault ---------- */
@@ -256,6 +257,10 @@ const plugin = {
   seedDemo: async () => {},
   pingHub: async () => true,
   activateMessages: async () => {},
+  activeProject: null,
+  setActiveProject(p) { this.activeProject = p; },
+  togglePanel: () => {},
+  activateWorkbench: async () => {},
   refreshAll: () => {},
   vaultName: () => "测试库", hubState: () => ({ publish: "http://127.0.0.1:8787", sync: "http://127.0.0.1:8788", lastSync: "", lastResult: "", lastError: "" }),
   setHubState: () => {},
@@ -1775,6 +1780,81 @@ await t("完成的任务在行上带完成日期", async () => {
   const tag = doneRow.querySelector(".tlt-doneat");
   assert.ok(tag, `已完成的行应写明完成日期，实际：${doneRow.textContent.slice(0, 60)}`);
   assert.ok(/完成 \d{2}-\d{2}/.test(tag.textContent), `文案应是「完成 MM-DD」：${tag.textContent}`);
+});
+
+await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {
+  document.body.empty();
+  plugin.activeProject = null;
+  const v = new OverviewPanelView(leaf, plugin);
+  v.containerEl = document.createElement("div");
+  v.contentEl = document.createElement("div");
+  v.containerEl.appendChild(v.contentEl);
+  document.body.appendChild(v.containerEl);
+  await v.onOpen();
+  const num = (label) => {
+    const card = [...v.contentEl.querySelectorAll(".tlt-pn-card")].find((c) => c.textContent.includes(label));
+    return card ? Number(card.querySelector(".tlt-pn-val").textContent) : NaN;
+  };
+  // 用 store 自己算一遍期望值（同一套规则）
+  const today = new Date();
+  const p2 = (n) => String(n).padStart(2, "0");
+  const iso = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDate())}`;
+  const all = store.tasks.filter((t) => t.kind === "task");
+  const open = all.filter((t) => !t.done);
+  assert.equal(num("逾期"), open.filter((t) => t.due && t.due < iso).length, "逾期数不对");
+  assert.equal(num("未指派"), open.filter((t) => !t.owners.length).length, "未指派数不对");
+  assert.equal(num("未排期"), open.filter((t) => !t.due).length, "未排期数不对");
+  assert.ok(v.contentEl.querySelector(".tlt-pn-staff"), "应有人员饱和度一块");
+  assert.ok(v.contentEl.querySelector(".tlt-pn-done"), "应有完成度一块");
+
+  // 切到某个项目：数字跟着变小
+  plugin.activeProject = "示例项目";
+  await v.render();
+  const scoped = num("未排期");
+  const scopedOpen = store.tasks.filter((t) => t.kind === "task" && t.project === "示例项目" && !t.done);
+  assert.equal(scoped, scopedOpen.filter((t) => !t.due).length, "按项目过滤后数字不对");
+  assert.ok(v.contentEl.querySelector(".tlt-pn-scope").textContent.includes("示例项目"), "标题应显示当前项目");
+  plugin.activeProject = null;
+});
+
+await t("换了名字的项目不会把视图卡成空的", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  await view.render();
+  view.proj = "早就改名了的项目";      // 模拟：筛选里留着一个已不存在的项目名
+  await view.render();
+  assert.equal(view.proj, null, "不存在的项目应被清掉，而不是让视图空着");
+  assert.ok(document.querySelectorAll(".tlt-task").length > 0, `清掉之后应能看到任务，实际 ${document.querySelectorAll(".tlt-task").length}`);
+});
+
+await t("项目改名后：筛选要么跟着换名、要么干净地退回全部", async () => {
+  document.body.empty();
+  // ① 真的把项目改名（文件 + 标题都改）
+  await store.setProjectInfo("示例工具", "示例工具改名了", "");
+  await store.load();
+  assert.ok(store.projects().includes("示例工具改名了"), "改名应生效");
+
+  // ② 筛选里还留着旧名字：render 会把它清掉，视图不会卡成空的
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  view.proj = "示例工具";                 // 旧名（已经不存在的项目）
+  await view.render();
+  assert.equal(view.proj, null, "不存在的项目应被清掉");
+  assert.ok(document.querySelectorAll(".tlt-task").length > 0, "退回全部后应能看到任务");
+
+  // ③ 改名发生在"正筛着这个项目"的时候：onDone 里换成新名字，不会被清掉
+  view.proj = "示例工具改名了";
+  plugin.activeProject = "示例工具改名了";
+  await view.render();
+  assert.equal(view.proj, "示例工具改名了", "新名字应留得住");
+
+  // 收尾：把项目名改回夹具的名字，别污染后面的用例
+  await store.setProjectInfo("示例工具改名了", "示例工具", "");
+  await store.load();
 });
 
 await t("独立消息中心渲染", async () => {

@@ -123,6 +123,13 @@ export class WorkbenchView extends ItemView {
     const focusKey = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey
       ? { key: ae.dataset.focuskey, start: ae.selectionStart ?? 0, end: ae.selectionEnd ?? 0 }
       : null;
+    // 项目被改名/删掉后，筛选里留着的旧名字会让整屏空着——先清掉（用户报告过这个）
+    const aliveProjects = this.store.projects();
+    if (this.proj && !aliveProjects.includes(this.proj)) this.proj = null;
+    if (this.msSel && !aliveProjects.includes(this.msSel.project)) this.msSel = null;
+    const aliveMs = new Set(this.store.milestones().map((m) => m.name));
+    [...this.expanded].forEach((k) => { if (!aliveMs.has(k)) this.expanded.delete(k); });
+
     root.empty();
     root.addClass("tlt-root");
 
@@ -383,6 +390,11 @@ export class WorkbenchView extends ItemView {
       who.title = T("只看这一个项目，点击回到全部");
     }
     crumbs.append(who, el("span", "tlt-sep", "/"), el("span", "", this.tabName()));
+    const panelBtn = el("button", "tlt-pn-open", "▤");
+    panelBtn.title = T("TLT 概览面板（右侧栏）");
+    panelBtn.dataset.panelopen = "1";
+    panelBtn.onclick = () => { void this.plugin.togglePanel(); };
+    crumbs.appendChild(panelBtn);
     if (this.proj) crumbs.appendChild(el("span", "tlt-hint2", T("已按项目筛选")));
     top.appendChild(crumbs);
     top.appendChild(el("div", "tlt-spacer"));
@@ -817,6 +829,14 @@ export class WorkbenchView extends ItemView {
 
   /* ---------- 本月 ---------- */
 
+  private qChip(host: HTMLElement) {
+    if (!this.q) return;
+    const chip = el("button", "tlt-qchip", T("搜索：{q} ✕", { q: this.q }));
+    chip.dataset.qclear = "1";
+    chip.title = T("清掉搜索词");
+    host.appendChild(chip);
+  }
+
   private paneMonth(): HTMLElement {
     const p = el("div", "tlt-pane");
     const m = this.tasksInDim();
@@ -841,6 +861,7 @@ export class WorkbenchView extends ItemView {
     head.appendChild(seg);
     head.appendChild(this.sortControl());
     p.appendChild(head);
+    this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
     if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
     const groups: [string, Task[], string][] = [
@@ -1011,6 +1032,13 @@ export class WorkbenchView extends ItemView {
       await this.render();
       new Notice(T("已重命名为：{n}", { n: name }), 3000);
     }, m.name).open();
+  }
+
+  /** 面板跳转入口：切页签 / 维度（可选） */
+  async focusOn(opts: { tab?: string; dim?: string }) {
+    if (opts.tab) this.tab = opts.tab;
+    if (opts.dim) this.taskDim = opts.dim as TaskDim;
+    await this.render();
   }
 
   /** 新建任务：已经点了项目 / 里程碑就把它们带上（不用再手选一遍） */
@@ -1225,6 +1253,7 @@ export class WorkbenchView extends ItemView {
     head.appendChild(el("span", "tlt-spacer"));
     head.appendChild(this.sortControl());
     p.appendChild(head);
+    this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
     if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
     if (!ms.length) p.appendChild(el("div", "tlt-empty", T("任务文件里用「## 里程碑名」分节，这里就会出现里程碑。")));
@@ -1457,14 +1486,25 @@ export class WorkbenchView extends ItemView {
     const pedit = pick("[data-projedit]");
     if (pedit) {
       const name = pedit.dataset.projedit ?? "";
-      new ProjectInfoModal(this.app, this.store, name, () => this.render()).open();
+      new ProjectInfoModal(this.app, this.store, name, (info) => {
+        if (info?.renamed && this.proj === info.from) { this.proj = info.to; this.plugin.setActiveProject(this.proj); }
+        void this.render();
+      }).open();
       return;
     }
     const proj = pick("[data-proj]");
-    if (proj) { const name = proj.dataset.proj ?? ""; this.proj = this.proj === name ? null : name; await this.render(); return; }
-    if (pick("[data-projclear]")) { this.proj = null; await this.render(); return; }
+    if (proj) {
+      const name = proj.dataset.proj ?? "";
+      this.proj = this.proj === name ? null : name;
+      this.plugin.setActiveProject(this.proj);
+      await this.render();
+      return;
+    }
+    if (pick("[data-projclear]")) { this.proj = null; this.plugin.setActiveProject(null); await this.render(); return; }
 
 
+    if (pick("[data-qclear]")) { this.q = ""; await this.render(); return; }
+    if (pick("[data-panelopen]")) { void this.plugin.togglePanel(); return; }
     if (pick("[data-newtask]")) { this.openNewTask(); return; }
 
     if (pick("[data-ideanewmodal]")) { new IdeaModal(this.app, this.store, undefined, () => this.refresh()).open(); return; }

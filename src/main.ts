@@ -5,6 +5,7 @@ import {
 import { Store, TLTSettings, DEFAULT_SETTINGS, pathsFromRoot, PATH_KEYS } from "./store";
 import { WorkbenchView, VIEW_TYPE_WORKBENCH } from "./views/workbench";
 import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
+import { OverviewPanelView, VIEW_TYPE_PANEL } from "./views/panel";
 import { MoveDataModal } from "./views/modals";
 import {
   taskRegisterFlow, newProjectFlow, newMilestoneFlow, deleteTaskFlow,
@@ -206,11 +207,13 @@ export class TLTPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE_WORKBENCH, (leaf: WorkspaceLeaf) => new WorkbenchView(leaf, this));
     this.registerView(VIEW_TYPE_MESSAGES, (leaf: WorkspaceLeaf) => new MessagesView(leaf, this));
+    this.registerView(VIEW_TYPE_PANEL, (leaf: WorkspaceLeaf) => new OverviewPanelView(leaf, this));
 
     this.addRibbonIcon("activity", T("时间线工作台"), () => { void this.activateWorkbench(); });
 
     this.cmd("open-workbench", "打开工作台", () => { void this.activateWorkbench(); });
     this.cmd("open-messages", "打开消息中心（独立页）", () => { void this.activateMessages(); });
+    this.cmd("open-panel", "打开/关闭 TLT 概览面板（右侧栏）", () => { void this.togglePanel(); });
     const refresh = () => this.refreshAll();
     // —— 快捷命令（原生，不依赖 QuickAdd）——
     this.cmd("quick-menu", "快捷命令…", () => quickMenuFlow(this.app, this.store, refresh, { workbench: () => this.activateWorkbench(), messages: () => this.activateMessages() }));
@@ -393,6 +396,28 @@ export class TLTPlugin extends Plugin {
     await workspace.revealLeaf(leaf);
   }
 
+  /** 工作台当前选中的项目：概览面板跟着它过滤 */
+  activeProject: string | null = null;
+  setActiveProject(p: string | null) {
+    if (this.activeProject === p) return;
+    this.activeProject = p;
+    for (const l of this.app.workspace.getLeavesOfType(VIEW_TYPE_PANEL)) {
+      const v = l.view as unknown as { render?: () => Promise<void> | void };
+      try { void v.render?.(); } catch (e) { console.error("TLT: 面板刷新失败", e); }
+    }
+  }
+
+  /** 右侧栏的 TLT 概览面板：开着就关，关着就开 */
+  async togglePanel() {
+    const { workspace } = this.app;
+    const open = workspace.getLeavesOfType(VIEW_TYPE_PANEL);
+    if (open.length) { for (const l of open) l.detach(); return; }
+    const leaf = workspace.getRightLeaf(false);
+    if (!leaf) { new Notice(T("右侧栏打不开，先在右侧留一个面板位置")); return; }
+    await leaf.setViewState({ type: VIEW_TYPE_PANEL, active: true });
+    await workspace.revealLeaf(leaf);
+  }
+
   async activateMessages() {
     const { workspace } = this.app;
     let leaf = workspace.getLeavesOfType(VIEW_TYPE_MESSAGES)[0];
@@ -416,6 +441,7 @@ export class TLTPlugin extends Plugin {
     };
     draw(VIEW_TYPE_WORKBENCH);
     draw(VIEW_TYPE_MESSAGES);
+    draw(VIEW_TYPE_PANEL);
     this.refreshDailyBlocks();
   }
 
