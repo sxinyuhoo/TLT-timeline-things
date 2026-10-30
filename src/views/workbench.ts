@@ -6,8 +6,9 @@ import type { SortCfg, SortKey } from "../store";
 import type { Idea } from "../data";
 import {
   Task, Msg, Period, todayISO, addDays,
-  hhmmToMin, minToHHMM, inPeriod, saturation, workloadBreakdown, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox,
+  hhmmToMin, minToHHMM, inPeriod, saturation, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox,
 } from "../data";
+import type { StaffDim } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
@@ -95,6 +96,8 @@ export class WorkbenchView extends ItemView {
   private get sideOff() { return !!this.cfg.sideCollapsed; }
   private get railOff() { return !!this.cfg.railCollapsed; }
   private taskTag: string | null = null;
+  /** 人员视图的时间窗口：本月 / 下个月 / 全部 */
+  private staffDim: StaffDim = "m";
   private starZoom = 1;
   private scrollToMin: number | null = null;
   private ideaTags: Set<string> = new Set();
@@ -1272,8 +1275,9 @@ export class WorkbenchView extends ItemView {
 
   private paneStaff(): HTMLElement {
     const p = el("div", "tlt-pane");
+    const dim = this.staffDim;
     const rows = this.store.staff.map((s) => ({
-      s, sat: workloadBreakdown(this.store.tasks, s.name, this.period, { capacity: s.capacity, days: s.days }),
+      s, sat: workloadBreakdown(this.store.tasks, s.name, dim, { capacity: s.capacity, days: s.days }),
     }));
     const over = rows.filter((r) => r.sat.pct >= 100).length;
     const idle = rows.filter((r) => r.sat.pct < 60).length;
@@ -1286,8 +1290,20 @@ export class WorkbenchView extends ItemView {
     add.dataset.addstaff = "1";
     head.appendChild(add);
     p.appendChild(head);
+    // 时间筛选：本月 / 下个月 / 全部
+    const seg = el("div", "tlt-seg tlt-dim-seg");
+    ([["m", T("本月")], ["nm", T("下个月")], ["all", T("全部")]] as const).forEach(([k, label]) => {
+      const b = el("button", "tlt-seg-b" + (dim === k ? " on" : ""), label);
+      b.dataset.staffdim = k;
+      seg.appendChild(b);
+    });
+    const segRow = el("div", "tlt-pane-h");
+    segRow.appendChild(seg);
+    p.appendChild(segRow);
     p.appendChild(el("div", "tlt-hint", T("档案来自 crew/<姓名>.md 的 frontmatter——岗位、产能、在岗天数都在文件里改；TLT 只读，任务侧只负责分配与统计。")));
-    p.appendChild(el("div", "tlt-hint", T("百分比＝本周期内未完成任务的人天 ÷ 可用人天。任务要同时满足：派给了这个人、有截止日（落在本周期）、填了工作量；缺哪样卡片上会写出来。")));
+    p.appendChild(el("div", "tlt-hint", dim === "all"
+      ? T("口径「全部」：所有未完成任务都算，分母＝一个季度的产能（每人 {n} 人天）。同一套算法：任务要填了工作量才进得去。", { n: staffWindowDays("all", 5, 100) })
+      : T("百分比＝{w}内未完成任务的人天 ÷ 该月可用人天。任务要同时满足：派给了这个人、有截止日（落在{w}）、填了工作量；缺哪样卡片上会写出来。", { w: dim === "nm" ? T("下个月") : T("本月") })));
 
     const grid = el("div", "tlt-staffgrid");
     rows.forEach(({ s, sat }) => {
@@ -1316,7 +1332,8 @@ export class WorkbenchView extends ItemView {
       // 缺什么就说什么：不然 0% 永远像个 bug
       const gaps: string[] = [];
       if (sat.noEst.length) gaps.push(T("{n} 项没填工作量", { n: sat.noEst.length }));
-      if (sat.noDue.length) gaps.push(T("{n} 项没排期", { n: sat.noDue.length }));
+      // 「全部」口径下，没排期的任务本来就都算进来了，不用再当缺口报
+      if (dim !== "all" && sat.noDue.length) gaps.push(T("{n} 项没排期", { n: sat.noDue.length }));
       if (sat.otherPeriod) gaps.push(T("{n} 项不在本周期", { n: sat.otherPeriod }));
       if (gaps.length) card.appendChild(el("div", "tlt-sgap", gaps.join(" · ")));
       grid.appendChild(card);
@@ -1705,6 +1722,8 @@ export class WorkbenchView extends ItemView {
 
     const tagBtn = pick("[data-tag]");
     if (tagBtn) { this.taskTag = tagBtn.dataset.tag || null; await this.render(); return; }
+    const staffDim = pick("[data-staffdim]");
+    if (staffDim) { this.staffDim = (staffDim.dataset.staffdim || "m") as StaffDim; await this.render(); return; }
 
     const dim = pick("[data-dim]");
     if (dim) { this.taskDim = dim.dataset.dim as TaskDim; await this.render(); return; }

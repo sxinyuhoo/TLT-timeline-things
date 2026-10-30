@@ -828,6 +828,8 @@ export class LogModal extends TltModal {
 interface QuickDraft {
   start: string; due: string; est: number; pri: Pri;
   owners: string[]; project: string; milestone: string; tags: string[];
+  /** 建任务时就先把子项写好（落盘时跟在任务行下面） */
+  steps: string[];
 }
 
 export class QuickTaskModal extends TltModal {
@@ -847,7 +849,7 @@ export class QuickTaskModal extends TltModal {
     this.draft = {
       start: todayISO(), due: preset?.due || todayISO(),
       est: 1, pri: 1, owners: [],
-      project: proj, milestone: ms, tags: [],
+      project: proj, milestone: ms, tags: [], steps: [],
     };
   }
 
@@ -1005,6 +1007,41 @@ export class QuickTaskModal extends TltModal {
     const whoRow = row(contentEl, T("负责人"));
     ownerSelect(this.app, this.store, whoRow, this.draft);
 
+    // 子项：建任务时就能先把几步写清楚（回车加一条，加完光标留在框里）
+    const stepRow = row(contentEl, T("子项"));
+    const stepBox = el("div", "tlt-steps in-modal");
+    const addStep = () => {
+      const input = el("input", "tlt-step-add");
+      input.placeholder = T("加一条子项，回车");
+      input.addEventListener("keydown", (e) => {
+        if (e.isComposing || e.key === "Process") return;
+        if (e.key !== "Enter") return;
+        const v = input.value.trim();
+        if (!v) return;
+        e.preventDefault();
+        this.draft.steps.push(v);
+        paintSteps();
+        const again = stepBox.querySelector<HTMLInputElement>(".tlt-step-add");
+        if (again) again.focus();
+      });
+      return input;
+    };
+    const paintSteps = () => {
+      stepBox.empty();
+      this.draft.steps.forEach((txt, i) => {
+        const line = el("div", "tlt-step");
+        line.append(el("i", "tlt-scb"), el("span", "tlt-step-t", txt));
+        const del = el("button", "tlt-step-del", "×");
+        del.title = T("去掉这条子项");
+        del.onclick = () => { this.draft.steps.splice(i, 1); paintSteps(); };
+        line.appendChild(del);
+        stepBox.appendChild(line);
+      });
+      stepBox.appendChild(addStep());
+    };
+    paintSteps();
+    stepRow.appendChild(stepBox);
+
     const foot = el("div", "tlt-m-foot");
     const cancel = el("button", "tlt-btn", T("取消"));
     cancel.onclick = () => this.close();
@@ -1020,6 +1057,7 @@ export class QuickTaskModal extends TltModal {
         pri: this.draft.pri,
         owners: this.draft.owners,
         tags: this.draft.tags,
+        steps: this.draft.steps.length ? this.draft.steps.map((text) => ({ text, done: false })) : undefined,
       });
       this.close(); void this.onChange(); new Notice(T("已创建任务"));
     })(); };

@@ -827,8 +827,10 @@ export class Store {
     const path = normalizePath(`${this.settings.tasksFolder}/${project}.md`);
     let file = await this.fileByPath(path);
     const line = newTaskLine(t);
+    // 子项跟在任务行下面（两空格缩进的 checklist）
+    const block = [line, ...(t.steps ?? []).map((x) => `  - [${x.done ? "x" : " "}] ${x.text}`)];
     if (!file) {
-      const head = `# ${project}\n\n${milestone ? `## ${milestone}\n\n` : ""}${line}\n`;
+      const head = `# ${project}\n\n${milestone ? `## ${milestone}\n\n` : ""}${block.join("\n")}\n`;
       await this.createSafe(path, head);
       return;
     }
@@ -842,13 +844,13 @@ export class Store {
             if (/^#{1,2}\s/.test(lines[i])) break;
             if (/^\s*[-*+]\s+\[.\]/.test(lines[i])) anchor = i + 1;
           }
-          lines.splice(anchor, 0, line);
+          lines.splice(anchor, 0, ...block);
           return lines.join("\n");
         }
-        lines.push("", `## ${milestone}`, "", line);
+        lines.push("", `## ${milestone}`, "", ...block);
         return lines.join("\n");
       }
-      lines.push(line);
+      lines.push(...block);
       return lines.join("\n");
     });
   }

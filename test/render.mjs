@@ -2263,6 +2263,86 @@ await t("人员详情：手上的任务能点开，直接编辑", async () => {
   assert.equal(name.value, "待改的任务", `弹的应该是这条任务：${name.value}`);
 });
 
+await t("人员视图：按 本月 / 下个月 / 全部 筛选", async () => {
+  document.body.empty();
+  const pad2 = (x) => String(x).padStart(2, "0");
+  const now = new Date(D + "T00:00:00");
+  const eom = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const EOM = `${eom.getFullYear()}-${pad2(eom.getMonth() + 1)}-${pad2(eom.getDate())}`;
+  const nmA = new Date(now.getFullYear(), now.getMonth() + 1, 10);
+  const NM = `${nmA.getFullYear()}-${pad2(nmA.getMonth() + 1)}-${pad2(nmA.getDate())}`;
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n`
+    + `- [ ] 本月的活 📅 ${EOM} [est:: 8] [owner:: [[甲]]] [created:: ${D}]\n`
+    + `- [ ] 下个月的活 📅 ${NM} [est:: 6] [owner:: [[甲]]] [created:: ${D}]\n`
+    + `- [ ] 没排期的活 [est:: 2] [owner:: [[甲]]] [created:: ${D}]\n`;
+  files["TLT/crew/甲.md"] = `---\nrole: 算法\ndays: 5\ncapacity: 100\n---\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "staff";
+  await view.render();
+  const chips = [...document.querySelectorAll("[data-staffdim]")].map((b) => b.textContent.trim());
+  assert.deepEqual(chips, ["本月", "下个月", "全部"], `筛选档位：${chips.join(",")}`);
+  const card = () => [...document.querySelectorAll("[data-staff]")].find((c) => c.dataset.staff === "甲");
+  const num = (sel) => card().querySelector(sel)?.textContent || "";
+  // 本月：只算 8 人天那条
+  assert.match(num(".tlt-smeta"), /本周期 1 项/, `本月该只算 1 项：${num(".tlt-smeta")}`);
+  assert.match(num(".tlt-smeta"), /8 \/ 21\.7 人天/, `本月人天：${num(".tlt-smeta")}`);
+  // 切到下个月：只算 6 人天那条
+  document.querySelector('[data-staffdim="nm"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.match(num(".tlt-smeta"), /本周期 1 项/, `下个月该只算 1 项：${num(".tlt-smeta")}`);
+  assert.match(num(".tlt-smeta"), /6 \/ 21\.7 人天/, `下个月人天：${num(".tlt-smeta")}`);
+  // 全部：三条都算（含没排期的 2 人天），分母是一个季度
+  document.querySelector('[data-staffdim="all"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.match(num(".tlt-smeta"), /本周期 3 项/, `全部该算 3 项：${num(".tlt-smeta")}`);
+  assert.match(num(".tlt-smeta"), /16 \/ 65 人天/, `全部人天与季度分母：${num(".tlt-smeta")}`);
+  assert.ok(!/没排期/.test(num(".tlt-sgap")), `全部口径下不该再统计"没排期"：${num(".tlt-sgap")}`);
+});
+
+await t("新建任务：子项能建（回车加一条、写进文件、光标留在框里）", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  const modal = new QuickTaskModal(leaf.app ?? plugin.app, store, () => {}, { project: "新项目", title: "" });
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 80));
+  const title = modal.contentEl.querySelector("input");
+  title.value = "带子项的新任务";
+  const stepInput = modal.contentEl.querySelector(".tlt-step-add");
+  assert.ok(stepInput, "新建任务表单里要有子项输入框");
+  const addOne = async (txt) => {
+    const input = modal.contentEl.querySelector(".tlt-step-add");
+    input.value = txt;
+    input.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((r) => window.setTimeout(r, 40));
+  };
+  await addOne("第一步");
+  await addOne("第二步");
+  const rows = [...modal.contentEl.querySelectorAll(".tlt-step .tlt-step-t")].map((e) => e.textContent);
+  assert.deepEqual(rows, ["第一步", "第二步"], `两条子项都在：${rows.join(",")}`);
+  assert.equal(document.activeElement, modal.contentEl.querySelector(".tlt-step-add"), "加完焦点还在输入框");
+  // 删一条
+  modal.contentEl.querySelector(".tlt-step-del").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  assert.equal(modal.contentEl.querySelectorAll(".tlt-step-t").length, 1, "点 × 能删");
+  assert.deepEqual(modal.draft.steps, ["第二步"], `提交前草稿里的子项：${JSON.stringify(modal.draft.steps)}`);
+  const ok2 = [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent === "创建");
+  assert.ok(ok2, `找不到创建按钮：${[...modal.contentEl.querySelectorAll("button")].map((b) => b.textContent).join("|")}`);
+  const ok = ok2;
+  ok.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 220));
+  const created = Object.keys(files).find((k) => k.startsWith("TLT/tasks/") && files[k].includes("带子项的新任务"));
+  assert.ok(created, `该建出任务文件：${Object.keys(files).filter((k) => k.startsWith("TLT/tasks/")).join(",")}`);
+  const text = files[created];
+  assert.match(text, /\n  - \[ \] 第二步/, `子项要跟在任务行下面（两空格缩进）：\n${text}`);
+  assert.ok(!/第一步/.test(text), "删掉的那条不该写进去");
+});
+
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {
   document.body.empty();
   plugin.activeProject = null;

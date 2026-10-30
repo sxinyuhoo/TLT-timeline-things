@@ -515,22 +515,54 @@ export function saturation(
  * 人分对了、任务有截止日（落在本周期）、任务填了工作量（est 或旧的 wl）。
  * 缺哪个就在哪个桶里，卡片上直接写出来，别让人对着 0 猜。
  */
+/** 人员视图的时间窗口：本月 / 下个月 / 全部（全部＝不看日期，所有未完成任务都算） */
+export type StaffDim = "m" | "nm" | "all";
+
+/** 下个月的起止（ISO） */
+export function nextMonthBounds(ref = new Date()) {
+  const start = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);
+  const end = new Date(ref.getFullYear(), ref.getMonth() + 2, 0);
+  return { start: iso(start), end: iso(end), label: `${start.getFullYear()} 年 ${start.getMonth() + 1} 月` };
+}
+
+/** 某个任务算不算进这个窗口 */
+export function inStaffWindow(due: string | undefined, dim: StaffDim, ref = new Date()): boolean {
+  if (dim === "all") return true;
+  if (!due) return false;
+  if (dim === "m") return inPeriod(due, "m", ref);
+  const b = nextMonthBounds(ref);
+  return due >= b.start && due <= b.end;
+}
+
+/** 窗口对应的可用人天：本月/下月＝一个月，全部＝一个季度（分母写清楚，别让人误会） */
+export function staffWindowDays(dim: StaffDim, days = 5, capacity = 100) {
+  return availableDays(dim === "all" ? "q" : "m", days, capacity);
+}
+
 export function workloadBreakdown(
-  tasks: Task[], person: string, period: Period,
+  tasks: Task[], person: string, period: Period | StaffDim,
   opts: { capacity?: number; days?: number } = {}, ref = new Date()
 ) {
   const mine = tasks.filter((t) => t.kind === "task" && !t.done && t.owners.includes(person));
-  const inWin = mine.filter((t) => t.due && inPeriod(t.due, period, ref));
+  const inWin = mine.filter((t) => (period === "w" || period === "q"
+    ? t.due && inPeriod(t.due, period, ref)
+    : inStaffWindow(t.due, period, ref)));
   const noDue = mine.filter((t) => !t.due);
   const noEst = inWin.filter((t) => t.est === undefined && !t.wl);
   const est = inWin.filter((t) => t.est !== undefined || t.wl);
+  // 与人天口径同一套算法：est 优先，老数据只有 wl 就按占比折算出人天
+  const avail = staffWindowDays(period === "w" || period === "q" ? "m" : period, opts.days ?? 5, opts.capacity ?? 100);
+  const sum = inWin.reduce((n, t) => n + (t.est !== undefined ? t.est : t.wl ? (t.wl / 100) * avail : 0), 0);
+  const round1 = (x: number) => Math.round(x * 10) / 10;
   return {
     mine, inWin, noDue, noEst, est,
-    /** 有工作量但截止日不在本周期（例如排到下个月） */
-    otherPeriod: mine.length - inWin.length - noDue.length,
+    /** 有截止日、但不在这个窗口里（例如排到下个月） */
+    otherPeriod: mine.filter((t) => t.due && !inWin.includes(t)).length,
     /** 这个周期到底有没有"能算"的数据：没有就别显示 0%，那个 0 是假的 */
     hasEst: est.length > 0,
-    ...saturation(tasks, person, period, opts, ref),
+    sum: round1(sum),
+    avail: round1(avail),
+    pct: avail ? Math.round((sum / avail) * 100) : 0,
   };
 }
 
