@@ -84,7 +84,6 @@ export class OverviewPanelView extends ItemView {
     const projects = proj ? [proj] : this.store.projects();
 
     /* ---- 一、读数 ---- */
-    body.appendChild(this.numRow(T("项目"), String(projects.length), null));
     const grid = el("div", "tlt-pn-grid");
     grid.append(
       this.numCard(T("逾期"), String(late.length), late.length ? "late" : "", { goto: { tab: "month", dim: "all" } }),
@@ -99,7 +98,12 @@ export class OverviewPanelView extends ItemView {
     const doneCard = el("div", "tlt-pn-block tlt-pn-done");
     doneCard.dataset.pngoto = "done";
     const dr = el("div", "tlt-pn-blockrow");
-    dr.append(el("span", "tlt-pn-lab", T("完成")), el("span", "tlt-pn-val", `${pct}%`));
+    // 「项目数」并到这一行，省掉一整行的高度（面板窄，纵向空间金贵）
+    dr.append(
+      el("span", "tlt-pn-lab", T("项目")), el("span", "tlt-pn-val small", String(projects.length)),
+      el("span", "tlt-pn-dot", "·"),
+      el("span", "tlt-pn-lab", T("完成")), el("span", "tlt-pn-val", `${pct}%`),
+    );
     doneCard.appendChild(dr);
     const bar = el("div", "tlt-pn-bar");
     const fill = el("i");
@@ -114,7 +118,7 @@ export class OverviewPanelView extends ItemView {
     const load = this.staffLoad(proj);
     const busy = load.filter((r) => r.pct >= 100);
     const idle = load.filter((r) => r.pct < 60);
-    const grid2 = el("div", "tlt-pn-grid");
+    const grid2 = el("div", "tlt-pn-grid three");
     grid2.append(
       this.numCard(T("紧急"), String(urgent.length), urgent.length ? "late" : "", { goto: { tab: "month", dim: "all" } }),
       this.numCard(T("饱和人员"), String(busy.length), busy.length ? "warn" : "", { goto: { tab: "staff", dim: "all" } }),
@@ -143,13 +147,6 @@ export class OverviewPanelView extends ItemView {
     const b2 = body.querySelector<HTMLElement>(".tlt-pn-body");
     if (b2) b2.scrollTop = keep;
     body.scrollTop = keep;
-  }
-
-  private numRow(label: string, value: string, hint: string | null): HTMLElement {
-    const r = el("div", "tlt-pn-block tlt-pn-row");
-    r.append(el("span", "tlt-pn-lab", label), el("span", "tlt-pn-val", value));
-    if (hint) r.appendChild(el("span", "tlt-pn-sub", hint));
-    return r;
   }
 
   private numCard(label: string, value: string, mod: string, opts: { goto: { tab: string; dim: string } }): HTMLElement {

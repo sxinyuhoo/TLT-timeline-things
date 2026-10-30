@@ -2158,6 +2158,38 @@ await t("随手记：去掉一个已选标签后，标签库立刻出现它（�
     "库里的标签应有 ✎ 可以编辑");
 });
 
+await t("工作台头部：概览面板入口是 SVG 图标，且挨着明暗切换", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  const btn = view.contentEl.querySelector("[data-panelopen]");
+  assert.ok(btn, "头部应有概览面板入口");
+  assert.equal((btn.textContent || "").trim(), "", "不该再用文字方块 ▤ 当图标");
+  assert.ok(btn.querySelector("svg"), "应该是 SVG 图标");
+  const theme = view.contentEl.querySelector("[data-tlt-theme]");
+  assert.ok(theme, "应有明暗切换");
+  // 位置：面板按钮紧挨在明暗切换前面（同一组按钮里相邻）
+  assert.equal(btn.nextElementSibling, theme, `面板入口应该紧挨着明暗切换，实际后面是 ${btn.nextElementSibling?.className}`);
+});
+
+await t("概览面板：读数排布更紧凑（项目并进完成度行、三个数字排一行）", async () => {
+  document.body.empty();
+  const pv = new OverviewPanelView(leaf, plugin);
+  pv.containerEl = document.createElement("div");
+  pv.contentEl = document.createElement("div");
+  pv.containerEl.appendChild(pv.contentEl);
+  document.body.appendChild(pv.containerEl);
+  await pv.onOpen();
+  const rows = [...pv.contentEl.querySelectorAll(".tlt-pn-blockrow")].map((e) => e.textContent.trim());
+  assert.ok(rows.some((t) => t.includes("项目") && t.includes("完成")), `项目与完成应在同一行：${rows.join(" | ")}`);
+  const three = pv.contentEl.querySelectorAll(".tlt-pn-grid.three .tlt-pn-card");
+  assert.equal(three.length, 3, "紧急 / 饱和人员 / 空闲人员 三张卡应排成一行");
+  // jsdom 不吃外部样式表，直接读 styles.css 里的规则（和 .tlt-scb 圆点那条一个套路）
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-pn-grid\.three\s*{[^}]*1fr 1fr 1fr/.test(css), "styles.css 里三列布局的规则要在");
+});
+
 await t("独立消息中心渲染", async () => {
   document.body.empty();
   const mv = mount(MessagesView);

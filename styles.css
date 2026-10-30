@@ -1601,7 +1601,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 /* ---- 右侧栏的 TLT 概览面板 ---- */
 .tlt-panel-root { padding: 0; }
 .tlt-pn { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.tlt-pn-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px; }
+.tlt-pn-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px 6px; }
 .tlt-pn-title { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--tlt-ink3); }
 .tlt-pn-scope { margin-left: auto; font-size: 10px; color: var(--tlt-ink2); background: none; border: 0; border-radius: 6px;
   padding: 2px 6px; cursor: pointer; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1609,22 +1609,22 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-pn-icon { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: none;
   color: var(--tlt-ink4); font-size: 12px; line-height: 1; cursor: pointer; }
 .tlt-pn-icon:hover { background: var(--tlt-surface2); color: var(--tlt-ink); }
-.tlt-pn-body { flex: 1; min-height: 0; overflow: auto; padding: 0 12px 16px; display: flex; flex-direction: column; gap: 10px; }
-.tlt-pn-block { border: 1px solid var(--tlt-line); border-radius: 10px; padding: 9px 10px; cursor: pointer; }
+.tlt-pn-body { flex: 1; min-height: 0; overflow: auto; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.tlt-pn-block { border: 1px solid var(--tlt-line); border-radius: 10px; padding: 7px 10px; cursor: pointer; }
 .tlt-pn-block:hover { border-color: var(--tlt-line2); background: var(--tlt-surface2); }
 .tlt-pn-blockrow { display: flex; align-items: baseline; gap: 8px; }
 .tlt-pn-lab { font-size: 10px; color: var(--tlt-ink4); }
 .tlt-pn-val { font-size: 18px; font-weight: 600; color: var(--tlt-ink); font-variant-numeric: tabular-nums; }
 .tlt-pn-row .tlt-pn-val { font-size: 13px; }
 .tlt-pn-sub { font-size: 9px; color: var(--tlt-ink5); margin-left: auto; }
-.tlt-pn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.tlt-pn-card { border: 1px solid var(--tlt-line); border-radius: 10px; padding: 8px 10px; cursor: pointer;
+.tlt-pn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.tlt-pn-card { border: 1px solid var(--tlt-line); border-radius: 10px; padding: 6px 9px; cursor: pointer;
   display: flex; flex-direction: column; gap: 2px; }
 .tlt-pn-card:hover { border-color: var(--tlt-line2); background: var(--tlt-surface2); }
 .tlt-pn-card.late .tlt-pn-val { color: #D98B5F; }
 .tlt-pn-card.warn .tlt-pn-val { color: #D9A05F; }
-.tlt-pn-card .tlt-pn-val { font-size: 17px; }
-.tlt-pn-bar { height: 4px; border-radius: 3px; background: var(--tlt-line4); overflow: hidden; margin: 7px 0 5px; }
+.tlt-pn-card .tlt-pn-val { font-size: 16px; line-height: 1.25; }
+.tlt-pn-bar { height: 4px; border-radius: 3px; background: var(--tlt-line4); overflow: hidden; margin: 5px 0 4px; }
 .tlt-pn-bar i { display: block; height: 100%; background: var(--tlt-acc); border-radius: 3px; }
 .tlt-pn-staff { display: flex; align-items: center; gap: 7px; margin-top: 5px; font-size: 10px; }
 .tlt-pn-name { flex: none; width: 62px; color: var(--tlt-ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1635,7 +1635,6 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-pn-item { font-size: 10px; color: var(--tlt-ink2); margin-top: 4px; display: flex; gap: 6px; align-items: baseline; }
 .tlt-pn-itemt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tlt-pn-item .tlt-pn-sub { margin-left: 0; flex: none; }
-.tlt-pn-open { margin-left: auto; }
 .tlt-qchip { align-self: flex-start; font-size: 9.5px; color: var(--tlt-ink3); background: color-mix(in srgb, var(--tlt-acc) 10%, transparent);
   border: 1px solid var(--tlt-line); border-radius: 999px; padding: 2px 8px; margin-bottom: 6px; cursor: pointer; }
 .tlt-qchip:hover { color: var(--tlt-ink); border-color: var(--tlt-line2); }
@@ -1661,3 +1660,14 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 
 /* 截止框里那个"只为把日历摆到正确月份"的临时值：淡一点，别让人以为是已经定下的日期 */
 .tlt-input.date.is-auto { opacity: .55; }   /* 自动跟随开始日填的，淡一点 */
+
+/* 概览面板：三个数字排一行（省一整行高度），以及更紧凑的读数行 */
+.tlt-pn-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.tlt-pn-grid.three .tlt-pn-card { padding: 6px 8px; }
+.tlt-pn-grid.three .tlt-pn-lab { font-size: 9.5px; letter-spacing: 0; }
+.tlt-pn-val.small { font-size: 13px; }
+.tlt-pn-dot { color: var(--tlt-ink5); }
+.tlt-pn-blockrow .tlt-pn-val { line-height: 1.2; }
+/* 头部那个"概览面板"按钮：图标按钮，和明暗切换并排 */
+.tlt-btn.tlt-icobtn { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; }
+.tlt-btn.tlt-icobtn svg { display: block; }

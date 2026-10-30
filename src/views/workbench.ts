@@ -13,6 +13,38 @@ import { setSvgMarkup } from "./dom";
 import { newProjectFlow } from "../actions";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
+
+/**
+ * 概览面板的入口图标：一个"右侧栏"轮廓（描边、无填充，和插件整体一个脾气）。
+ * 之前用的 ▤ 是个文字方块，太糙了。
+ */
+function panelIcon(): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("width", "15");
+  svg.setAttribute("height", "15");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.35");
+  svg.setAttribute("stroke-linecap", "round");
+  const rect = document.createElementNS(NS, "rect");
+  rect.setAttribute("x", "1.7"); rect.setAttribute("y", "2.7");
+  rect.setAttribute("width", "12.6"); rect.setAttribute("height", "10.6");
+  rect.setAttribute("rx", "2.4");
+  const divider = document.createElementNS(NS, "line");
+  divider.setAttribute("x1", "10.4"); divider.setAttribute("y1", "2.7");
+  divider.setAttribute("x2", "10.4"); divider.setAttribute("y2", "13.3");
+  svg.append(rect, divider);
+  // 右边那一栏里的两小段，表示读数
+  for (const y of ["6.1", "8.6"]) {
+    const tick = document.createElementNS(NS, "line");
+    tick.setAttribute("x1", "11.7"); tick.setAttribute("y1", y);
+    tick.setAttribute("x2", "12.9"); tick.setAttribute("y2", y);
+    svg.appendChild(tick);
+  }
+  return svg;
+}
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
 type TaskDim = "d" | "w" | "m" | "q" | "all";
 const periodLabel = (p: Period) => ({ w: T("本周"), m: T("本月"), q: T("本季度") }[p]);
@@ -390,11 +422,6 @@ export class WorkbenchView extends ItemView {
       who.title = T("只看这一个项目，点击回到全部");
     }
     crumbs.append(who, el("span", "tlt-sep", "/"), el("span", "", this.tabName()));
-    const panelBtn = el("button", "tlt-pn-open", "▤");
-    panelBtn.title = T("TLT 概览面板（右侧栏）");
-    panelBtn.dataset.panelopen = "1";
-    panelBtn.onclick = () => { void this.plugin.togglePanel(); };
-    crumbs.appendChild(panelBtn);
     if (this.proj) crumbs.appendChild(el("span", "tlt-hint2", T("已按项目筛选")));
     top.appendChild(crumbs);
     top.appendChild(el("div", "tlt-spacer"));
@@ -408,13 +435,20 @@ export class WorkbenchView extends ItemView {
     search.appendChild(input);
     top.appendChild(search);
 
+    // 概览面板入口：放在明暗切换左边（挨着日常要用的那几个小按钮，别丢在左边的面包屑尾巴上）
+    const panelBtn = el("button", "tlt-btn tlt-icobtn");
+    panelBtn.title = T("TLT 概览面板（右侧栏）");
+    panelBtn.dataset.panelopen = "1";
+    panelBtn.setAttribute("aria-label", T("TLT 概览面板（右侧栏）"));
+    panelBtn.appendChild(panelIcon());
+    panelBtn.onclick = () => { void this.plugin.togglePanel(); };
     const theme = el("button", "tlt-btn", this.plugin.isLight() ? "☾" : "☀");
     theme.dataset.tltTheme = "1";
     theme.title = T("切换明暗");
     theme.onclick = (ev) => { ev.stopPropagation(); this.plugin.toggleTheme(); };
     const add = el("button", "tlt-btn pri lg", T("＋ 新建"));
     add.dataset.newtask = "1";
-    top.append(theme, add);
+    top.append(panelBtn, theme, add);
     m.appendChild(top);
 
     const tabs = el("div", "tlt-tabs");
