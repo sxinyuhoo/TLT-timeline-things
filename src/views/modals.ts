@@ -827,9 +827,9 @@ export class QuickTaskModal extends TltModal {
   store: Store;
   onChange: () => void | Promise<void>;
   private draft: QuickDraft;
-  private preset: { title?: string; due?: string; project?: string; milestone?: string } = {};
+  private preset: { title?: string; due?: string; project?: string; milestone?: string; tags?: string[] } = {};
 
-  constructor(app: App, store: Store, onChange: () => void | Promise<void>, preset?: { title?: string; due?: string; project?: string; milestone?: string }) {
+  constructor(app: App, store: Store, onChange: () => void | Promise<void>, preset?: { title?: string; due?: string; project?: string; milestone?: string; tags?: string[] }) {
     super(app); this.store = store; this.onChange = onChange;
     this.preset = preset || {};
     // 已经点了某个项目 / 里程碑，就直接用它，别再让人手选一遍
@@ -840,7 +840,7 @@ export class QuickTaskModal extends TltModal {
     this.draft = {
       start: todayISO(), due: preset?.due || todayISO(),
       est: 1, pri: 1, owners: [],
-      project: proj, milestone: ms, tags: [],
+      project: proj, milestone: ms, tags: [...(preset?.tags || [])],
     };
   }
 
@@ -1421,6 +1421,21 @@ export class IdeaModal extends TltModal {
     })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
+    const editing = this.idea;
+    if (editing) {
+      const toTask = el("button", "tlt-btn", T("转为任务…"));
+      toTask.title = T("把这句话建成一条任务（标签一起带过去）");
+      toTask.onclick = () => { void (async () => {
+        const t = title.value.trim();
+        if (!t) { new Notice(T("先写一句话")); return; }
+        // 先把当前编辑落盘，再拿这句话去建任务
+        editing.title = t; editing.tags = tags; editing.body = body.value.trim();
+        await this.store.updateIdea(editing);
+        this.close(); void this.onChange();
+        new QuickTaskModal(this.app, this.store, () => { void this.store.load(); }, { title: t, tags: [...tags] }).open();
+      })(); };
+      foot.insertBefore(toTask, cancel);
+    }
     window.setTimeout(() => title.focus(), 50);
   }
   onClose() { this.contentEl.empty(); }

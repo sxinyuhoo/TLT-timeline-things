@@ -445,6 +445,7 @@ export const EN: Record<string, string> = {
   "谈了什么 / 决定了什么 / 下一步（会写成文件里的引用块）": "What was discussed / decided / next step (becomes a quote block in the file)",
   "跟随 Obsidian，或强制深色/浅色。主界面右上角的按钮也能切。": "Follow Obsidian, or force dark/light. The button in the top right does the same.",
   "转为任务…": "Convert to task…",
+  "把这句话建成一条任务（标签一起带过去）": "Turn this line into a task (tags come along)",
   "还没同步过。也可以点下面的按钮手动来一次。": "Never synced yet. You can also trigger one manually below.",
   "还没填": "Not set",
   "还没有人员档案（人员页可以新建）": "No profiles yet (add them on the Crew tab)",

@@ -67,6 +67,8 @@ await esbuild.build({
       export { TFolder } from "obsidian";
       export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal } from "./src/views/modals";
       export { SORT_KEYS, DEFAULT_SORT } from "./src/store";
+      export { registerTltIcons, refreshTabHeaders } from "./src/main";
+      export { registeredIcons } from "obsidian";
       export { OverviewPanelView, VIEW_TYPE_PANEL } from "./src/views/panel";
       export { MessagesView as MsgViewForPublish } from "./src/views/messages";
       export { setLanguage, t as tr } from "./src/i18n";
@@ -82,7 +84,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, SORT_KEYS, newLogLine, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -1984,6 +1986,71 @@ await t("子项：圆点更大、输入框更高、敲完一条焦点回到输�
   assert.ok(input2, "加完之后输入框还在（保持展开）");
   assert.equal(document.activeElement, input2, "敲完一条，焦点应自动回到子项输入框，好连着敲下一条");
   assert.ok(/\n  - \[ \] 第二条/.test(files["TLT/tasks/示例项目.md"]), `子项应写进文件：\n${files["TLT/tasks/示例项目.md"]}`);
+});
+
+await t("随手记：正文按极简 markdown 渲染（标题 / 列表 / 待办）", async () => {
+  document.body.empty();
+  files["TLT/ideas.md"] = `# 想法池\n\n- 一段速记 [at:: ${D}] [tags:: 工具]\n  > # 大标题\n  > ## 小标题\n  > - 先看接口\n  > - [x] 拉样例\n  > - [ ] 写脚本\n  > 普通一句话\n  > **粗体**不处理\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "ideas";
+  await view.render();
+  const card = document.querySelector(".tlt-icard");
+  assert.ok(card, "应有随手记卡片");
+  assert.ok(card.querySelector(".tlt-md-h1"), "# 渲染成一级标题");
+  assert.ok(card.querySelector(".tlt-md-h2"), "## 渲染成二级标题");
+  assert.equal(card.querySelector(".tlt-md-h1").textContent, "大标题");
+  assert.equal(card.querySelectorAll(".tlt-md-li").length, 3, `三条列表项：${card.querySelectorAll(".tlt-md-li").length}`);
+  assert.equal(card.querySelectorAll(".tlt-md-cb.on").length, 1, "已完成的那条要打勾");
+  assert.ok(card.querySelector(".tlt-md-p"), "普通行按段落渲染");
+  // 不认行内格式：**粗体** 原样显示，不做半截渲染
+  assert.ok(!card.querySelector("strong"), "行内粗体不处理");
+});
+
+await t("随手记：可以一键转成任务（带着那句话和标签）", async () => {
+  document.body.empty();
+  files["TLT/ideas.md"] = `# 想法池\n\n- 把常用脚本整理成工具 [at:: ${D}] [tags:: 工具, 论文]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "ideas";
+  await view.render();
+  document.querySelector(".tlt-icard").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  const btn = [...document.querySelectorAll(".tlt-btn")].find((b) => (b.textContent || "").includes("转为任务"));
+  assert.ok(btn, `随手记详情里应有「转为任务…」：${[...document.querySelectorAll(".tlt-btn")].map((b) => b.textContent).join(" | ")}`);
+  btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  const modal = document.querySelector(".tlt-host") || document.querySelector(".modal");
+  assert.ok(modal, "点完应弹出新建任务");
+  const nameInput = modal.querySelector("input");
+  assert.equal(nameInput.value, "把常用脚本整理成工具", `任务名应预填那句话：${nameInput.value}`);
+  assert.ok((modal.textContent || "").includes("工具"), "标签要一起带过去");
+});
+
+await t("图标：模块一加载就注册（重启后页签不会画成兜底图标）", async () => {
+  assert.equal(typeof registerTltIcons, "function", "应导出 registerTltIcons");
+  assert.equal(typeof refreshTabHeaders, "function", "应导出 refreshTabHeaders");
+  const names = ["tlt-timeline", "tlt-messages", "tlt-gauge"];
+  const got = registeredIcons.filter((x) => names.includes(x));
+  assert.equal(new Set(got).size, 3, `模块加载时就该注册三个图标，实际：${registeredIcons.join(",")}`);
+});
+
+await t("布局：滚动条常驻占位，筛选时不再左右跳", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  for (const sel of [".tlt-work", ".tlt-side-scroll", ".tlt-mtl"]) {
+    const re = new RegExp(sel.replace(".", "\\.") + "\\s*{[^}]*scrollbar-gutter:\\s*stable");
+    assert.ok(re.test(css), `${sel} 要预留滚动条位置`);
+  }
+});
+
+await t("随手记详情：一句话输入框是圆角框（和其他框一致）", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  const m = /\.tlt-idea-title\s*{([^}]*)}/.exec(css);
+  assert.ok(m, "要有 .tlt-idea-title 规则");
+  assert.ok(/border-radius:\s*8px/.test(m[1]), `一句话框该是圆角：${m[1].trim().slice(0, 60)}`);
+  assert.ok(!/border:\s*0/.test(m[1]), "不该再是只有下划线的样式");
 });
 
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {

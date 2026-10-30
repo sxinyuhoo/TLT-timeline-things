@@ -10,7 +10,7 @@ import {
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
-import { setSvgMarkup } from "./dom";
+import { setSvgMarkup, miniMarkdown } from "./dom";
 import { newProjectFlow } from "../actions";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
@@ -1354,7 +1354,11 @@ export class WorkbenchView extends ItemView {
       ideaTags(it).forEach((tg) => h.append(el("span", "tlt-chip-s", tg)));
       if (!ideaTags(it).length) h.append(el("span", "tlt-itype", T("未打标签")));
       c.append(h, el("div", "tlt-it", it.title));
-      if (it.body) c.appendChild(el("div", "tlt-ib", it.body));
+      if (it.body) {
+        const b = el("div", "tlt-ib");
+        miniMarkdown(it.body, b);                  // 标题 / 列表 / 待办 都能认
+        c.appendChild(b);
+      }
       const meta = el("div", "tlt-im");
       meta.append(el("span", "", it.at));
       c.appendChild(meta);

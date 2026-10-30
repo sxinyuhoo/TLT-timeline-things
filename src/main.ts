@@ -52,6 +52,34 @@ const DEFAULTS: Settings = {
   autoPushMin: 0,
 };
 
+/**
+ * 自带图标。不复用 activity / rss / gauge 这类通用 id——别的插件用 addIcon 注册同名 id 会覆盖掉，
+ * 页签上就变成别人的图标。用 tlt-* 前缀，谁也撞不上。
+ * 这个函数在**模块加载时**也调一次：Obsidian 重启时会先恢复上次打开的页签，
+ * 那时候 onload 可能还没跑，图标没注册上就会显示成兜底图标（幽灵那样），而且之后不会自己再刷。
+ */
+export function registerTltIcons() {
+  addIcon("tlt-timeline", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>');
+  addIcon("tlt-messages", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>');
+  addIcon("tlt-gauge", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>');
+}
+
+/** 页签头只会渲染一次：图标后注册的话得手动让它重画 */
+export function refreshTabHeaders(app: App) {
+  const ws = app.workspace as unknown as {
+    getLeavesOfType?: (t: string) => { view?: { getViewType?: () => string }; updateHeader?: () => void }[];
+  };
+  const fix = (leaf: { view?: { getViewType?: () => string }; updateHeader?: () => void }) => {
+    try {
+      const t = leaf.view?.getViewType?.() || "";
+      if (t.startsWith("tlt-") && typeof leaf.updateHeader === "function") leaf.updateHeader();
+    } catch (e) { console.error("TLT: 刷新页签图标失败", e); }
+  };
+  for (const type of ["tlt-workbench", "tlt-messages", "tlt-overview"]) {
+    try { ws.getLeavesOfType?.(type)?.forEach(fix); } catch (e) { console.error("TLT: 刷新页签图标失败", e); }
+  }
+}
+
 export class TLTPlugin extends Plugin {
   settings: Settings;
   store: Store;
@@ -209,11 +237,7 @@ export class TLTPlugin extends Plugin {
     this.store = new Store(this.app, this.settings);
     this.store.onSettingsChange = () => this.saveSettings();
 
-    // 自带的图标：不复用 activity/rss/gauge 这类通用 id——别的插件用 addIcon 注册同名 id 会把它们覆盖掉，
-    // 页签上就会显示成别人的图标。用 tlt-* 前缀，谁也撞不上。
-    addIcon("tlt-timeline", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>');
-    addIcon("tlt-messages", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>');
-    addIcon("tlt-gauge", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>');
+    registerTltIcons();
 
     this.registerView(VIEW_TYPE_WORKBENCH, (leaf: WorkspaceLeaf) => new WorkbenchView(leaf, this));
     this.registerView(VIEW_TYPE_MESSAGES, (leaf: WorkspaceLeaf) => new MessagesView(leaf, this));
@@ -242,6 +266,13 @@ export class TLTPlugin extends Plugin {
     this.addSettingTab(this.settingTab);
 
     registerDailyBlocks(this);
+
+    // 布局恢复完成后再让页签重画一次：重启时页签可能在图标注册之前就画好了
+    try {
+      const ws = this.app.workspace as unknown as { onLayoutReady?: (cb: () => void) => void };
+      ws.onLayoutReady?.(() => refreshTabHeaders(this.app));
+      window.setTimeout(() => refreshTabHeaders(this.app), 800);
+    } catch (e) { console.error("TLT: 刷新页签图标失败", e); }
 
     this.applyTheme();
     await this.store.ensureVault();
@@ -351,6 +382,13 @@ export class TLTPlugin extends Plugin {
     // 三态循环：浅 → 深 → 跟随系统
     const cur = this.settings.theme;
     this.settings.theme = cur === "light" ? "dark" : cur === "dark" ? "auto" : "light";
+    // 布局恢复完成后再让页签重画一次：重启时页签可能在图标注册之前就画好了
+    try {
+      const ws = this.app.workspace as unknown as { onLayoutReady?: (cb: () => void) => void };
+      ws.onLayoutReady?.(() => refreshTabHeaders(this.app));
+      window.setTimeout(() => refreshTabHeaders(this.app), 800);
+    } catch (e) { console.error("TLT: 刷新页签图标失败", e); }
+
     this.applyTheme();
     void this.saveData(this.settings);
     this.refreshAll();
@@ -1024,3 +1062,6 @@ export class TLTSettingTab extends PluginSettingTab {
     new Notice(`发布服务${okPublish ? "正常" : "连不上"} · 拉取服务${okSync ? "正常" : "连不上"}`);
   }
 }
+
+// 模块一被加载就注册图标：Obsidian 恢复上次页签发生在 onload 之前/之间，早一步注册就不会画成兜底图标
+try { registerTltIcons(); } catch (e) { console.error("TLT: 注册图标失败", e); }
