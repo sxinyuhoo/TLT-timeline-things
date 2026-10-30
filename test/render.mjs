@@ -68,7 +68,7 @@ await esbuild.build({
       export { TLTSettingTab, TLTPlugin } from "./src/main";
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
-      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal, LogModal } from "./src/views/modals";
+      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal, LogModal, StaffModal } from "./src/views/modals";
       export { SORT_KEYS, DEFAULT_SORT } from "./src/store";
       export { registerTltIcons, refreshTabHeaders, reviveTltLeaves } from "./src/main";
       export { registeredIcons } from "obsidian";
@@ -87,7 +87,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, LogModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, LogModal, StaffModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -2202,6 +2202,65 @@ await t("日历：重叠的块并排显示，各自的颜色不一样", async ()
   // 三栏以上特别窄：副信息让位、标题给两行
   assert.match(css, /\.tlt-blk-narrow \.tlt-blk-m\s*{\s*display:\s*none/);
   assert.match(css, /\.tlt-blk-narrow \.tlt-blk-t\s*{[^}]*-webkit-line-clamp:\s*2/);
+});
+
+await t("人员视图：人天百分比要有数据可算才显示；缺什么写在卡片上", async () => {
+  document.body.empty();
+  const mEnd = (() => { const d = new Date(D + "T00:00:00"); d.setMonth(d.getMonth() + 1, 0); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; })();
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n`
+    + `- [ ] 有估算有排期 📅 ${mEnd} [est:: 10] [owner:: [[甲]]] [created:: ${D}]\n`
+    + `- [ ] 有排期没估算 📅 ${mEnd} [owner:: [[甲]]] [created:: ${D}]\n`
+    + `- [ ] 没排期但有估算 [est:: 4] [owner:: [[甲]]] [created:: ${D}]\n`
+    + `- [ ] 乙的项目外任务 📅 ${mEnd} [est:: 2] [owner:: [[乙]]] [created:: ${D}]\n`;
+  files["TLT/crew/甲.md"] = `---\nrole: 算法\ndays: 5\ncapacity: 100\n---\n`;
+  files["TLT/crew/乙.md"] = `---\nrole: 算法\ndays: 5\ncapacity: 100\n---\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "staff";
+  await view.render();
+  const card = (name) => [...document.querySelectorAll("[data-staff]")].find((c) => c.dataset.staff === name);
+  const 甲 = card("甲"), 乙 = card("乙");
+  assert.ok(甲 && 乙, "两个人都要有卡片");
+  // 甲：有 10 人天的在窗口内 → 有百分比
+  assert.match(甲.querySelector(".tlt-spct").textContent, /^\d+%$/, `甲该有百分比：${甲.querySelector(".tlt-spct").textContent}`);
+  // 卡上要写清"本周期几项"和缺什么
+  const txt = 甲.textContent;
+  assert.ok(/本周期 2 项/.test(txt), `要写明本周期几项：${txt}`);
+  assert.ok(/1 项没填工作量/.test(txt), `要指出谁没填工作量：${txt}`);
+  assert.ok(/1 项没排期/.test(txt), `要指出没排期的：${txt}`);
+  // 乙只有 2 人天，pct 比甲低（同产能）
+  const pctOf = (el2) => parseInt(el2.querySelector(".tlt-spct").textContent, 10);
+  assert.ok(pctOf(甲) > pctOf(乙), `甲该比乙忙：${pctOf(甲)} vs ${pctOf(乙)}`);
+
+  // 全都没填工作量的人：显示 —，不给假的 0%
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 没估算 📅 ${mEnd} [owner:: [[丙]]] [created:: ${D}]\n`;
+  files["TLT/crew/丙.md"] = `---\nrole: 算法\ndays: 5\ncapacity: 100\n---\n`;
+  await store.load();
+  await view.render();
+  const 丙 = card("丙");
+  assert.equal(丙.querySelector(".tlt-spct").textContent, "—", "没数据就不该显示 0%");
+  assert.ok(/1 项没填工作量/.test(丙.textContent), `要写清原因：${丙.textContent}`);
+});
+
+await t("人员详情：手上的任务能点开，直接编辑", async () => {
+  document.body.empty();
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 待改的任务 📅 ${D} [est:: 2] [owner:: [[甲]]] [created:: ${D}]\n`;
+  files["TLT/crew/甲.md"] = `---\nrole: 算法\ndays: 5\ncapacity: 100\n---\n`;
+  await store.load();
+  const staff = store.staff.find((s2) => s2.name === "甲");
+  const modal = new StaffModal(leaf.app ?? plugin.app, store, staff, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 120));
+  const row = modal.contentEl.querySelector(".tlt-staff-task.click");
+  assert.ok(row, "任务行要能点");
+  assert.ok(row.querySelector(".tlt-row-pen"), "行尾要有 📝 提示可点");
+  row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  const open = [...document.querySelectorAll(".tlt-host, .modal")].pop();
+  assert.ok(open, "点任务行应弹出任务详情");
+  const name = open.querySelector("input");
+  assert.equal(name.value, "待改的任务", `弹的应该是这条任务：${name.value}`);
 });
 
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {

@@ -1740,3 +1740,18 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-blk-narrow .tlt-blk-m { display: none; }
 .tlt-blk-narrow .tlt-blk-t { white-space: normal; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+
+/* ---- 人员：卡片上的"缺什么"和详情里可点的任务行 ---- */
+.tlt-sgap { font-size: 8.5px; color: var(--tlt-ink5); margin-top: 3px; }
+.tlt-staff-tasks { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow: auto; }
+.tlt-staff-task { display: flex; align-items: baseline; gap: 8px; padding: 3px 5px; border-radius: 6px; font-size: 10.5px; }
+.tlt-staff-task.click { cursor: pointer; }
+.tlt-staff-task.click:hover { background: var(--tlt-surface2); }
+.tlt-staff-tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlt-staff-task .tlt-hint { flex: none; }
+.tlt-row-pen { flex: none; width: 18px; height: 16px; padding: 0; border: 0; background: none; cursor: pointer;
+  font-size: 9.5px; line-height: 1; opacity: 0; }
+.tlt-staff-task:hover .tlt-row-pen { opacity: .6; }
+.tlt-row-pen:hover { opacity: 1 !important; }
+
+.tlt-pn-note { font-size: 9px; color: var(--tlt-ink5); line-height: 1.5; }

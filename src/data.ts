@@ -509,6 +509,31 @@ export function saturation(
   return { sum: Math.round(sum * 10) / 10, avail: Math.round(avail * 10) / 10, pct: avail ? Math.round((sum / avail) * 100) : 0 };
 }
 
+/**
+ * 一个人的工作量拆解——把「为什么是 0」摊开给人看。
+ * 百分比＝**本周期内**未完成任务的人天 ÷ 可用人天，所以只有三件事都齐了才会进这个数：
+ * 人分对了、任务有截止日（落在本周期）、任务填了工作量（est 或旧的 wl）。
+ * 缺哪个就在哪个桶里，卡片上直接写出来，别让人对着 0 猜。
+ */
+export function workloadBreakdown(
+  tasks: Task[], person: string, period: Period,
+  opts: { capacity?: number; days?: number } = {}, ref = new Date()
+) {
+  const mine = tasks.filter((t) => t.kind === "task" && !t.done && t.owners.includes(person));
+  const inWin = mine.filter((t) => t.due && inPeriod(t.due, period, ref));
+  const noDue = mine.filter((t) => !t.due);
+  const noEst = inWin.filter((t) => t.est === undefined && !t.wl);
+  const est = inWin.filter((t) => t.est !== undefined || t.wl);
+  return {
+    mine, inWin, noDue, noEst, est,
+    /** 有工作量但截止日不在本周期（例如排到下个月） */
+    otherPeriod: mine.length - inWin.length - noDue.length,
+    /** 这个周期到底有没有"能算"的数据：没有就别显示 0%，那个 0 是假的 */
+    hasEst: est.length > 0,
+    ...saturation(tasks, person, period, opts, ref),
+  };
+}
+
 export function monthBounds(ref = new Date()) {
   const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
   const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);

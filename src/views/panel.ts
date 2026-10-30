@@ -116,8 +116,10 @@ export class OverviewPanelView extends ItemView {
     /* ---- 三、紧急 / 饱和人员 / 空闲人员 ---- */
     const urgent = open.filter((t) => t.pri >= 3);
     const load = this.staffLoad(proj);
-    const busy = load.filter((r) => r.pct >= 100);
-    const idle = load.filter((r) => r.pct < 60);
+    // 只统计"本周期有可算数据"的人：全库都没填工作量时，不该报一堆人空闲
+    const busy = load.filter((r) => r.hasEst && r.pct >= 100);
+    const idle = load.filter((r) => r.hasEst && r.pct < 60);
+    const noData = load.filter((r) => !r.hasEst).length;
     const grid2 = el("div", "tlt-pn-grid three");
     grid2.append(
       this.numCard(T("紧急"), String(urgent.length), urgent.length ? "late" : "", { goto: { tab: "month", dim: "all" } }),
@@ -125,6 +127,7 @@ export class OverviewPanelView extends ItemView {
       this.numCard(T("空闲人员"), String(idle.length), "", { goto: { tab: "staff", dim: "all" } }),
     );
     body.appendChild(grid2);
+    if (noData) body.appendChild(el("div", "tlt-pn-note", T("另有 {n} 人有任务但没填工作量：进不了饱和度统计", { n: noData })));
 
     // 点块跳工作台
     body.addEventListener("click", (ev) => {
@@ -158,16 +161,18 @@ export class OverviewPanelView extends ItemView {
   }
 
   /** 未完成任务的 est 之和 ÷ 该人本期可用人天（和工作台的人员页同一套算法） */
-  private staffLoad(proj: string | null): { name: string; pct: number; load: number }[] {
+  private staffLoad(proj: string | null): { name: string; pct: number; load: number; hasEst: boolean }[] {
     const dim = this.cfg.defaultPeriod || "m";
     const tasks = this.store.tasks.filter((t) => !proj || t.project === proj);
     return this.store.staff
       .filter((s) => s.status !== "left" && s.status !== "leave")
       .map((s) => {
         const sat = saturation(tasks, s.name, dim, { capacity: s.capacity, days: s.days });
-        return { name: s.name, pct: sat.pct, load: sat.sum };
+        const win = tasks.filter((t) => t.kind === "task" && !t.done && t.owners.includes(s.name)
+          && t.due && inPeriod(t.due, dim) && (t.est !== undefined || t.wl));
+        return { name: s.name, pct: sat.pct, load: sat.sum, hasEst: win.length > 0 };
       })
-      .filter((r) => r.load > 0)
+      .filter((r) => r.load > 0 || r.hasEst)
       .sort((a, b) => b.pct - a.pct);
   }
 

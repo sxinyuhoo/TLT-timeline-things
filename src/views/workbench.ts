@@ -6,7 +6,7 @@ import type { SortCfg, SortKey } from "../store";
 import type { Idea } from "../data";
 import {
   Task, Msg, Period, todayISO, addDays,
-  hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox,
+  hhmmToMin, minToHHMM, inPeriod, saturation, workloadBreakdown, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox,
 } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
@@ -1273,7 +1273,7 @@ export class WorkbenchView extends ItemView {
   private paneStaff(): HTMLElement {
     const p = el("div", "tlt-pane");
     const rows = this.store.staff.map((s) => ({
-      s, sat: saturation(this.store.tasks, s.name, this.period, { capacity: s.capacity, days: s.days }),
+      s, sat: workloadBreakdown(this.store.tasks, s.name, this.period, { capacity: s.capacity, days: s.days }),
     }));
     const over = rows.filter((r) => r.sat.pct >= 100).length;
     const idle = rows.filter((r) => r.sat.pct < 60).length;
@@ -1287,6 +1287,7 @@ export class WorkbenchView extends ItemView {
     head.appendChild(add);
     p.appendChild(head);
     p.appendChild(el("div", "tlt-hint", T("档案来自 crew/<姓名>.md 的 frontmatter——岗位、产能、在岗天数都在文件里改；TLT 只读，任务侧只负责分配与统计。")));
+    p.appendChild(el("div", "tlt-hint", T("百分比＝本周期内未完成任务的人天 ÷ 可用人天。任务要同时满足：派给了这个人、有截止日（落在本周期）、填了工作量；缺哪样卡片上会写出来。")));
 
     const grid = el("div", "tlt-staffgrid");
     rows.forEach(({ s, sat }) => {
@@ -1297,7 +1298,9 @@ export class WorkbenchView extends ItemView {
       av.style.background = s.color;
       const who = el("div", "tlt-who");
       who.append(el("div", "tlt-sname", s.name), el("div", "tlt-srole", `${s.role || "—"}${s.days < 5 ? T(" · 每周 {n} 天", { n: s.days }) : ""}`));
-      const pct = el("span", "tlt-spct", String(sat.pct) + "%");
+      // 没有可算的数据就显示 —，别拿一个假的 0% 糊人
+      const pct = el("span", "tlt-spct", sat.hasEst ? sat.pct + "%" : "—");
+      if (!sat.hasEst) pct.title = T("本周期没有能算的工作量（任务没截止日或没填工作量）");
       h.append(av, who, pct);
       card.appendChild(h);
       const bar = el("div", "tlt-sbar");
@@ -1305,11 +1308,17 @@ export class WorkbenchView extends ItemView {
       if (sat.pct >= 100) fill.addClass("hot"); else if (sat.pct < 60) fill.addClass("idle");
       bar.appendChild(fill);
       card.appendChild(bar);
-      const list = this.store.tasks.filter((t) => !t.done && t.owners.includes(s.name) && (t.pw || "m") === this.period);
       const meta = el("div", "tlt-smeta");
-      meta.append(el("span", "", T("{n} 项任务", { n: list.length })),
+      meta.append(el("span", "", T("{n} 项任务", { n: sat.mine.length })),
+        el("span", "", T("本周期 {k} 项", { k: sat.inWin.length })),
         el("span", "", T("{a} / {b} 人天", { a: sat.sum, b: sat.avail })));
       card.appendChild(meta);
+      // 缺什么就说什么：不然 0% 永远像个 bug
+      const gaps: string[] = [];
+      if (sat.noEst.length) gaps.push(T("{n} 项没填工作量", { n: sat.noEst.length }));
+      if (sat.noDue.length) gaps.push(T("{n} 项没排期", { n: sat.noDue.length }));
+      if (sat.otherPeriod) gaps.push(T("{n} 项不在本周期", { n: sat.otherPeriod }));
+      if (gaps.length) card.appendChild(el("div", "tlt-sgap", gaps.join(" · ")));
       grid.appendChild(card);
     });
     p.appendChild(grid);

@@ -2,7 +2,7 @@ import { App, Modal, Notice, TFile } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, saturation, ideaFilterTags, errMsg, toggleMdCheckbox } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, workloadBreakdown, ideaFilterTags, errMsg, toggleMdCheckbox } from "../data";
 import { miniMarkdown } from "./dom";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -1104,7 +1104,8 @@ export class StaffModal extends TltModal {
     head.append(av, who);
     contentEl.appendChild(head);
 
-    const sat = saturation(this.store.tasks, s.name, this.store.settings.defaultPeriod, { capacity: s.capacity, days: s.days });
+    const period = this.store.settings.defaultPeriod;
+    const sat = workloadBreakdown(this.store.tasks, s.name, period, { capacity: s.capacity, days: s.days });
     const grid = el("div", "tlt-staff-grid");
     const cell = (label: string, value: string) => {
       const c = el("div", "tlt-staff-cell");
@@ -1115,6 +1116,7 @@ export class StaffModal extends TltModal {
     cell(T("在岗"), T("每周 {n} 天", { n: s.days }));
     cell(T("可用"), T("每月 {n} 人天", { n: sat.avail }));
     cell(T("已排"), T("{n} 人天（{p}%）", { n: sat.sum, p: sat.pct }));
+    cell(T("本周期任务"), T("{a} 项 · 其中 {b} 项没填工作量", { a: sat.inWin.length, b: sat.noEst.length }));
     contentEl.appendChild(grid);
 
     const skillRow = el("div", "tlt-staff-line");
@@ -1133,17 +1135,33 @@ export class StaffModal extends TltModal {
       contentEl.appendChild(noteRow);
     }
 
-    const tasks = this.store.tasks.filter((t) => !t.done && t.owners.includes(s.name));
+    const tasks = sat.mine.slice().sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
     const listRow = el("div", "tlt-staff-line");
     listRow.appendChild(el("span", "tlt-staff-l", T("手上")));
     const ul = el("div", "tlt-staff-tasks");
-    tasks.length
-      ? tasks.slice(0, 6).forEach((t) => {
-          const r = el("div", "tlt-staff-task");
-          r.append(el("span", "", t.title), el("span", "tlt-hint", t.est !== undefined ? `${t.est} ${T("人天")}` : t.due || ""));
-          ul.appendChild(r);
-        })
-      : ul.appendChild(el("div", "tlt-hint", T("这个周期没有任务")));
+    if (tasks.length) {
+      tasks.forEach((t) => {
+        // 每行都能点：打开任务详情，日期 / 负责人 / 工作量 / 子项都能改
+        const r = el("div", "tlt-staff-task click");
+        r.title = T("点击打开任务详情（可改日期 / 负责人 / 工作量 / 子项）");
+        r.append(el("span", "tlt-staff-tt", t.title));
+        const bits: string[] = [];
+        if (t.due) bits.push(t.due.slice(5));
+        else bits.push(T("没排期"));
+        bits.push(t.est !== undefined ? `${t.est} ${T("人天")}` : T("没估"));
+        r.append(el("span", "tlt-hint", bits.join(" · ")));
+        const pen = el("button", "tlt-row-pen", "📝");
+        pen.title = T("打开任务详情");
+        r.appendChild(pen);
+        r.onclick = (ev) => {
+          ev.stopPropagation();
+          new TaskModal(this.app, this.store, t, () => { void this.onChange?.(); }).open();
+        };
+        ul.appendChild(r);
+      });
+    } else {
+      ul.appendChild(el("div", "tlt-hint", T("这个人手上没有未完成的任务")));
+    }
     listRow.appendChild(ul);
     contentEl.appendChild(listRow);
 
