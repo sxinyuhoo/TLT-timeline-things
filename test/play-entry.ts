@@ -3,6 +3,7 @@
  * 只用于本机 CDP 验证（弹窗、滚动、多选这类 jsdom 测不出来的东西）
  */
 import { WorkbenchView } from "../src/views/workbench";
+import * as modals from "../src/views/modals";
 import { MessagesView } from "../src/views/messages";
 import { OverviewPanelView } from "../src/views/panel";
 import { Store } from "../src/store";
@@ -170,5 +171,5 @@ async function mount(kind: "workbench" | "messages" | "panel") {
 }
 
 await store.load();
-(window as any).__tlt = { store, mount, files, get view() { return cur; }, get workbench() { return wbRef; }, D };
+(window as any).__tlt = { store, mount, files, get view() { return cur; }, get workbench() { return wbRef; }, D, modals };
 await mount("workbench");

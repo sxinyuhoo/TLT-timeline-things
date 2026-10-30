@@ -365,29 +365,33 @@ function ownerSelect(app: App, store: Store, parent: HTMLElement, draft: { owner
  * 改名会同步日志里的 [proj:: 旧名]，描述写进项目文件的 frontmatter。
  */
 /**
- * 截止日期的日历总是开在「值所在的月」；值为空时开在当前月。
- * 用户排的是下个月的事，就会每次都要往后翻——所以在截止框还是空的时候，
- * 先把开始日的值塞进去（日历自然开到那个月）。**如果只是点开又退出**（没触发 input/change），
- * 就把它还原成空，不改用户没选过的东西。
+ * 截止日期跟着开始日期走（只影响"还没自己选过截止日"的时候）。
+ *
+ * 为什么非要这么做：Chromium 的日期控件**在 mousedown 那一刻**就按当前值弹日历，
+ * 值是空的就弹当前月——所以光是"聚焦时再填"根本来不及（用户实测还是 10 月）。
+ * 只有让值在点开之前就在，日历才会开在开始日那个月。
+ *
+ * 规则（所见即所得，不留隐藏状态）：
+ *   - 选了开始日、而截止日还没被用户自己改过 → 截止日 = 开始日（并同步写进任务）
+ *   - 用户自己选/清过截止日 → 以后不再自动跟（尊重用户的选择）
  */
-function seedDue(due: HTMLInputElement, start: HTMLInputElement, commit: (v: string) => void) {
-  let seeded: string | null = null;
-  let picked = false;
-  due.addEventListener("focus", () => {
-    if (due.value || !start.value) return;
-    seeded = start.value;
-    picked = false;
-    due.value = seeded;
-  });
-  due.addEventListener("input", () => { picked = true; });
-  due.addEventListener("change", () => { picked = true; });
-  due.addEventListener("blur", () => {
-    if (seeded && !picked && due.value === seeded) {
-      due.value = "";
-      commit("");
-    }
-    seeded = null;
-    picked = false;
+function seedDue(due: HTMLInputElement, start: HTMLInputElement, commit: (v: string) => void, followExisting = true) {
+  // followExisting=false：改已有任务时，人家本来填好的截止日不能被开始日顶掉
+  let userSet = !followExisting && due.value !== "";
+  const follow = () => {
+    if (userSet || !start.value || due.value === start.value) return;
+    due.value = start.value;
+    due.classList.add("is-auto");
+    commit(start.value);
+  };
+  start.addEventListener("change", follow);
+  start.addEventListener("blur", follow);
+  follow();
+  due.addEventListener("input", () => { userSet = true; due.classList.remove("is-auto"); });
+  due.addEventListener("change", () => {
+    userSet = true;
+    due.classList.remove("is-auto");
+    commit(due.value);
   });
 }
 
@@ -629,7 +633,7 @@ export class TaskModal extends TltModal {
     dIn.value = this.draft.due || "";
     dIn.title = T("截止");
     dIn.onchange = () => { this.draft.due = dIn.value || undefined; };
-    seedDue(dIn, start, (v) => (this.draft.due = v || undefined));
+    seedDue(dIn, start, (v) => (this.draft.due = v || undefined), false);   // 改已有任务：不硬跟
     dline.append(start, arrow, dIn);
     dates.appendChild(dline);
 
@@ -958,8 +962,8 @@ export class QuickTaskModal extends TltModal {
     start.onchange = () => { this.draft.start = start.value; };
     const due = el("input", "tlt-input date");
     due.type = "date"; due.value = this.draft.due || ""; due.title = T("截止");
-    due.onchange = () => { this.draft.due = due.value; };
-    seedDue(due, start, (v) => (this.draft.due = v));
+    due.onchange = () => { this.draft.due = due.value || undefined; };
+    seedDue(due, start, (v) => (this.draft.due = v || undefined));
     dline.append(start, el("span", "tlt-darrow", "→"), due);
     dateRow.appendChild(dline);
 

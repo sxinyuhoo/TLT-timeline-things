@@ -2051,32 +2051,57 @@ await t("优先级：只保留 普通/高/紧急，历史值 0 归到普通", as
   assert.equal(dots.length, 2, `只有 高/紧急 两条该有点：${dots.length}`);
 });
 
-await t("新建任务：空着的截止框点开时，日历按「开始日」那个月显示", async () => {
+await t("截止日期：选开始日就跟着填截止日（日历才会开在同一个月份）", async () => {
   document.body.empty();
   const modal = new QuickTaskModal(leaf.app ?? plugin.app, store, () => {});
   modal.open();
   await new Promise((r) => window.setTimeout(r, 60));
   const [startEl, dueEl] = [...modal.contentEl.querySelectorAll(".tlt-dline input[type=date]")];
+  // 选开始日：11-12（当前是 10 月）
   startEl.value = "2026-11-12";
   startEl.dispatchEvent(new startEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
-  // 用户把默认的截止日清掉（新建任务默认填今天），此时它是空的
-  dueEl.value = "";
-  dueEl.dispatchEvent(new dueEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 30));
-  assert.equal(dueEl.value, "", "清掉之后截止框应该是空的");
-  // 「点开」＝聚焦：值会被临时填成开始日，日历就开在 11 月
-  dueEl.dispatchEvent(new window.FocusEvent("focus"));
-  assert.equal(dueEl.value, "2026-11-12", `聚焦时应先填上开始日（让日历开到那个月），实际 ${dueEl.value}`);
-  // 没真选就退出：还原成空
-  dueEl.dispatchEvent(new window.FocusEvent("blur"));
-  assert.equal(dueEl.value, "", "只是点开又退出，应该还原成空");
-  // 真选了：保留
-  dueEl.dispatchEvent(new window.FocusEvent("focus"));
+  assert.equal(dueEl.value, "2026-11-12", `选开始日后截止框应跟着填，实际 ${dueEl.value}`);
+  assert.ok(dueEl.classList.contains("is-auto"), "自动跟随的值要有淡显标记");
+  assert.equal(modal.draft.due, "2026-11-12", "跟着填的值也要进任务（所见即所得）");
+  // 用户自己改截止日 → 之后不再跟
   dueEl.value = "2026-11-20";
-  dueEl.dispatchEvent(new dueEl.ownerDocument.defaultView.Event("input", { bubbles: true }));
   dueEl.dispatchEvent(new dueEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
-  dueEl.dispatchEvent(new window.FocusEvent("blur"));
-  assert.equal(dueEl.value, "2026-11-20", "真的选了日期就该留着");
+  assert.equal(modal.draft.due, "2026-11-20");
+  startEl.value = "2026-12-01";
+  startEl.dispatchEvent(new startEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
+  assert.equal(dueEl.value, "2026-11-20", "用户自己定过截止日后，不该被开始日再改");
+});
+
+await t("截止日期：开始日变了，截止日跟着换（用户还没自己定过）", async () => {
+  document.body.empty();
+  const modal = new QuickTaskModal(leaf.app ?? plugin.app, store, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const [startEl, dueEl] = [...modal.contentEl.querySelectorAll(".tlt-dline input[type=date]")];
+  const set = (v) => {
+    startEl.value = v;
+    startEl.dispatchEvent(new startEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
+  };
+  set("2026-11-12");
+  assert.equal(dueEl.value, "2026-11-12");
+  set("2026-12-03");
+  assert.equal(dueEl.value, "2026-12-03", "换开始日，截止日要跟着换");
+  assert.equal(modal.draft.due, "2026-12-03");
+});
+
+await t("截止日期：改已有任务时，开始日不许顶掉已填好的截止日", async () => {
+  document.body.empty();
+  const task = store.tasks.find((x) => x.title.includes("示例任务")) || store.tasks[0];
+  task.start = "2026-11-01"; task.due = "2026-11-30";
+  const modal = new TaskModal(leaf.app ?? plugin.app, store, task, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const [startEl, dueEl] = [...modal.contentEl.querySelectorAll(".tlt-dline input[type=date]")];
+  assert.equal(dueEl.value, "2026-11-30", "先确认原来的截止日在");
+  startEl.value = "2026-11-05";
+  startEl.dispatchEvent(new startEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
+  assert.equal(dueEl.value, "2026-11-30", `开始日改了也不该动截止日，实际 ${dueEl.value}`);
+  assert.equal(modal.draft.due, "2026-11-30");
 });
 
 await t("概览面板：点「全部工作」能把工作台的筛选一起清掉", async () => {

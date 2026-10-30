@@ -1658,3 +1658,6 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-daily-edit { flex: none; padding: 0 2px; border: 0; background: none; cursor: pointer;
   font-size: 10px; line-height: 1; opacity: .45; }
 .tlt-daily-edit:hover { opacity: 1; }
+
+/* 截止框里那个"只为把日历摆到正确月份"的临时值：淡一点，别让人以为是已经定下的日期 */
+.tlt-input.date.is-auto { opacity: .55; }   /* 自动跟随开始日填的，淡一点 */
