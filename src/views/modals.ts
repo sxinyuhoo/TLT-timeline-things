@@ -713,6 +713,16 @@ export class TaskModal extends TltModal {
     tlItems.forEach(([k, v]) => {
       const r = el("div", "tlt-tl-r");
       r.append(el("span", "tlt-tl-k", k), el("span", "tlt-tl-v", v));
+      // 只有已完成、且真的记了日期的任务，才给这个入口：
+      // 补改是"偶发补救"，不是随手就能改的——所以藏在详情的时间线里，还要过一道确认弹窗
+      if (k === T("完成") && this.task.done) {
+        const fix = el("button", "tlt-btn tiny", "✎");
+        fix.title = T("补改完成时间（忘了按时勾选时用）");
+        fix.onclick = () => new DoneAtModal(this.app, this.store, this.task, () => {
+          void (async () => { await this.refreshSteps(); void this.onChange(); })();
+        }).open();
+        r.appendChild(fix);
+      }
       tl.appendChild(r);
     });
     const tlToggle = el("button", "tlt-btn tiny", this.showTimeline ? T("收起") : T("展开"));
@@ -817,6 +827,51 @@ export class LogModal extends TltModal {
       this.close(); void this.onChange(); new Notice(T("已写回记录"));
     })(); };
     foot.append(del, open, ok);
+    contentEl.appendChild(foot);
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
+/**
+ * 补改完成时间。给"忘了按时勾选、事后补记"用。
+ * 刻意的设计：入口只在任务详情的时间线里、还要过这个弹窗，不做成一键就改——
+ * 否则"改完成时间"会变成随手动作，完成数据的可信度就没了。
+ */
+export class DoneAtModal extends TltModal {
+  store: Store;
+  task: Task;
+  onChange: () => void | Promise<void>;
+  constructor(app: App, store: Store, task: Task, onChange: () => void | Promise<void>) {
+    super(app); this.store = store; this.task = task; this.onChange = onChange;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", T("改完成时间")));
+    contentEl.appendChild(el("div", "tlt-m-meta", this.task.title));
+    contentEl.appendChild(el("div", "tlt-m-meta", T("原来记的是 {d}；这里改的是「完成时间」，任务的完成状态不动。", { d: this.task.doneAt || T("未记录") })));
+
+    const input = el("input", "tlt-input wide");
+    input.type = "date";
+    input.value = this.task.doneAt || todayISO();
+    input.max = todayISO();                       // 完成时间不能填到未来
+    contentEl.appendChild(input);
+
+    const tip = el("div", "tlt-hint", T("想撤销这次修改？点「取消」就行，文件不会动。"));
+    contentEl.appendChild(tip);
+
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", T("取消"));
+    cancel.onclick = () => this.close();
+    const ok = el("button", "tlt-btn pri", T("确认修改"));
+    ok.onclick = () => { void (async () => {
+      const v = input.value;
+      if (!v) { new Notice(T("先选一个日期")); return; }
+      if (v > todayISO()) { new Notice(T("完成时间不能填到未来")); return; }
+      await this.store.setDoneAt(this.task, v);
+      this.close(); void this.onChange(); new Notice(T("完成时间已改为 {d}", { d: v }));
+    })(); };
+    foot.append(cancel, ok);
     contentEl.appendChild(foot);
   }
   onClose() { this.contentEl.empty(); }
@@ -1722,6 +1777,26 @@ export class MsgModal extends TltModal {
       const edit = el("button", "tlt-btn", T("编辑"));
       edit.onclick = () => { this.editing = true; this.onOpen(); };
       foot.appendChild(edit);
+
+      // 删消息：只有自己拥有的源能删（订阅来的删了也会被下一轮同步拉回来）
+      const del = el("button", "tlt-btn danger", T("删除这条消息"));
+      del.onclick = () => {
+        const published = !!(this.store.settings.feedIds || {})[m.feed];
+        new ConfirmModal(this.app, {
+          title: T("删除这条消息"),
+          body: published
+            ? T("删完会把这份最新清单推送到发布服务，订阅者下次同步就看不到它了。")
+            : T("只删本地文件里的这一条（含它的正文）。"),
+          danger: true,
+        }, async (yes) => {
+          if (!yes) return;
+          const r = await this.store.deleteMessage(m.feed, m);
+          this.close(); void this.onChange();
+          if (!r.ok) { new Notice(T("没找到这条消息，文件可能刚被改过")); return; }
+          new Notice(r.pushed ? T("已删除，并已推送到发布服务") : T("已删除（下次推送时同步）"), 3000);
+        }).open();
+      };
+      foot.appendChild(del);
 
       const stateBtn = el("button", "tlt-btn", m.state === "ended" ? T("恢复发布") : T("结束这条"));
       stateBtn.title = m.state === "ended"

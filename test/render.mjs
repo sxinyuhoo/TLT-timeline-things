@@ -68,7 +68,7 @@ await esbuild.build({
       export { TLTSettingTab, TLTPlugin } from "./src/main";
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
-      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal, LogModal, StaffModal } from "./src/views/modals";
+      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal, LogModal, StaffModal, MsgModal } from "./src/views/modals";
       export { SORT_KEYS, DEFAULT_SORT } from "./src/store";
       export { registerTltIcons, refreshTabHeaders, reviveTltLeaves } from "./src/main";
       export { registeredIcons } from "obsidian";
@@ -87,7 +87,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, LogModal, StaffModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, LogModal, StaffModal, MsgModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -2392,6 +2392,75 @@ await t("日记块刷新按 DOM 找人（宿主换掉也刷得到）", async () 
   document.body.appendChild(plain);
   inst.refreshDailyBlocks();
   assert.equal(drawn, 1, `挂在元素上的画法要被调到，实际 ${drawn}`);
+});
+
+await t("消息弹窗：自己的源能删消息，订阅来的不给删", async () => {
+  document.body.empty();
+  files["TLT/feeds/我的源.md"] = `---\ntitle: 我的源\nowner: me\nmine: true\n---\n\n# 我的源\n\n- ${D} 自己的一条\n`;
+  files["TLT/feeds/远程-别人的源.md"] = `---\ntitle: 别人的源\nremote: http://hub/sub?id=x\nowner: 别人\n---\n\n# 别人的源\n\n- ${D} 别人的一条 [mid:: x-1]\n`;
+  await store.load();
+  const own = store.feeds.flatMap((f) => f.items).find((m) => m.title === "自己的一条");
+  const modal = new MsgModal(leaf.app ?? plugin.app, store, own, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 100));
+  const labels = () => [...modal.contentEl.querySelectorAll("button")].map((b) => b.textContent.trim());
+  assert.ok(labels().includes("删除这条消息"), `自己的源要有删除：${labels().join(" | ")}`);
+  modal.close();
+
+  const remote = store.feeds.flatMap((f) => f.items).find((m) => m.title === "别人的一条");
+  const modal2 = new MsgModal(leaf.app ?? plugin.app, store, remote, () => {});
+  modal2.open();
+  await new Promise((r) => window.setTimeout(r, 100));
+  const labels2 = [...modal2.contentEl.querySelectorAll("button")].map((b) => b.textContent.trim());
+  assert.ok(!labels2.includes("删除这条消息"), `订阅来的不该给删：${labels2.join(" | ")}`);
+});
+
+await t("任务详情：完成时间能补改，但入口藏在时间线里且要过弹窗", async () => {
+  document.body.empty();
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [x] 忘记按时勾的活 📅 ${D} [done:: ${D}] [created:: ${D}]\n`;
+  await store.load();
+  const task = store.tasks.find((x) => x.title === "忘记按时勾的活");
+  const modal = new TaskModal(leaf.app ?? plugin.app, store, task, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 100));
+  // 行上不该有入口（要进详情）；详情里也要先展开时间线
+  // 时间线可能默认收起：收着就点「展开」，没收起就直接找入口
+  const tlBtn = [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent === "展开");
+  if (tlBtn) { tlBtn.dispatchEvent(new MouseEvent("click", { bubbles: true })); await new Promise((r) => window.setTimeout(r, 120)); }
+  const fix = [...modal.contentEl.querySelectorAll("button")].find((b) => b.title.includes("补改完成时间"));
+  assert.ok(fix, `时间线里要有 ✎ 补改入口：${[...modal.contentEl.querySelectorAll("button")].map((b) => b.textContent).join("|")}`);
+  fix.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  const dlg = [...document.querySelectorAll(".tlt-host, .modal")].pop();
+  assert.ok(dlg, "应弹出改完成时间的弹窗");
+  assert.ok((dlg.textContent || "").includes("完成时间"), "弹窗要说明改的是什么");
+  const input = dlg.querySelector('input[type="date"]');
+  assert.ok(input, "要有日期输入框");
+  assert.ok(input.max, "完成时间不该能填到未来");
+  input.value = "2026-10-20";
+  const ok = [...dlg.querySelectorAll("button")].find((b) => b.textContent.includes("确认修改"));
+  ok.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 220));
+  const text = files["TLT/tasks/示例项目.md"];
+  assert.match(text, /- \[x\] 忘记按时勾的活 📅 \S+ \[created:: \S+\] \[done:: 2026-10-20\]/, `完成时间应改成 10-20 且保持已完成：${JSON.stringify(text)}`);
+});
+
+await t("工作台侧栏：去掉了本周期档位，「完成 a/b」跟选中项目走", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/甲项目.md"] = `# 甲项目\n\n## 一\n\n- [x] 完成的 📅 ${D} [done:: ${D}]\n- [ ] 没完成的 📅 ${D}\n`;
+  files["TLT/tasks/乙项目.md"] = `# 乙项目\n\n## 一\n\n- [ ] 乙的一条 📅 ${D}\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  assert.equal([...document.querySelectorAll("[data-period]")].length, 0, "本周期档位该去掉了");
+  const foot = () => document.querySelector(".tlt-sfoot")?.textContent || "";
+  assert.match(foot(), /完成 1\/3/, `没选项目时看全部：${foot()}`);
+  view.proj = "甲项目";
+  await view.render();
+  assert.match(foot(), /完成 1\/2/, `选了项目就看它：${foot()}`);
+  assert.ok(!/我 \d+%/.test(foot()), `不该再有"本周我"那项：${foot()}`);
 });
 
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {

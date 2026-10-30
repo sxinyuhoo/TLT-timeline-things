@@ -250,8 +250,12 @@ export function newTaskLine(t: Partial<Task> & { title: string }): string {
   return s;
 }
 
-export function toggleTaskLine(raw: string): string {
-  return raw.replace(/^(\s*[-*+]\s+\[)(.)(\])/, (_m: string, a: string, c: string, b: string) => `${a}${c.toLowerCase() === "x" ? " " : "x"}${b}`);
+/** 翻转勾选；force=true 强制勾上、false 强制取消（补改完成时间时要保持"已完成"） */
+export function toggleTaskLine(raw: string, force?: boolean): string {
+  return raw.replace(/^(\s*[-*+]\s+\[)(.)(\])/, (_m: string, a: string, c: string, b: string) => {
+    const on = force === undefined ? c.toLowerCase() !== "x" : force;
+    return `${a}${on ? "x" : " "}${b}`;
+  });
 }
 
 export function setTaskDue(raw: string, due: string): string {
@@ -283,6 +287,11 @@ export function parseStaff(name: string, file: string, fm: Record<string, unknow
 /* ---------------- 消息源 ---------------- */
 
 /** 解析一条消息行：- 2026-10-21 标题 [kind:: ask] [place:: 会议室] [pin:: 里程碑] [star:: true] */
+/** 消息的"内容键"（日期+标题+类型）：订阅同步时用它认"这条还在不在"，不受 mid 变化影响 */
+export function msgKeyOf(date: string, title: string, kind: string): string {
+  return `${date}|${title.trim()}|${kind || "note"}`;
+}
+
 export function parseMsgLine(line: string, feedId: string, bodyLines: string[]): Msg | null {
   const m = /^\s*[-*+]\s+(?:(\d{4}-\d{2}-\d{2})\s+)?(.+)$/.exec(line);
   if (!m) return null;

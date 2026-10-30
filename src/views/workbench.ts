@@ -6,7 +6,7 @@ import type { SortCfg, SortKey } from "../store";
 import type { Idea } from "../data";
 import {
   Task, Msg, Period, todayISO, addDays,
-  hhmmToMin, minToHHMM, inPeriod, saturation, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox,
+  hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox,
 } from "../data";
 import type { StaffDim } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
@@ -58,7 +58,6 @@ type SortScope = "project" | "milestone" | "task";
 function sortLabel(k: SortKey): string {
   return { name: T("名称"), created: T("创建时间"), due: T("截止时间"), progress: T("完成进度"), pri: T("优先级") }[k];
 }
-const periodLabel = (p: Period) => ({ w: T("本周"), m: T("本月"), q: T("本季度") }[p]);
 const kindLabel = (k: string) => ({ ask: T("要求"), event: T("活动"), risk: T("风险"), note: T("通知") })[k] || k;
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
 const weekday = (i: number) => [T("日"), T("一"), T("二"), T("三"), T("四"), T("五"), T("六")][i] || "";
@@ -421,14 +420,6 @@ export class WorkbenchView extends ItemView {
       }
     }
 
-    const seg = el("div", "tlt-seg tlt-period");
-    (["w", "m", "q"] as Period[]).forEach((p) => {
-      const b = el("button", "tlt-seg-b" + (this.period === p ? " on" : ""), periodLabel(p));
-      b.dataset.period = p;
-      seg.appendChild(b);
-    });
-    scroll.appendChild(seg);
-
     const idea = this.store.ideas;
     const box = el("div", "tlt-ideabox");
     box.dataset.tab = "ideas";
@@ -438,12 +429,13 @@ export class WorkbenchView extends ItemView {
     scroll.appendChild(box);
     s.appendChild(scroll);
 
-    const done = all.filter((t) => t.done).length;
-    const mine = this.store.staff[0]?.name || "";
-    const me = this.store.staff.find((x) => x.name === mine);
-    const sat = saturation(this.store.tasks, mine, this.period, { capacity: me?.capacity ?? 100, days: me?.days ?? 5 });
+    // 底部进度：跟着当前选中的项目走（没选就是全库）
+    const scope = this.proj ? all.filter((t) => t.project === this.proj) : all;
+    const done = scope.filter((t) => t.done).length;
     const foot = el("div", "tlt-sfoot");
-    foot.append(el("span", "", T("完成 {a}/{b}", { a: done, b: all.length })), el("span", "", T("{p}我 {n}%", { p: periodLabel(this.period), n: sat.pct })));
+    const footLine = el("span", "", T("完成 {a}/{b}", { a: done, b: scope.length }));
+    footLine.title = this.proj ? T("当前项目的完成情况（点侧栏顶部的项目名回到全部）") : T("全部任务的完成情况");
+    foot.appendChild(footLine);
     s.appendChild(foot);
     return s;
   }

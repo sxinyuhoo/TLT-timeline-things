@@ -3,7 +3,7 @@ import {
   Task, Staff, Feed, Idea, Msg, Period,
   parseTaskLine, parseStaff, parseMsgLine, parseLogMonth, parseIdeaLine,
   newTaskLine, newMsgLine, newLogLine, toggleTaskLine, setTaskDue, setTaskField, stripFields,
-  todayISO, monthBounds, asText,
+  todayISO, monthBounds, asText, msgKeyOf,
 } from "./data";
 
 /** 消息服务的线上格式（发布端 / 订阅代理），字段都可缺 */
@@ -761,6 +761,20 @@ export class Store {
     return ok;
   }
 
+  /**
+   * 补改完成时间（忘了按时勾选时用）。
+   * 只认已完成的任务：把 `[done::]` 改成指定日期，`[x]` 保持。
+   * date 传 null 表示把完成时间清掉（仍然保持已完成，只是不再记日期）。
+   */
+  async setDoneAt(t: Task, date: string | null) {
+    const ok = await this.patchLine(t.file, t.line, (raw) => {
+      const done = toggleTaskLine(raw, true);
+      return setTaskField(done, "done", date);
+    }, t.title);
+    if (ok) await this.appendEvent({ kind: "task.doneAt", project: t.project, task: t.title, note: date || "" });
+    return ok;
+  }
+
   async setDue(t: Task, due: string) {
     return this.patchLine(t.file, t.line, (l) => setTaskDue(l, due), t.title);
   }
@@ -1279,7 +1293,7 @@ export class Store {
   }
 
   /** 改一条消息：整行 + 续行一起重写（5W 都在行内字段里） */
-  async updateMessage(feedId: string, msg: Msg, patch: Partial<Msg>) {
+  async updateMessage(feedId: string, msg: Msg, patch: Partial<Msg>): Promise<boolean> {
     const feed = this.feeds.find((f) => f.id === feedId);
     const path = feed ? feed.file : normalizePath(`${this.settings.feedsFolder}/${feedId}.md`);
     const file = await this.fileByPath(path);
@@ -1297,7 +1311,56 @@ export class Store {
       lines.splice(start, end - start, ...head.split("\n"));
       return lines.join("\n");
     });
+    await this.syncPublishedFeed(feedId);          // 已发布的源：改完顺手同步（没发布就什么都不做）
     return true;
+  }
+
+  /**
+   * 删一条消息（连同它的引用块正文）。
+   * 只有自己拥有的源能删；如果是**已发布**的源，删完顺手把这份最新清单推上去——
+   * 服务端是整份替换（/publish），所以订阅者下一轮拉取就少掉这条。
+   * 返回 pushed 让界面能如实说"推上去了 / 下次推送再同步"。
+   */
+  async deleteMessage(feedId: string, msg: Msg): Promise<{ ok: boolean; pushed: boolean }> {
+    const feed = this.feeds.find((f) => f.id === feedId);
+    const path = feed ? feed.file : normalizePath(`${this.settings.feedsFolder}/${feedId}.md`);
+    const file = await this.fileByPath(path);
+    if (!file) return { ok: false, pushed: false };
+    let ok = false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const hit = (l: string) => /^\s*[-*+]\s+/.test(l) && l.includes(msg.title);
+      let start = lines.findIndex((l) => hit(l) && l.includes(`[mid:: ${msg.id}]`));
+      if (start < 0) start = lines.findIndex(hit);
+      if (start < 0) return data;
+      let end = start + 1;
+      while (end < lines.length && /^\s{2,}>/.test(lines[end])) end++;
+      lines.splice(start, end - start);
+      ok = true;
+      return lines.join("\n");
+    });
+    if (!ok || !feed) return { ok, pushed: false };
+    return { ok, pushed: await this.syncPublishedFeed(feedId) };
+  }
+
+  /**
+   * 已发布的源改完（增/删/改消息）之后：先把内存跟文件对齐，再把**最新整份清单**推上去。
+   * 一定要先 load()：不重读的话 publishFeed 拿的是旧的 items，删除根本传不到服务端。
+   */
+  async syncPublishedFeed(feedId: string): Promise<boolean> {
+    const pid = (this.settings.feedIds || {})[feedId];
+    const hub = (this.settings as unknown as { hubPublish?: string }).hubPublish || "";
+    if (!pid || !hub) return false;
+    await this.load();
+    const feed = this.feeds.find((f) => f.id === feedId) || this.feeds.find((f) => f.file.endsWith(`/${pid}.md`));
+    if (!feed) return false;
+    try {
+      await this.publishFeed(feed, hub, pid);
+      return true;
+    } catch (e) {
+      console.warn("TLT: 推送失败，下次推送会补上", e);
+      return false;
+    }
   }
 
   /** 改写记录正文：替换该行后面的引用块 */
@@ -1640,11 +1703,20 @@ export class Store {
       method: "POST",
       body: { id: pid, title: feed.name, desc: feed.desc, owner },
     });
-    const items = feed.items.map((m, i) => ({
-      mid: `${pid}-${m.date}-${i}`,
-      date: m.date, title: m.title, kind: m.kind, place: m.place, who: m.who,
-      star: m.star, state: m.state, until: m.until, ended: m.ended, body: m.body,
-    }));
+    // mid 要**稳定**：以前用序号，删掉中间一条会让后面所有 id 都变，
+    // 订阅者那边就会被当成"旧的没了 + 新的来了"。改成按内容生成，同日同名再补序号。
+    const slug = (t: string) => t.trim().replace(/\s+/g, "_").replace(/[[\]:#|]/g, "").slice(0, 40) || "msg";
+    const seenMid = new Map<string, number>();
+    const items = feed.items.map((m) => {
+      const base = `${pid}-${m.date}-${slug(m.title)}`;
+      const n = (seenMid.get(base) || 0) + 1;
+      seenMid.set(base, n);
+      return {
+        mid: n > 1 ? `${base}-${n}` : base,
+        date: m.date, title: m.title, kind: m.kind, place: m.place, who: m.who,
+        star: m.star, state: m.state, until: m.until, ended: m.ended, body: m.body,
+      };
+    });
     return await this.httpJson<PublishResult>(`${base}/publish`, {
       method: "POST",
       body: { id: pid, title: feed.name, items },
@@ -1732,14 +1804,15 @@ export class Store {
     // 让服务端只回我订阅的那几个；老服务端不认这个参数时会回全量，所以下面还要再筛一遍
     const qs = mine.map((u) => `urls=${encodeURIComponent(u)}`).join("&");
     const data = await this.httpJson<PullResponse>(`${base}/pull?${qs}`);
-    let added = 0, updated = 0;
+    let added = 0, updated = 0, removed = 0;
     const want = new Set(mine.map(norm));
 
     for (const feed of data.feeds ?? []) {
       if (feed.url && !want.has(norm(asText(feed.url)))) continue;      // 不是自己订的，跳过
 
       const items = feed.items ?? [];
-      if (!feed.ok || !items.length) continue;
+      // 注意：items 为空但 ok=true 是有意义的（发布者把源清空了），下面照样会走"删本地多余的"那一步
+      if (!feed.ok) continue;
       const title = asText(feed.title) || asText(feed.id) || "远程源";
       const rawId = title;
       const id = rawId.replace(/[\\/:*?"<>|]/g, "-");
@@ -1796,10 +1869,21 @@ export class Store {
           lines.push(head, ...body);
           added++;
         }
-        return lines.join("\n");
+        // 删消息也要同步过来：服务端那份清单里没有的（本地带 [mid::] 的）就删掉。
+        // 没用 mid 的行是本地自己写的，不动它。
+        const serverKeys = new Set(items.map((it) => msgKeyOf(asText(it.date), asText(it.title), asText(it.kind) || "note")));
+        const keep: string[] = [];
+        for (let i = 0; i < lines.length; i++) {
+          const hasMid = /\[mid::\s*[^\]]+\]/.test(lines[i]);
+          const parsed = hasMid ? parseMsgLine(lines[i], localId, []) : null;
+          if (!parsed || serverKeys.has(msgKeyOf(parsed.date, parsed.title, parsed.kind))) { keep.push(lines[i]); continue; }
+          while (i + 1 < lines.length && /^\s{2,}>/.test(lines[i + 1])) i++;      // 连正文一起删
+          removed += 1;
+        }
+        return keep.join("\n");
       });
     }
-    return { added, updated, at: data.pulledAt };
+    return { added, updated, removed, at: data.pulledAt };
   }
 
   /* ---------------- 派生 ---------------- */

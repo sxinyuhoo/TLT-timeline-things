@@ -166,6 +166,90 @@ await t("插件重启后不该补出空的个人源（否则取消发布会变�
   assert.ok(!(vault.files[back2.file] || "").includes("只有自己看的草稿") || true);
 });
 
+await t("删消息：只删那一条（连正文），已发布的顺手推一次", async () => {
+  vault.files["TLT/feeds/已发布源.md"] = `---\ntitle: 已发布源\nowner: me\nmine: true\n---\n\n# 已发布源\n\n- ${D} 留下的一条\n- ${D} 要删的一条 [kind:: note]\n  > 这条的正文\n- ${D} 后面的一条\n`;
+  store.settings.feedIds = { "已发布源": "pub-1" };
+  store.settings.hubPublish = "http://x";
+  await store.load();
+  const feed = byName("已发布源");
+  const target = feed.items.find((m) => m.title === "要删的一条");
+  const pushed = [];
+  const realHttp = store.httpJson;
+  store.httpJson = async (url, init) => { pushed.push({ url, body: init?.body }); return { ok: true, count: (init?.body?.items || []).length }; };
+  const r = await store.deleteMessage(feed.id, target);
+  store.httpJson = realHttp;
+  assert.deepEqual(r, { ok: true, pushed: true }, "应删掉并推送");
+  const text = vault.files["TLT/feeds/已发布源.md"];
+  assert.ok(!text.includes("要删的一条"), `那条该没了：\n${text}`);
+  assert.ok(!text.includes("这条的正文"), "它的正文也该跟着删");
+  assert.ok(text.includes("留下的一条") && text.includes("后面的一条"), "别的消息不能动");
+  const pub = pushed.find((x) => x.url.endsWith("/publish"));
+  assert.ok(pub, "应该推送到 /publish");
+  assert.equal(pub.body.items.length, 2, `推上去的应是最新清单（2 条）：${pub.body.items.map((i) => i.title).join(",")}`);
+});
+
+await t("发布的 mid 稳定：删一条不会让后面所有 id 都变", async () => {
+  store.settings.feedIds = { "稳定源": "pub-stable" };
+  store.settings.hubPublish = "http://x";
+  const line = (n) => `- ${D} 消息${n}`;
+  vault.files["TLT/feeds/稳定源.md"] = `---\ntitle: 稳定源\nowner: me\nmine: true\n---\n\n# 稳定源\n\n${line("甲")}\n${line("乙")}\n${line("丙")}\n`;
+  await store.load();
+  const feed = byName("稳定源");
+  const calls = [];
+  const realHttp = store.httpJson;
+  store.httpJson = async (url, init) => { calls.push({ url, body: init?.body }); return { ok: true }; };
+  await store.publishFeed(feed, "http://x", "pub-stable");
+  const before = calls.find((c) => c.url.endsWith("/publish")).body.items.map((i) => i.mid);
+  // 删掉中间那条，再推一次
+  const mid = feed.items.find((m) => m.title === "消息乙");
+  await store.deleteMessage(feed.id, mid);
+  const feed2 = byName("稳定源");
+  await store.publishFeed(feed2, "http://x", "pub-stable");
+  store.httpJson = realHttp;
+  const after = calls.filter((c) => c.url.endsWith("/publish")).pop().body.items.map((i) => i.mid);
+  assert.equal(before.length, 3, "先有 3 条");
+  assert.equal(after.length, 2, "删完剩 2 条");
+  assert.deepEqual(after, [before[0], before[2]], `甲/丙的 mid 必须不变：\n  之前 ${before.join(",")}\n  之后 ${after.join(",")}`);
+});
+
+await t("订阅同步：发布者删了，本地跟着删（自己补写、没 mid 的行留着）", async () => {
+  const url = "http://hub/sub?id=abc";
+  vault.files["TLT/feeds/远程-协作.md"] = `---\ntitle: 协作\nremote: ${url}\nowner: 别人\nown: false\n---\n\n# 协作\n\n- 2026-10-20 还在的一条 [mid:: abc-2026-10-20-还在的一条]\n- 2026-10-21 已被删的一条 [mid:: abc-2026-10-21-已被删的一条]\n  > 它的正文\n- 2026-10-22 我自己补的一条\n`;
+  store.settings.subs = [url];
+  await store.load();
+  const put = (u, i) => ({ url: u, id: "abc", title: "协作", owner: "别人", ok: true, items: i });
+  const realHttp = store.httpJson;
+  store.httpJson = async () => ({
+    pulledAt: "2026-10-30T00:00:00Z",
+    feeds: [put(url, [
+      { mid: "abc-2026-10-20-还在的一条", date: "2026-10-20", title: "还在的一条", kind: "note" },
+    ])],
+  });
+  const res = await store.pullFromHub("http://hub");
+  store.httpJson = realHttp;
+  assert.equal(res.removed, 1, `应删掉 1 条：${JSON.stringify(res)}`);
+  const text = vault.files["TLT/feeds/远程-协作.md"];
+  assert.ok(!text.includes("已被删的一条"), `发布者删了的那条该没了：\n${text}`);
+  assert.ok(!text.includes("它的正文"), "它的正文也要跟着删");
+  assert.ok(text.includes("还在的一条"), "还在的不能动");
+  assert.ok(text.includes("我自己补的一条"), "本地自己补的（没有 mid）不该被同步删掉");
+});
+
+await t("订阅同步：发布者把源清空了，本地同步的也清空（自己写的留着）", async () => {
+  const url = "http://hub/sub?id=empty";
+  vault.files["TLT/feeds/远程-清空.md"] = `---\ntitle: 清空\nremote: ${url}\n---\n\n# 清空\n\n- 2026-10-20 旧的一条 [mid:: empty-1]\n- 2026-10-21 我补的\n`;
+  store.settings.subs = [url];
+  await store.load();
+  const realHttp = store.httpJson;
+  store.httpJson = async () => ({ pulledAt: "", feeds: [{ url, id: "empty", title: "清空", ok: true, items: [] }] });
+  const res = await store.pullFromHub("http://hub");
+  store.httpJson = realHttp;
+  assert.equal(res.removed, 1, `应清掉 1 条：${JSON.stringify(res)}`);
+  const text = vault.files["TLT/feeds/远程-清空.md"];
+  assert.ok(!text.includes("旧的一条"), `远端清空了，本地那条也该没：\n${text}`);
+  assert.ok(text.includes("我补的"), "自己写的（没 mid）留着");
+});
+
 await t("退订：文件进回收站并从列表消失", async () => {
   vault.files["TLT/feeds/远程-部门通知.md"] = `---\ntitle: 部门通知\nremote: http://x/feed?id=1\n---\n\n- ${D} 远端一条\n`;
   await store.load();
