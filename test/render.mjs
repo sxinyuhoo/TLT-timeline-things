@@ -65,7 +65,7 @@ await esbuild.build({
       export { TLTSettingTab, TLTPlugin } from "./src/main";
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
-      export { TaskModal, QuickTaskModal, ProjectInfoModal } from "./src/views/modals";
+      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal } from "./src/views/modals";
       export { OverviewPanelView, VIEW_TYPE_PANEL } from "./src/views/panel";
       export { MessagesView as MsgViewForPublish } from "./src/views/messages";
       export { setLanguage, t as tr } from "./src/i18n";
@@ -81,7 +81,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -2049,6 +2049,88 @@ await t("优先级：只保留 普通/高/紧急，历史值 0 归到普通", as
   assert.equal(document.querySelectorAll(".tlt-priflag").length, 0, "行上不该再有「高/紧急」文字标签");
   const dots = [...document.querySelectorAll(".tlt-pd")];
   assert.equal(dots.length, 2, `只有 高/紧急 两条该有点：${dots.length}`);
+});
+
+await t("新建任务：空着的截止框点开时，日历按「开始日」那个月显示", async () => {
+  document.body.empty();
+  const modal = new QuickTaskModal(leaf.app ?? plugin.app, store, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const [startEl, dueEl] = [...modal.contentEl.querySelectorAll(".tlt-dline input[type=date]")];
+  startEl.value = "2026-11-12";
+  startEl.dispatchEvent(new startEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
+  // 用户把默认的截止日清掉（新建任务默认填今天），此时它是空的
+  dueEl.value = "";
+  dueEl.dispatchEvent(new dueEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 30));
+  assert.equal(dueEl.value, "", "清掉之后截止框应该是空的");
+  // 「点开」＝聚焦：值会被临时填成开始日，日历就开在 11 月
+  dueEl.dispatchEvent(new window.FocusEvent("focus"));
+  assert.equal(dueEl.value, "2026-11-12", `聚焦时应先填上开始日（让日历开到那个月），实际 ${dueEl.value}`);
+  // 没真选就退出：还原成空
+  dueEl.dispatchEvent(new window.FocusEvent("blur"));
+  assert.equal(dueEl.value, "", "只是点开又退出，应该还原成空");
+  // 真选了：保留
+  dueEl.dispatchEvent(new window.FocusEvent("focus"));
+  dueEl.value = "2026-11-20";
+  dueEl.dispatchEvent(new dueEl.ownerDocument.defaultView.Event("input", { bubbles: true }));
+  dueEl.dispatchEvent(new dueEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
+  dueEl.dispatchEvent(new window.FocusEvent("blur"));
+  assert.equal(dueEl.value, "2026-11-20", "真的选了日期就该留着");
+});
+
+await t("概览面板：点「全部工作」能把工作台的筛选一起清掉", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  view.proj = "示例项目";
+  plugin.setActiveProject("示例项目");
+  await view.render();
+  assert.equal(view.proj, "示例项目", "先确认筛选生效");
+
+  // 面板上的芯片点击 → 插件的 clearActiveProject → 工作台叶子（真点击，用的是真实插件类）
+  const realPlugin = makePlugin();
+  realPlugin.store = store;                  // 用加载好的那份数据
+  realPlugin.app = app;
+  realPlugin.activeProject = "示例项目";
+  const realLeaves = () => [{ view }];
+  app.workspace.getLeavesOfType = (t) => (t === "tlt-workbench" || t === "tlt-overview" ? realLeaves() : []);
+  view.plugin = realPlugin;                  // 工作台视图认这个插件实例（focusOn 里要回写 activeProject）
+  const pv = new OverviewPanelView(leaf, realPlugin);
+  pv.containerEl = document.createElement("div");
+  pv.contentEl = document.createElement("div");
+  pv.containerEl.appendChild(pv.contentEl);
+  document.body.appendChild(pv.containerEl);
+  await pv.onOpen();
+  const chip = pv.contentEl.querySelector("[data-pnclear]");
+  assert.ok(chip, "有筛选时范围芯片应可点");
+  chip.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.equal(view.proj, null, "点芯片后工作台的筛选应被清掉");
+  assert.equal(realPlugin.activeProject, null, "插件里的 activeProject 也应清掉");
+  app.workspace.getLeavesOfType = () => [];
+});
+
+await t("随手记：去掉一个已选标签后，标签库立刻出现它（可以接着编辑）", async () => {
+  document.body.empty();
+  files["TLT/ideas.md"] = `# 想法池\n\n- 带两个标签的一条 [at:: ${D}] [tags:: patent, paper]\n`;
+  files["TLT/tags.md"] = `# 标签\n\n- patent\n- paper\n`;
+  await store.load();
+  const it = store.ideas.find((x) => x.title.includes("带两个标签"));
+  const modal = new IdeaModal(leaf.app ?? plugin.app, store, it, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const libNames = () => [...modal.contentEl.querySelectorAll(".tlt-taglib-n")].map((e) => e.textContent.trim());
+  assert.ok(!libNames().includes("patent"), `已选的标签不该出现在库里：${libNames().join(",")}`);
+  // 去掉已选的 patent（点它 chip 上的 ×）
+  const chip = [...modal.contentEl.querySelectorAll(".tlt-tagchip")].find((c) => c.textContent.includes("patent"));
+  assert.ok(chip, "应有 patent 这个已选 chip");
+  chip.querySelector("i").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
+  assert.ok(libNames().includes("patent"), `去掉之后它该立刻回到标签库里：${libNames().join(",")}`);
+  assert.ok(modal.contentEl.querySelector(".tlt-taglib-i [data-x]") || modal.contentEl.querySelectorAll(".tlt-taglib-i i").length > 0,
+    "库里的标签应有 ✎ 可以编辑");
 });
 
 await t("独立消息中心渲染", async () => {

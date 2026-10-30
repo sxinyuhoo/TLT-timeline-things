@@ -135,6 +135,12 @@ const plugin = {
   refreshAll: () => {},
   activeProject: null,
   setActiveProject(p: string | null) { (plugin as any).activeProject = p; },
+  // 面板上的「全部工作」走这个：插件状态 + 工作台筛选一起清
+  async clearActiveProject() {
+    (plugin as any).setActiveProject(null);
+    const wb = (window as any).__tlt?.workbench as { focusOn?: (o: { proj?: string | null }) => Promise<void> } | undefined;
+    await wb?.focusOn?.({ proj: null });
+  },
   togglePanel: async () => {},
   activateWorkbench: async () => {},
   saveSettings: async () => {},
@@ -144,6 +150,7 @@ const plugin = {
 
 const host = document.getElementById("host")!;
 let cur: any = null;
+let wbRef: any = null;
 
 async function mount(kind: "workbench" | "messages" | "panel") {
   host.innerHTML = "";
@@ -158,9 +165,10 @@ async function mount(kind: "workbench" | "messages" | "panel") {
   await v.onOpen();
   if (kind === "workbench") { v.viewDate = D; await v.render(); }
   cur = v;
+  if (kind === "workbench") wbRef = v;
   return v;
 }
 
 await store.load();
-(window as any).__tlt = { store, mount, files, get view() { return cur; }, D };
+(window as any).__tlt = { store, mount, files, get view() { return cur; }, get workbench() { return wbRef; }, D };
 await mount("workbench");

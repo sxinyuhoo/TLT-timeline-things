@@ -364,6 +364,33 @@ function ownerSelect(app: App, store: Store, parent: HTMLElement, draft: { owner
  * 项目信息：看/改项目名称（= 文件名）与一段描述。
  * 改名会同步日志里的 [proj:: 旧名]，描述写进项目文件的 frontmatter。
  */
+/**
+ * 截止日期的日历总是开在「值所在的月」；值为空时开在当前月。
+ * 用户排的是下个月的事，就会每次都要往后翻——所以在截止框还是空的时候，
+ * 先把开始日的值塞进去（日历自然开到那个月）。**如果只是点开又退出**（没触发 input/change），
+ * 就把它还原成空，不改用户没选过的东西。
+ */
+function seedDue(due: HTMLInputElement, start: HTMLInputElement, commit: (v: string) => void) {
+  let seeded: string | null = null;
+  let picked = false;
+  due.addEventListener("focus", () => {
+    if (due.value || !start.value) return;
+    seeded = start.value;
+    picked = false;
+    due.value = seeded;
+  });
+  due.addEventListener("input", () => { picked = true; });
+  due.addEventListener("change", () => { picked = true; });
+  due.addEventListener("blur", () => {
+    if (seeded && !picked && due.value === seeded) {
+      due.value = "";
+      commit("");
+    }
+    seeded = null;
+    picked = false;
+  });
+}
+
 /** 新建人员：名字 +（可选）岗位，建好后直接选中 */
 export class NewStaffModal extends TltModal {
   store: Store;
@@ -602,6 +629,7 @@ export class TaskModal extends TltModal {
     dIn.value = this.draft.due || "";
     dIn.title = T("截止");
     dIn.onchange = () => { this.draft.due = dIn.value || undefined; };
+    seedDue(dIn, start, (v) => (this.draft.due = v || undefined));
     dline.append(start, arrow, dIn);
     dates.appendChild(dline);
 
@@ -931,6 +959,7 @@ export class QuickTaskModal extends TltModal {
     const due = el("input", "tlt-input date");
     due.type = "date"; due.value = this.draft.due || ""; due.title = T("截止");
     due.onchange = () => { this.draft.due = due.value; };
+    seedDue(due, start, (v) => (this.draft.due = v));
     dline.append(start, el("span", "tlt-darrow", "→"), due);
     dateRow.appendChild(dline);
 
@@ -1291,7 +1320,8 @@ export class IdeaModal extends TltModal {
         const chip = el("span", "tlt-tagchip");
         chip.append(el("span", "", tg));
         const x = el("i", "", "×");
-        x.onclick = () => { tags = tags.filter((t) => t !== tg); paint(); };
+        // 去掉之后要立刻刷标签库：否则这个标签既不在上面（已选）、也不在下面（库里），就没法编辑了
+        x.onclick = () => { tags = tags.filter((t) => t !== tg); paint(); paintLib(); };
         chip.appendChild(x);
         tagWrap.appendChild(chip);
       });
@@ -1304,7 +1334,7 @@ export class IdeaModal extends TltModal {
         if (!tags.includes(v)) tags.push(v);
         if (!this.store.tags.includes(v)) await this.store.addTag(v);
         (e.target as HTMLInputElement).value = "";
-        paint();
+        paint(); paintLib();
         tagWrap.querySelector<HTMLInputElement>(".tlt-tagin")?.focus();
       })(); };
       tagWrap.appendChild(add);

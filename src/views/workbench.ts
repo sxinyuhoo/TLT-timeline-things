@@ -1035,9 +1035,13 @@ export class WorkbenchView extends ItemView {
   }
 
   /** 面板跳转入口：切页签 / 维度（可选） */
-  async focusOn(opts: { tab?: string; dim?: string }) {
+  async focusOn(opts: { tab?: string; dim?: string; proj?: string | null }) {
     if (opts.tab) this.tab = opts.tab;
     if (opts.dim) this.taskDim = opts.dim as TaskDim;
+    if (opts.proj !== undefined) {
+      this.proj = opts.proj;
+      this.plugin.setActiveProject(this.proj);        // 两边同步，但不再回调渲染（setActiveProject 只画面板）
+    }
     await this.render();
   }
 

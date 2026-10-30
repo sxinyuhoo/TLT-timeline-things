@@ -54,7 +54,13 @@ export class OverviewPanelView extends ItemView {
     scope.title = proj ? T("只看这一个项目，点击回到全部") : T("当前是全库");
     if (proj) {
       scope.dataset.pnclear = "1";
-      scope.onclick = () => this.plugin.setActiveProject(null);
+      // 光清插件里的 activeProject 不够：工作台自己也记着 proj，下次它一渲染又回填回来。
+      // 所以走 clearActiveProject()，连工作台视图一起清。
+      scope.onclick = () => { void this.plugin.clearActiveProject(); };
+    } else {
+      // 全库状态下它也别是「死按钮」：点一下刷新，不至于让人以为坏了
+      scope.title = T("当前是全库 · 点一下刷新（在工作台点某个项目就只看它）");
+      scope.onclick = () => { void (async () => { await this.store.load(); await this.render(); })(); };
     }
     head.appendChild(scope);
     const reload = el("button", "tlt-pn-icon", "⟳");

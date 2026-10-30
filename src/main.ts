@@ -416,6 +416,15 @@ export class TLTPlugin extends Plugin {
     }
   }
 
+  /** 面板上的「全部工作」：插件状态 + 工作台视图一起清（只清一边，视图重新渲染就会把筛选带回来） */
+  async clearActiveProject() {
+    this.setActiveProject(null);
+    for (const l of this.app.workspace.getLeavesOfType(VIEW_TYPE_WORKBENCH)) {
+      const v = l.view as unknown as { focusOn?: (o: { proj?: string | null }) => Promise<void> | void };
+      try { await v.focusOn?.({ proj: null }); } catch (e) { console.error("TLT: 清筛选失败", e); }
+    }
+  }
+
   /**
    * 右侧栏的 TLT 概览面板：开着就关，关着就开。
    * 注意：**不能拿"已有的那个右侧叶子"来换视图**——那里通常挂着别的插件（比如 pickme）的面板，
