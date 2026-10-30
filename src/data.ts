@@ -3,6 +3,24 @@
  * 语法约定见 docs/SYNTAX.md。
  */
 
+/**
+ * 把正文里第 i 个待办项翻个面（`- [ ]` ↔ `- [x]`）。找不到就原样返回。
+ * 顺手把 `- [X]` 统一成小写 x。
+ */
+export function toggleMdCheckbox(text: string, idx: number): string {
+  const lines = String(text || "").split("\n");
+  let seen = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*[-*+]\s+\[)([ xX])(\]\s.*)$/.exec(lines[i]);
+    if (!m) continue;
+    seen += 1;
+    if (seen !== idx) continue;
+    lines[i] = `${m[1]}${m[2].trim() === "" ? "x" : " "}${m[3]}`;
+    return lines.join("\n");
+  }
+  return text;
+}
+
 /** 任务属于工作还是个人：**只认 `[scope:: 个人]`**（老数据已一次性迁移过来，别再猜 tags） */
 export function taskScopeOf(f: Record<string, string>): "工作" | "个人" {
   return f["scope"] === "个人" ? "个人" : "工作";

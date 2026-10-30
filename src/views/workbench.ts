@@ -3,9 +3,10 @@ import { ItemView, WorkspaceLeaf, Notice, TFile } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS, SORT_KEYS, DEFAULT_SORT, SORT_DEFAULT_DIR } from "../store";
 import type { SortCfg, SortKey } from "../store";
+import type { Idea } from "../data";
 import {
   Task, Msg, Period, todayISO, addDays,
-  hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, ideaTags, ideaFilterTags,
+  hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox,
 } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
@@ -1356,7 +1357,10 @@ export class WorkbenchView extends ItemView {
       c.append(h, el("div", "tlt-it", it.title));
       if (it.body) {
         const b = el("div", "tlt-ib");
-        miniMarkdown(it.body, b);                  // 标题 / 列表 / 待办 都能认
+        // 标题 / 列表 / 待办 都能认；待办可以**直接点**，点一下就写回文件
+        miniMarkdown(it.body, b, {
+          onCheck: (i) => { void this.checkIdeaBox(it, i); },
+        });
         c.appendChild(b);
       }
       const meta = el("div", "tlt-im");
@@ -1367,6 +1371,15 @@ export class WorkbenchView extends ItemView {
     p.appendChild(grid);
     if (!this.store.ideas.length) p.appendChild(el("div", "tlt-empty", T("还没有随手记。一行就能记，正文可以永远不写。")));
     return p;
+  }
+
+  /** 卡片上点待办：翻转正文里第 i 个勾选并写回 */
+  private async checkIdeaBox(it: Idea, i: number) {
+    const next = toggleMdCheckbox(it.body || "", i);
+    if (next === it.body) return;
+    it.body = next;
+    await this.store.updateIdea(it);
+    await this.render();
   }
 
   /* ---------- 里程碑 ---------- */

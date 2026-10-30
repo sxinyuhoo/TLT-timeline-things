@@ -44,6 +44,9 @@ EP.empty = function () { while (this.firstChild) this.removeChild(this.firstChil
 EP.addClass = function (...c) { c.forEach((x) => this.classList.add(x)); };
 EP.removeClass = function (...c) { c.forEach((x) => this.classList.remove(x)); };
 EP.toggleClass = function (c, on) { this.classList.toggle(c, on); };
+EP.hasClass = function (c) { return this.classList.contains(c); };
+EP.setText = function (t) { this.textContent = t; };
+EP.createSvg = function (tag) { return this.ownerDocument.createElementNS("http://www.w3.org/2000/svg", tag); };
 EP.setCssProps = function (obj) { Object.entries(obj || {}).forEach(([k, v]) => this.style.setProperty(k, String(v))); };
 EP.createEl = function (tag, o = {}) {
   const e = document.createElement(tag);
@@ -67,7 +70,7 @@ await esbuild.build({
       export { TFolder } from "obsidian";
       export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal } from "./src/views/modals";
       export { SORT_KEYS, DEFAULT_SORT } from "./src/store";
-      export { registerTltIcons, refreshTabHeaders } from "./src/main";
+      export { registerTltIcons, refreshTabHeaders, reviveTltLeaves } from "./src/main";
       export { registeredIcons } from "obsidian";
       export { OverviewPanelView, VIEW_TYPE_PANEL } from "./src/views/panel";
       export { MessagesView as MsgViewForPublish } from "./src/views/messages";
@@ -84,7 +87,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -2051,6 +2054,87 @@ await t("随手记详情：一句话输入框是圆角框（和其他框一致�
   assert.ok(m, "要有 .tlt-idea-title 规则");
   assert.ok(/border-radius:\s*8px/.test(m[1]), `一句话框该是圆角：${m[1].trim().slice(0, 60)}`);
   assert.ok(!/border:\s*0/.test(m[1]), "不该再是只有下划线的样式");
+});
+
+await t("随手记详情：正文默认渲染成 markdown，待办点一下就勾上（写回文本框）", async () => {
+  document.body.empty();
+  files["TLT/ideas.md"] = `# 想法池\n\n- 带待办的速记 [at:: ${D}]\n  > - [ ] 第一步\n  > - [ ] 第二步\n`;
+  await store.load();
+  const it = store.ideas.find((x) => x.title.includes("带待办的速记"));
+  const modal = new IdeaModal(leaf.app ?? plugin.app, store, it, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 100));
+  const prev = modal.contentEl.querySelector(".tlt-idea-prev");
+  assert.ok(prev && !prev.classList.contains("tlt-hidden"), "正文默认应是渲染态");
+  const ta = modal.contentEl.querySelector("textarea");
+  assert.ok(ta.classList.contains("tlt-hidden"), "文本框默认藏起来");
+  assert.equal(prev.querySelectorAll(".tlt-md-cb").length, 2, "两条待办都要渲染出来");
+  // 点第一个待办：勾上，并写回文本框
+  prev.querySelector(".tlt-md-cb").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
+  assert.match(ta.value, /- \[x\] 第一步/, `勾选要写回正文：${JSON.stringify(ta.value)}`);
+  assert.equal(modal.contentEl.querySelectorAll(".tlt-md-cb.on").length, 1, "渲染态跟着变");
+  // 再点一下取消
+  modal.contentEl.querySelector(".tlt-md-cb").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
+  assert.match(ta.value, /- \[ \] 第一步/, `再点一下应取消：${JSON.stringify(ta.value)}`);
+  // 「编辑」按钮切到文本框
+  const edit = [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent === "编辑");
+  assert.ok(edit, "要有「编辑」按钮");
+  edit.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  assert.ok(!ta.classList.contains("tlt-hidden"), "点「编辑」应露出文本框");
+});
+
+await t("随手记卡片：渲染出来的待办也能直接勾（写回文件）", async () => {
+  document.body.empty();
+  files["TLT/ideas.md"] = `# 想法池\n\n- 卡片速记 [at:: ${D}]\n  > - [ ] 待办一\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "ideas";
+  await view.render();
+  const card = document.querySelector(".tlt-icard");
+  const cb = card.querySelector(".tlt-md-cb");
+  assert.ok(cb, "卡片上应有待办方块");
+  cb.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  assert.match(files["TLT/ideas.md"], /- \[x\] 待办一/, `勾选应写回文件：\n${files["TLT/ideas.md"]}`);
+  assert.ok(!document.querySelector(".modal, .tlt-host"), "点待办不该顺手把详情弹窗打开");
+});
+
+await t("随手记转任务：只带标题，不带标签", async () => {
+  document.body.empty();
+  files["TLT/ideas.md"] = `# 想法池\n\n- 整理脚本 [at:: ${D}] [tags:: 工具, 论文]\n`;
+  await store.load();
+  const it = store.ideas.find((x) => x.title === "整理脚本");
+  const modal = new IdeaModal(leaf.app ?? plugin.app, store, it, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 100));
+  const btn = [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent.includes("转为任务"));
+  assert.ok(btn, "要有「转为任务…」");
+  btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  const host = document.querySelector(".tlt-host") || document.body;
+  const name = host.querySelector("input");
+  assert.equal(name.value, "整理脚本", "任务名用那句话");
+  // 任务表单里会把"所有已知标签"都列出来（只是候选）；要看**选中**的那些
+  const on = [...host.querySelectorAll(".tlt-chip.on")].map((c) => c.textContent.trim());
+  assert.deepEqual(on, [], `不该把随手记的标签预选上：${on.join(",")}`);
+});
+
+await t("重启后的占位页签：注册完视图要把它们重新实例化（幽灵图标 + tlt-messages 的根因）", async () => {
+  assert.equal(typeof reviveTltLeaves, "function", "要导出 reviveTltLeaves");
+  const calls = [];
+  const placeholder = { view: { getViewType: () => "tlt-messages" }, setViewState: async (s) => { calls.push(s); } };
+  const realLeaf = { view: new MessagesView(leaf, plugin), setViewState: async (s) => { calls.push(s); } };
+  const old = app.workspace.getLeavesOfType;
+  app.workspace.getLeavesOfType = (t) => (t === "tlt-messages" ? [placeholder, realLeaf] : []);
+  reviveTltLeaves(app);
+  await new Promise((r) => window.setTimeout(r, 60));
+  app.workspace.getLeavesOfType = old;
+  assert.equal(calls.length, 1, `只有占位那个会被重建，真视图不动；实际重建 ${calls.length} 次`);
+  assert.deepEqual(calls[0], { type: "tlt-messages", active: false });
 });
 
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {

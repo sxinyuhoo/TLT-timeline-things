@@ -64,6 +64,27 @@ export function registerTltIcons() {
   addIcon("tlt-gauge", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>');
 }
 
+/**
+ * 重启 / 重载插件时，Obsidian 会先把上次打开的页签恢复成"占位视图"——图标是兜底的幽灵，
+ * 标题直接写视图类型（如 tlt-messages）。注册好视图类之后要把这些占位**重新实例化**，
+ * 否则它们会一直挂着占位（用户看到的就是"幽灵图标 + tlt-messages"）。
+ */
+export function reviveTltLeaves(app: App) {
+  const pairs: [string, unknown][] = [
+    [VIEW_TYPE_WORKBENCH, WorkbenchView],
+    [VIEW_TYPE_MESSAGES, MessagesView],
+    [VIEW_TYPE_PANEL, OverviewPanelView],
+  ];
+  for (const [type, cls] of pairs) {
+    let leaves: { view?: unknown; setViewState?: (s: { type: string; active?: boolean }) => Promise<void> }[] = [];
+    try { leaves = app.workspace.getLeavesOfType(type); } catch (e) { console.error("TLT: 取页签失败", e); }
+    for (const leaf of leaves) {
+      if (cls && leaf.view instanceof (cls as new (...a: never[]) => unknown)) continue;   // 已经是真视图
+      try { void leaf.setViewState?.({ type, active: false }); } catch (e) { console.error("TLT: 恢复页签失败", e); }
+    }
+  }
+}
+
 /** 页签头只会渲染一次：图标后注册的话得手动让它重画 */
 export function refreshTabHeaders(app: App) {
   const ws = app.workspace as unknown as {
@@ -270,8 +291,8 @@ export class TLTPlugin extends Plugin {
     // 布局恢复完成后再让页签重画一次：重启时页签可能在图标注册之前就画好了
     try {
       const ws = this.app.workspace as unknown as { onLayoutReady?: (cb: () => void) => void };
-      ws.onLayoutReady?.(() => refreshTabHeaders(this.app));
-      window.setTimeout(() => refreshTabHeaders(this.app), 800);
+      ws.onLayoutReady?.(() => { reviveTltLeaves(this.app); refreshTabHeaders(this.app); });
+      window.setTimeout(() => { reviveTltLeaves(this.app); refreshTabHeaders(this.app); }, 800);
     } catch (e) { console.error("TLT: 刷新页签图标失败", e); }
 
     this.applyTheme();
@@ -385,8 +406,8 @@ export class TLTPlugin extends Plugin {
     // 布局恢复完成后再让页签重画一次：重启时页签可能在图标注册之前就画好了
     try {
       const ws = this.app.workspace as unknown as { onLayoutReady?: (cb: () => void) => void };
-      ws.onLayoutReady?.(() => refreshTabHeaders(this.app));
-      window.setTimeout(() => refreshTabHeaders(this.app), 800);
+      ws.onLayoutReady?.(() => { reviveTltLeaves(this.app); refreshTabHeaders(this.app); });
+      window.setTimeout(() => { reviveTltLeaves(this.app); refreshTabHeaders(this.app); }, 800);
     } catch (e) { console.error("TLT: 刷新页签图标失败", e); }
 
     this.applyTheme();

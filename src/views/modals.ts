@@ -2,7 +2,8 @@ import { App, Modal, Notice, TFile } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, saturation, ideaFilterTags, errMsg } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, saturation, ideaFilterTags, errMsg, toggleMdCheckbox } from "../data";
+import { miniMarkdown } from "./dom";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, cls?: string, text?: string
@@ -827,9 +828,9 @@ export class QuickTaskModal extends TltModal {
   store: Store;
   onChange: () => void | Promise<void>;
   private draft: QuickDraft;
-  private preset: { title?: string; due?: string; project?: string; milestone?: string; tags?: string[] } = {};
+  private preset: { title?: string; due?: string; project?: string; milestone?: string } = {};
 
-  constructor(app: App, store: Store, onChange: () => void | Promise<void>, preset?: { title?: string; due?: string; project?: string; milestone?: string; tags?: string[] }) {
+  constructor(app: App, store: Store, onChange: () => void | Promise<void>, preset?: { title?: string; due?: string; project?: string; milestone?: string }) {
     super(app); this.store = store; this.onChange = onChange;
     this.preset = preset || {};
     // 已经点了某个项目 / 里程碑，就直接用它，别再让人手选一遍
@@ -840,7 +841,7 @@ export class QuickTaskModal extends TltModal {
     this.draft = {
       start: todayISO(), due: preset?.due || todayISO(),
       est: 1, pri: 1, owners: [],
-      project: proj, milestone: ms, tags: [...(preset?.tags || [])],
+      project: proj, milestone: ms, tags: [],
     };
   }
 
@@ -1388,11 +1389,34 @@ export class IdeaModal extends TltModal {
     paintLib();
     contentEl.appendChild(lib);
 
-    contentEl.appendChild(el("div", "tlt-field-label", T("为什么做 / 怎么验证")));
+    const bodyLabel = el("div", "tlt-field-label tlt-label-row");
+    bodyLabel.appendChild(el("span", "", T("为什么做 / 怎么验证")));
+    const modeBtn = el("button", "tlt-btn tiny", T("编辑"));
+    modeBtn.type = "button";
+    bodyLabel.appendChild(modeBtn);
+    contentEl.appendChild(bodyLabel);
+
     const body = el("textarea", "tlt-textarea tall");
     body.placeholder = T("值得做的理由、可能的验证方式（可以留空）");
     body.value = this.idea?.body || "";
-    contentEl.appendChild(body);
+    const preview = el("div", "tlt-idea-prev");
+    const showMode = (edit: boolean) => {
+      modeBtn.textContent = edit ? T("预览") : T("编辑");
+      if (edit) { body.removeClass("tlt-hidden"); preview.addClass("tlt-hidden"); body.focus(); }
+      else { body.addClass("tlt-hidden"); preview.removeClass("tlt-hidden"); paintPreview(); }
+    };
+    const paintPreview = () => {
+      preview.empty();
+      if (!body.value.trim()) { preview.appendChild(el("div", "tlt-hint", T("正文还是空的，点「编辑」写点什么"))); return; }
+      // 待办可以直接勾：勾完写回文本框，保存时一起落盘
+      miniMarkdown(body.value, preview, {
+        onCheck: (i) => { body.value = toggleMdCheckbox(body.value, i); paintPreview(); },
+      });
+    };
+    // 现在显示的是预览 → 切去编辑；现在在编辑 → 回来重新渲染
+    modeBtn.onclick = () => showMode(!preview.classList.contains("tlt-hidden"));
+    contentEl.append(body, preview);
+    showMode(false);
 
     const foot = el("div", "tlt-m-foot");
     if (!isNew) {
@@ -1432,7 +1456,7 @@ export class IdeaModal extends TltModal {
         editing.title = t; editing.tags = tags; editing.body = body.value.trim();
         await this.store.updateIdea(editing);
         this.close(); void this.onChange();
-        new QuickTaskModal(this.app, this.store, () => { void this.store.load(); }, { title: t, tags: [...tags] }).open();
+        new QuickTaskModal(this.app, this.store, () => { void this.store.load(); }, { title: t }).open();
       })(); };
       foot.insertBefore(toTask, cancel);
     }

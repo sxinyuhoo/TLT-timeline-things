@@ -1711,3 +1711,14 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   position: relative; top: 1px; }
 .tlt-md-cb.on { background: var(--tlt-ink4); border-color: var(--tlt-ink4); }
 .tlt-md-todo.done .tlt-md-t { color: var(--tlt-ink5); text-decoration: line-through; }
+
+/* ---- 随手记详情：正文的渲染态 / 编辑态 ---- */
+.tlt-label-row { display: flex; align-items: center; gap: 8px; }
+.tlt-label-row span:first-child { flex: 1; min-width: 0; }
+.tlt-idea-prev { min-height: 56px; border: 1px solid var(--tlt-line); border-radius: 8px;
+  padding: 8px 10px; background: var(--tlt-surface2); }
+.tlt-idea-prev .tlt-md-li { font-size: 11px; }
+.tlt-idea-prev .tlt-md-p { font-size: 11px; }
+/* 正文里的待办可以直接点 */
+.tlt-md-cb-live { cursor: pointer; }
+.tlt-md-cb-live:hover { border-color: var(--tlt-acc); background: color-mix(in srgb, var(--tlt-acc) 22%, transparent); }
