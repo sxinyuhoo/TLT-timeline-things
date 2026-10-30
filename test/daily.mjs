@@ -209,8 +209,11 @@ await t("勾选写回文件，并触发整体重画", async () => {
   row.querySelector(".tlt-daily-cb").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   await flush(60);
 
-  assert.ok(fps.files["TLT/tasks/交通核心算法研发.md"].includes("[done:: " + new Date().toISOString().slice(0, 10) + "]"),
-    "勾选应写回 [done:: 日期]：\n" + fps.files["TLT/tasks/交通核心算法研发.md"]);
+  // 本地日期（不能用 toISOString：深夜会差一天）
+  const now = new Date();
+  const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  assert.ok(fps.files["TLT/tasks/交通核心算法研发.md"].includes("[done:: " + todayLocal + "]"),
+    `勾选应写回 [done:: ${todayLocal}]：\n` + fps.files["TLT/tasks/交通核心算法研发.md"]);
   assert.equal(refreshed, 1, "勾选后应触发重画");
 });
 

@@ -355,6 +355,11 @@ export class Store {
    * 这是"时间属性"的底账：项目/里程碑/任务的产生与结束都记在这里，供将来的时间线图谱用。
    */
   async appendEvent(ev: { kind: string; project?: string; milestone?: string; task?: string; note?: string }): Promise<void> {
+    // 事件流是"底账"，写不进去最多丢一条痕迹；绝不能因为它失败，让勾选/改名这些正事半路断掉
+    try { await this.appendEventInner(ev); } catch (e) { console.warn("TLT: 事件流写入失败（不影响任务本身）", e); }
+  }
+
+  private async appendEventInner(ev: { kind: string; project?: string; milestone?: string; task?: string; note?: string }): Promise<void> {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     const day = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -589,16 +594,35 @@ export class Store {
   }
 
   /** 只改目标那一行，不重写整个文件 */
-  async patchLine(path: string, lineNo: number, fn: (line: string) => string) {
+  /**
+   * 改某一行。**行号可能会漂**（同一文件里别处增删过行，比如刚在别处加了子项），
+   * 所以先核对这一行是不是那条任务：对不上就按标题找回来；
+   * 还是找不到就**不写**——宁可这次没生效，也不能把改动写到别人头上。
+   */
+  async patchLine(path: string, lineNo: number, fn: (line: string) => string, title?: string) {
     const file = await this.fileByPath(path);
     if (!file) return false;
+    let ok = false;
     await this.app.vault.process(file, (data) => {
       const lines = data.split(/\r?\n/);
-      if (lineNo < 0 || lineNo >= lines.length) return data;
-      lines[lineNo] = fn(lines[lineNo]);
+      const isTask = (l?: string) => /^\s*[-*+]\s+\[[ xX]\]/.test(l || "");
+      const onLine = lines[lineNo];
+      let i = lineNo;
+      const wrong = !onLine || title ? !isTask(onLine) || !onLine.includes(title) : !isTask(onLine);
+      if (wrong) {
+        const byTitle = title ? lines.findIndex((l) => isTask(l) && l.includes(title)) : -1;
+        i = byTitle >= 0 ? byTitle : -1;
+        if (i < 0 && !title && isTask(onLine)) i = lineNo;
+      }
+      if (i < 0 || i >= lines.length) {
+        console.warn("TLT: 找不到要改的那一行，这次跳过", path, lineNo, title || "");
+        return data;
+      }
+      lines[i] = fn(lines[i]);
+      ok = true;
       return lines.join("\n");
     });
-    return true;
+    return ok;
   }
 
   /** 删除一条任务（连同它下面缩进的步骤） */
@@ -726,38 +750,39 @@ export class Store {
     const today = todayISO();
     const willBeDone = !t.done;
     // 勾上：补 [done:: 日期]；取消勾选：把 [done::] 去掉（重开就重开，别留旧完成时间）
-    await this.patchLine(t.file, t.line, (raw) => {
+    const ok = await this.patchLine(t.file, t.line, (raw) => {
       const next = toggleTaskLine(raw);
       return setTaskField(next, "done", willBeDone ? today : null);
-    });
+    }, t.title);
     await this.appendEvent({
       kind: willBeDone ? "task.done" : "task.reopen",
       project: t.project, task: t.title,
     });
+    return ok;
   }
 
   async setDue(t: Task, due: string) {
-    await this.patchLine(t.file, t.line, (l) => setTaskDue(l, due));
+    return this.patchLine(t.file, t.line, (l) => setTaskDue(l, due), t.title);
   }
 
   /** 改任务的开始日（🛫）；传空串表示删掉 */
   async setStart(t: Task, start: string) {
-    await this.patchLine(t.file, t.line, (l) => {
+    return this.patchLine(t.file, t.line, (l) => {
       if (!start) return l.replace(/\s*🛫\s*\d{4}-\d{2}-\d{2}/g, "");
       if (/🛫\s*\d{4}-\d{2}-\d{2}/.test(l)) return l.replace(/🛫\s*\d{4}-\d{2}-\d{2}/, `🛫 ${start}`);
       return l.replace(/(\[[^\]]*\]\s*)?$/, (tail) => ` 🛫 ${start}${tail}`);
-    });
+    }, t.title);
   }
 
   async setField(t: Task, key: string, value: string | number | null) {
-    await this.patchLine(t.file, t.line, (l) => setTaskField(l, key, value));
+    return this.patchLine(t.file, t.line, (l) => setTaskField(l, key, value), t.title);
   }
 
   /** 改任务标题：只换标题，🛫/📅 与 [field::] 段原样留在后面 */
   async setTitle(t: Task, title: string) {
     const body = title.trim();
-    if (!body) return;
-    await this.patchLine(t.file, t.line, (l) => {
+    if (!body) return false;
+    return this.patchLine(t.file, t.line, (l) => {
       const m = /^(\s*[-*+]\s+\[[ xX]\]\s+)(.*)$/.exec(l);
       if (!m) return l;
       const rest = m[2];
@@ -765,7 +790,7 @@ export class Store {
       const fields = (rest.match(/\[[^[\]]+::\s*(?:\[\[[^\]]*\]\]|[^\]])*\]/g) || []).join(" ");
       const tail = [dates, fields].filter(Boolean).join(" ");
       return `${m[1]}${body}${tail ? " " + tail : ""}`;
-    });
+    }, t.title);
   }
 
   /** 把一条任务（连同缩进步骤）搬到另一个项目/里程碑下 */

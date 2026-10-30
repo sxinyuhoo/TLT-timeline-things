@@ -97,6 +97,8 @@ export const EN: Record<string, string> = {
   "按创建时间": "By created",
   "按截止时间": "By due",
   "反向排列": "Reverse",
+  "勾选没写进去，看看控制台里的报错": "The tick was not written — check the console for the error",
+  "没找到这条任务（文件可能刚被改过），重开这篇笔记再试一次": "That task line could not be found (the file may have just changed) — reopen this note and try again",
   "百分比＝{w}内未完成任务的人天 ÷ 该月可用人天。任务要同时满足：派给了这个人、有截止日（落在{w}）、填了工作量；缺哪样卡片上会写出来。": "Percent = effort of open tasks inside {w} ÷ that month's available days. A task counts only if assigned to this person, due inside {w}, and effort-filled; whatever is missing is listed on the card.",
   "口径「全部」：所有未完成任务都算，分母＝一个季度的产能（每人 {n} 人天）。同一套算法：任务要填了工作量才进得去。": "Scope “All”: every open task counts; the denominator is one quarter of capacity ({n} person-days each). Same rule — only tasks with effort filled in are counted.",
   "去掉这条子项": "Remove this sub-task",

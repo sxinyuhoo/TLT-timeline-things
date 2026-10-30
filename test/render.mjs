@@ -2343,6 +2343,57 @@ await t("新建任务：子项能建（回车加一条、写进文件、光标�
   assert.ok(!/第一步/.test(text), "删掉的那条不该写进去");
 });
 
+await t("行号漂了也要改对行：按标题找回来，找不到就不写", async () => {
+  document.body.empty();
+  files["TLT/tasks/漂移.md"] = `# 漂移\n\n## 一\n\n- [ ] 甲任务 📅 ${D}\n- [ ] 乙任务 📅 ${D}\n`;
+  await store.load();
+  const a = store.tasks.find((t) => t.title === "甲任务");
+  assert.ok(a, "夹具没读出来");
+  // 在它上面插一行（模拟"在别处加了子项/任务"），且不重载 store → a.line 就漂了
+  files["TLT/tasks/漂移.md"] = `# 漂移\n\n## 一\n\n- [ ] 新来的 📅 ${D}\n- [ ] 甲任务 📅 ${D}\n- [ ] 乙任务 📅 ${D}\n`;
+  const ok = await store.toggleTask(a);
+  assert.ok(ok, "漂了也该找得到那条任务");
+  const text = files["TLT/tasks/漂移.md"];
+  assert.match(text, /- \[x\] 甲任务/, `勾的必须是甲：\n${text}`);
+  assert.match(text, /- \[ \] 新来的/, "不能把别人勾上");
+  assert.match(text, /- \[ \] 乙任务/, "乙也不该被动");
+  // 真找不到：不写（宁可这次不生效）
+  const ghost = { ...a, title: "根本没有这条", line: 2 };
+  const ok2 = await store.toggleTask(ghost);
+  assert.equal(ok2, false, "找不到就别写");
+  assert.match(files["TLT/tasks/漂移.md"], /- \[x\] 甲任务/, "文件不该被乱改");
+  assert.match(files["TLT/tasks/漂移.md"], /- \[ \] 新来的/, "也不该顺手改别人");
+});
+
+await t("事件流写不进去，也不能连累勾选本身", async () => {
+  document.body.empty();
+  files["TLT/tasks/事件失败.md"] = `# 事件失败\n\n## 一\n\n- [ ] 要勾的活 📅 ${D}\n`;
+  await store.load();
+  const t2 = store.tasks.find((x) => x.title === "要勾的活");
+  const real = store.appendEventInner;
+  store.appendEventInner = async () => { throw new Error("events 写不进去"); };
+  const ok = await store.toggleTask(t2);          // 不该抛
+  store.appendEventInner = real;
+  assert.ok(ok, "勾选本身要成功");
+  assert.match(files["TLT/tasks/事件失败.md"], /- \[x\] 要勾的活/, "任务文件要改到");
+});
+
+await t("日记块刷新按 DOM 找人（宿主换掉也刷得到）", async () => {
+  document.body.empty();
+  const inst = makePlugin();
+  inst.app = app;
+  let drawn = 0;
+  const host = document.createElement("div");
+  host.className = "tlt-daily-host";
+  host.__tltDraw = () => { drawn += 1; };
+  document.body.appendChild(host);
+  const plain = document.createElement("div");       // 没有画法的块：不该炸
+  plain.className = "block-language-tlt-daily";
+  document.body.appendChild(plain);
+  inst.refreshDailyBlocks();
+  assert.equal(drawn, 1, `挂在元素上的画法要被调到，实际 ${drawn}`);
+});
+
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {
   document.body.empty();
   plugin.activeProject = null;

@@ -1,4 +1,4 @@
-import { MarkdownPostProcessorContext } from "obsidian";
+import { MarkdownPostProcessorContext, Notice } from "obsidian";
 import type TLTPlugin from "../main";
 import { Task, todayISO } from "../data";
 import { t as T } from "../i18n";
@@ -97,7 +97,17 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
     cb.addEventListener("mousedown", hold);
     cb.addEventListener("click", (ev) => {
       hold(ev);
-      void (async () => { await store.toggleTask(t); plugin.refreshDailyBlocks(); })();
+      void (async () => {
+        try {
+          const ok = await store.toggleTask(t);
+          if (!ok) new Notice(T("没找到这条任务（文件可能刚被改过），重开这篇笔记再试一次"));
+        } catch (e) {
+          console.error("TLT: 勾选失败", e);
+          new Notice(T("勾选没写进去，看看控制台里的报错"));
+        } finally {
+          plugin.refreshDailyBlocks();                  // 不管成没成都要重画，免得界面停在旧状态
+        }
+      })();
     });
     r.appendChild(cb);
     const body = el("div", "tlt-daily-b");
@@ -129,7 +139,11 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
         sc.addEventListener("mousedown", hold);
         sc.addEventListener("click", (ev) => {
           hold(ev);
-          void (async () => { await store.setStepDone(t, i, !st.done); plugin.refreshDailyBlocks(); })();
+          void (async () => {
+            try { await store.setStepDone(t, i, !st.done); }
+            catch (e) { console.error("TLT: 子项勾选失败", e); }
+            finally { plugin.refreshDailyBlocks(); }
+          })();
         });
         sr.append(sc, el("span", "", st.text));
         steps.appendChild(sr);
@@ -169,11 +183,10 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
  */
 export function registerDailyBlocks(plugin: TLTPlugin) {
   plugin.registerMarkdownCodeBlockProcessor("tlt-daily", (source: string, host: HTMLElement, ctx: MarkdownPostProcessorContext) => {
-    const entry = {
-      host,
-      draw: () => renderDaily(plugin, host, source, ctx.sourcePath),
-    };
-    plugin.dailyBlocks.add(entry);
-    entry.draw();
+    host.addClass("tlt-daily-host");                    // 自己打个记号，刷新时按它找人
+    // 画法挂在元素上：块被 Obsidian 重画/重建后，刷新直接找得到（不再依赖会过期的登记表）
+    const draw = () => renderDaily(plugin, host, source, ctx.sourcePath);
+    (host as unknown as { __tltDraw?: () => void }).__tltDraw = draw;
+    draw();
   });
 }

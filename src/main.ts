@@ -109,13 +109,23 @@ export class TLTPlugin extends Plugin {
   private cmdNames: { cmd: { name: string }; full: () => string }[] = [];
   private settingTab?: TLTSettingTab;
   /** 日记里 tlt-daily 块的渲染入口（数据一变就整体重画；宿主已离线的顺手摘掉） */
-  dailyBlocks = new Set<{ host: HTMLElement; draw: () => void }>();
+  /** 日记块画在哪儿由 DOM 说了算：这里只记"这个 host 会怎么画"（挂在元素上，见 daily.ts） */
 
+  /**
+   * 重画所有可见的日记块。
+   * 以前维护一份 Set<{host,draw}>：宿主要是被 Obsidian 重画（缓存复用 / 视图重渲染）就断了，
+   * 断了以后刷新全部落空——用户那边看到的就是"点了勾、改了日期，块里什么都没变"。
+   * 现在直接按 DOM 找块、取挂在元素上的画法，谁在页面上就刷谁。
+   */
   refreshDailyBlocks() {
-    [...this.dailyBlocks].forEach((entry) => {
-      if (!entry.host.isConnected) { this.dailyBlocks.delete(entry); return; }
-      try { entry.draw(); } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
+    let n = 0;
+    this.app.workspace.iterateAllLeaves?.((leaf: unknown) => { void leaf; });
+    document.querySelectorAll<HTMLElement>(".block-language-tlt-daily, .tlt-daily-host").forEach((host) => {
+      const draw = (host as unknown as { __tltDraw?: () => void }).__tltDraw;
+      if (typeof draw !== "function") return;
+      try { draw(); n += 1; } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
     });
+    if (!n) console.debug("TLT: 没有找到需要重画的日记块");
   }
 
   /**
