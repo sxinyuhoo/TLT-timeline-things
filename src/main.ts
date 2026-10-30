@@ -455,6 +455,9 @@ export class TLTPlugin extends Plugin {
       }
       const type = leaf.view?.getViewType?.();
       if (type !== VIEW_TYPE_PANEL) return false;
+      // 右侧栏如果被收起来了，叶子开出来也是看不见的——先把它展开再 reveal
+      const split = (workspace as unknown as { rightSplit?: { expand?: () => void } }).rightSplit;
+      try { split?.expand?.(); } catch (e) { console.error("TLT: 展开右侧栏失败", e); }
       await workspace.revealLeaf(leaf);
       return true;
     };

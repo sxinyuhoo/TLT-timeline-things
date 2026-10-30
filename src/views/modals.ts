@@ -576,12 +576,17 @@ export class TaskModal extends TltModal {
   }
 
   /** 子项动过之后：重新读盘拿最新的 steps，再重画这一层（不重读会看不到刚加的那条） */
-  private async refreshSteps() {
+  private async refreshSteps(keepFocus = false) {
     await this.store.load();
     const fresh = this.store.tasks.find((x) => x.file === this.task.file && x.title === this.task.title);
     if (fresh) this.task = fresh;
     this.contentEl.empty();
     void this.onOpen();
+    if (keepFocus) {
+      // 刚敲完一条子项：焦点回到输入框，接着敲下一条
+      const input = this.contentEl.querySelector<HTMLInputElement>(".tlt-step-add");
+      if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+    }
   }
 
   /** 就地改子项文字（回车保存，Esc 取消） */
@@ -691,7 +696,7 @@ export class TaskModal extends TltModal {
       if (e.key !== "Enter") return;
       const v = stepAdd.value.trim();
       if (!v) return;
-      void (async () => { await this.store.addStep(this.task, v); await this.refreshSteps(); })();
+      void (async () => { await this.store.addStep(this.task, v); await this.refreshSteps(true); })();
     });
     stepBox.appendChild(stepAdd);
     stepRow.appendChild(stepBox);

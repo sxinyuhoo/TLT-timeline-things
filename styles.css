@@ -1490,7 +1490,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 }
 /* 子项标记：一颗子弹点，不是勾选框——未完成是空心点，完成是实心点 + 划掉 */
 .tlt-scb {
-  width: 7px; height: 7px; flex: none; border-radius: 999px; cursor: pointer;
+  width: 10px; height: 10px; flex: none; border-radius: 999px; cursor: pointer;
   border: 1.2px solid var(--tlt-ink4); background: transparent;
   transition: background .15s ease, border-color .15s ease;
 }
@@ -1506,9 +1506,11 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 }
 .tlt-step:hover .tlt-step-del { opacity: 1; }
 .tlt-step-del:hover { background: rgba(217, 117, 92, .14); color: #D9755C; }
+/* 子项那一行的高度和圆点都放大一点：原来 7px 的点太难点，行也挤 */
+:is(.tlt-root, .tlt-modal) .tlt-step { padding: 3px 0; gap: 8px; }
 :is(.tlt-root, .tlt-modal) .tlt-step-add, :is(.tlt-root, .tlt-modal) .tlt-step-edit {
   width: 100%; border: 1px dashed var(--tlt-line2); background: transparent;
-  border-radius: 6px; padding: 2px 7px; font-size: 10px; color: var(--tlt-ink2);
+  border-radius: 7px; padding: 5px 8px; font-size: 10.5px; color: var(--tlt-ink2);
 }
 .tlt-step-add::placeholder { color: var(--tlt-ink5); }
 
@@ -1675,3 +1677,20 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 /* 日历：已完成的计划块（勾掉任务后日程不至于凭空消失） */
 .tlt-blk.plan.done { opacity: .5; }
 .tlt-blk.plan.done .tlt-blk-t { text-decoration: line-through; }
+
+/* ---- 任务行右列：进度环（带百分比）+ 时间轨 ---- */
+.tlt-task-x { flex: none; display: flex; align-items: center; gap: 9px; margin-left: 2px; padding-top: 1px; }
+.tlt-stepring svg { display: block; }
+.tlt-sr-t { font-size: 7.5px; fill: var(--tlt-ink3); font-variant-numeric: tabular-nums; }
+.tlt-stepring.all .tlt-sr-t { fill: var(--tlt-ink5); }
+/* 时间轨：左端开始日 — 一条轴 — 右端截止日 — 一句状态 */
+.tlt-rail { display: inline-flex; align-items: center; gap: 6px; font-size: 9px; color: var(--tlt-ink4);
+  font-variant-numeric: tabular-nums; }
+.tlt-rail.done { opacity: .55; }
+.tlt-rail-bar { position: relative; width: 54px; height: 4px; border-radius: 2px; background: var(--tlt-line4); }
+.tlt-rail-bar i { position: absolute; left: 0; top: 0; height: 100%; border-radius: 2px; background: var(--tlt-acc); }
+.tlt-rail-now { position: absolute; top: -2.5px; width: 1px; height: 9px; background: var(--tlt-ink4); opacity: .8; }
+.tlt-task.done .tlt-rail-bar i { background: var(--tlt-ink4); }
+.tlt-rail-s { color: var(--tlt-ink3); }
+.tlt-rail-s.late { color: #D98B5F; }
+.tlt-rail-s.warn { color: #D9A05F; }

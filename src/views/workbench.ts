@@ -47,7 +47,7 @@ function panelIcon(): SVGSVGElement {
   return svg;
 }
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
-type TaskDim = "d" | "w" | "m" | "q" | "all";
+type TaskDim = "d" | "run" | "w" | "m" | "q" | "all";
 type SortScope = "project" | "milestone" | "task";
 /** 排序口径的中文名（下拉菜单和按钮上都用它） */
 function sortLabel(k: SortKey): string {
@@ -474,7 +474,8 @@ export class WorkbenchView extends ItemView {
     panelBtn.dataset.panelopen = "1";
     panelBtn.setAttribute("aria-label", T("TLT 概览面板（右侧栏）"));
     panelBtn.appendChild(panelIcon());
-    panelBtn.onclick = () => { void this.plugin.togglePanel(); };
+    // 注意：不要在这里再挂 onclick——视图根部有个委托点击（[data-panelopen]）已经在处理，
+    // 两边都挂会"开一次又关一次"，表现就是点了没反应。
     const theme = el("button", "tlt-btn", this.plugin.isLight() ? "☾" : "☀");
     theme.dataset.tltTheme = "1";
     theme.title = T("切换明暗");
@@ -909,8 +910,10 @@ export class WorkbenchView extends ItemView {
     const p = el("div", "tlt-pane");
     const m = this.tasksInDim();
     const head = el("div", "tlt-pane-h");
-    const label = { d: T("今天"), w: T("本周"), m: T("本月"), q: T("本季度"), all: T("全部") }[this.taskDim];
-    head.append(el("span", "", T("{l} · {a} 逾期 / {b} 要做 / {c} 已完成 / {d} 待排期", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.pending.length })));
+    const label = { d: T("今天"), run: T("开展中"), w: T("本周"), m: T("本月"), q: T("本季度"), all: T("全部") }[this.taskDim];
+    head.append(el("span", "", this.taskDim === "run"
+      ? T("{l} · {a} 逾期 / {b} 有截止 / {c} 没截止", { l: label, a: m.late.length, b: m.todo.length, c: m.pending.length })
+      : T("{l} · {a} 逾期 / {b} 要做 / {c} 已完成 / {d} 待排期", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.pending.length })));
     head.appendChild(el("span", "tlt-spacer"));
     const tags = Array.from(new Set(["工作", "个人", ...this.store.tasks.flatMap((t) => t.tags || [])]));
     const tf = el("div", "tlt-seg tlt-tag-seg");
@@ -921,7 +924,7 @@ export class WorkbenchView extends ItemView {
     });
     head.appendChild(tf);
     const seg = el("div", "tlt-seg tlt-dim-seg");
-    ([["d", T("今天")], ["w", T("本周")], ["m", T("本月")], ["q", T("本季度")], ["all", T("全部")]] as const).forEach(([k, t]) => {
+    ([["d", T("今天")], ["run", T("开展中")], ["w", T("本周")], ["m", T("本月")], ["q", T("本季度")], ["all", T("全部")]] as const).forEach(([k, t]) => {
       const b2 = el("button", "tlt-seg-b" + (this.taskDim === k ? " on" : ""), t);
       b2.dataset.dim = k;
       seg.appendChild(b2);
@@ -932,7 +935,11 @@ export class WorkbenchView extends ItemView {
     this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
     if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
-    const groups: [string, Task[], string][] = [
+    const groups: [string, Task[], string][] = this.taskDim === "run" ? [
+      [T("已逾期"), m.late, "#D98B5F"],
+      [T("进行中 · 有截止"), m.todo, "#5B6CFF"],
+      [T("进行中 · 没截止"), m.pending, "#8B7CF6"],
+    ] : [
       [T("{l}逾期", { l: label }), m.late, "#D98B5F"],
       [T("{l}要做", { l: label }), m.todo, "#5B6CFF"],
       [T("{l}已完成", { l: label }), m.done, "#4FB59A"],
@@ -945,7 +952,10 @@ export class WorkbenchView extends ItemView {
       h.append(dot, el("span", "", name), el("span", "tlt-mgc", String(list.length)));
       g.appendChild(h);
       if (!list.length) g.appendChild(el("div", "tlt-empty", T("没有")));
-      this.sortTasks(list).forEach((t) => g.appendChild(this.taskRow(t)));
+      const shown = this.taskDim === "run"
+        ? [...list].sort((x, y) => (x.due || "9999-99-99").localeCompare(y.due || "9999-99-99"))
+        : this.sortTasks(list);
+      shown.forEach((t) => g.appendChild(this.taskRow(t)));
       p.appendChild(g);
     });
     return p;
@@ -959,8 +969,19 @@ export class WorkbenchView extends ItemView {
       .filter((t) => !this.taskTag ||
         (this.taskTag === "工作" || this.taskTag === "个人" ? t.scope === this.taskTag : (t.tags || []).includes(this.taskTag)));
     const dim = this.taskDim;
-    const inDim = (d?: string) => (dim === "all" ? true : dim === "d" ? d === todayISO() : !!d && inPeriod(d, dim));
+    const period = (dim === "all" || dim === "run" ? "all" : dim) as Period;
+    const inDim = (d?: string) => (dim === "all" ? true : dim === "d" ? d === todayISO() : !!d && inPeriod(d, period));
     const today = todayISO();
+    // 「开展中」：没完成的、排过期的；只有截止日的也算（时间轨按今天起算）
+    if (dim === "run") {
+      const open = all.filter((t) => !t.done && (t.start || t.due) && (!t.start || t.start <= today));
+      return {
+        late: open.filter((t) => t.due && t.due < today),
+        todo: open.filter((t) => t.due && t.due >= today),
+        done: [],
+        pending: open.filter((t) => !t.due),
+      };
+    }
     // 「今天」：逾期的一律算今天的活儿；已完成的按"今天完成的"算
     const lateIn = (d: string) => (dim === "d" ? d < today : inDim(d));
     const doneIn = (t: Task) => (dim === "d" ? t.doneAt === today || t.due === today : inDim(t.due));
@@ -972,37 +993,93 @@ export class WorkbenchView extends ItemView {
     };
   }
 
-  /** 子项进度环：只有带子项的任务才画；点一下就地展开子项 */
+  /**
+   * 子项进度环：只有带子项的任务才画；点一下就地展开子项。
+   * 环里写百分比（不再只是悬停才看得到 3/7）——环＝活干完了多少，时间轨＝日历走了多少。
+   */
   private stepRing(t: Task): HTMLElement {
     const total = t.steps.length;
     const done = t.steps.filter((x) => x.done).length;
-    const pct = total ? done / total : 0;
-    const R = 5.5, C = 2 * Math.PI * R;
+    const pct = total ? Math.round((done / total) * 100) : 0;
     const ring = el("span", "tlt-stepring" + (t.done ? " all" : done === total ? " ready" : ""));
     ring.dataset.steps = t.id;
-    ring.title = T("子项 {a}/{b}，点一下展开", { a: done, b: total });
+    ring.title = T("子项 {a}/{b}（{p}%）· 点一下展开", { a: done, b: total, p: pct });
+    const R = 10.2, C = 2 * Math.PI * R, CX = 13;
     const svg = createSvg("svg");
-    svg.setAttribute("viewBox", "0 0 14 14");
-    svg.setAttribute("width", "14");
-    svg.setAttribute("height", "14");
-    svg.setAttribute("aria-hidden", "true");
-    const circle = (cls: string) => {
-      const c = createSvg("circle");
-      c.setAttribute("cx", "7");
-      c.setAttribute("cy", "7");
-      c.setAttribute("r", String(R));
-      c.setAttribute("class", cls);
-      return c;
-    };
-    const fg = circle("tlt-sr-fg");
-    fg.setAttribute("stroke-dasharray", C.toFixed(2));
-    fg.setAttribute("stroke-dashoffset", (C * (1 - pct)).toFixed(2));
-    svg.append(circle("tlt-sr-bg"), fg);
+    svg.setAttribute("viewBox", "0 0 26 26");
+    svg.setAttribute("width", "26");
+    svg.setAttribute("height", "26");
+    const bg = createSvg("circle");
+    bg.setAttribute("class", "tlt-sr-bg");
+    bg.setAttribute("cx", String(CX)); bg.setAttribute("cy", String(CX)); bg.setAttribute("r", String(R));
+    const fg = createSvg("circle");
+    fg.setAttribute("class", "tlt-sr-fg");
+    fg.setAttribute("cx", String(CX)); fg.setAttribute("cy", String(CX)); fg.setAttribute("r", String(R));
+    fg.setAttribute("stroke-dasharray", String(C));
+    fg.setAttribute("stroke-dashoffset", String(Math.max(0, C * (1 - pct / 100))));
+    const txt = createSvg("text");
+    txt.setAttribute("class", "tlt-sr-t");
+    txt.setAttribute("x", String(CX)); txt.setAttribute("y", String(CX + 2.6));
+    txt.setAttribute("text-anchor", "middle");
+    txt.textContent = `${pct}%`;
+    svg.append(bg, fg, txt);
     ring.appendChild(svg);
     return ring;
   }
 
-  /** 就地展开的子项块：勾选 / 点文字改 / 删 / 回车加一条 */
+  /**
+   * 时间轨：开始 → 截止这条轴上，今天走到哪儿了。
+   * 跟上面的环分工明确——环看"活干完了多少"，这条看"日历走了多少"。
+   * 没填开始日期的按今天算起点（用户口径：只有截止日也算开展中）。
+   * 开始、截止两个日期就住在这条轨道的两端，不再散在标签堆里。
+   */
+  private timeRail(t: Task): HTMLElement | null {
+    const today = todayISO();
+    const start = t.start || "";
+    const due = t.due || "";
+    if (!start && !due) return null;
+    const DAY = 86400000;
+    const days = (x: string, y: string) => Math.round((Date.parse(y) - Date.parse(x)) / DAY);
+    const from = start || today;
+    const box = el("span", "tlt-rail" + (t.done ? " done" : ""));
+    box.appendChild(el("span", "tlt-rail-d", start ? start.slice(5) : T("今")));
+    if (due) {
+      const bar = el("span", "tlt-rail-bar");
+      const a = Date.parse(from), b = Date.parse(due);
+      const span = Math.max(1, b - a);
+      const pct = Math.min(100, Math.max(0, Math.round(((Date.parse(today) - a) / span) * 100)));
+      const fill = el("i");
+      fill.style.width = pct + "%";
+      bar.appendChild(fill);
+      const now = el("span", "tlt-rail-now");
+      now.style.left = pct + "%";
+      bar.appendChild(now);
+      box.appendChild(bar);
+      box.appendChild(el("span", "tlt-rail-d", due.slice(5)));
+    }
+    const left = due ? days(today, due) : 0;
+    const hasStart = !!start;
+    let text: string, mod = "";
+    if (t.done) {
+      text = t.doneAt ? T("完成于 {d}", { d: t.doneAt.slice(5) }) : T("已完成");
+    } else if (due && left < 0) {
+      text = T("逾期 {n} 天", { n: -left }); mod = "late";
+    } else if (due && left === 0) {
+      text = T("今天到期"); mod = "warn";
+    } else if (due && hasStart && start > today) {
+      text = T("{n} 天后开始", { n: days(today, start) });
+    } else if (due) {
+      text = T("剩 {n} 天", { n: left });
+    } else {
+      text = T("进行中 · 第 {n} 天", { n: Math.max(1, days(start, today) + 1) });
+    }
+    box.appendChild(el("span", "tlt-rail-s" + (mod ? " " + mod : ""), text));
+    box.title = due
+      ? T("开始 {a} · 截止 {b} · 今天走了 {p}%", { a: start || T("（未填，按今天算）"), b: due, p: Math.min(100, Math.max(0, Math.round(((Date.parse(today) - Date.parse(from)) / Math.max(1, Date.parse(due) - Date.parse(from))) * 100))) })
+      : T("开始 {a} · 没有截止", { a: start });
+    return box;
+  }
+
   private stepBlock(t: Task): HTMLElement {
     const box = el("div", "tlt-steps");
     t.steps.forEach((st, i) => {
@@ -1160,17 +1237,22 @@ export class WorkbenchView extends ItemView {
     body.appendChild(title);
     const meta = el("div", "tlt-task-m");
     if (t.milestone) meta.appendChild(el("span", "tlt-tag", t.milestone));
-    meta.appendChild(el("span", "", t.due ? t.due.slice(5) : T("待排期")));
+    // 开始 / 截止不再写在标签堆里——它们住在右边的时间轨上；只有两边都没有才写「待排期」
+    if (!t.start && !t.due) meta.appendChild(el("span", "", T("待排期")));
     if (t.est !== undefined) meta.appendChild(el("span", "tlt-wl", `${t.est} ${T("人天")}`));
     else if (t.wl) meta.appendChild(el("span", "tlt-wl", `${t.wl}%`));
     if (t.scope === "个人") meta.appendChild(el("span", "tlt-tag own", T("个人")));
     (t.tags || []).forEach((tg) => meta.appendChild(el("span", "tlt-tag", tg)));
     if (t.owners.length) meta.appendChild(el("span", "", t.owners.join(T("、"))));
     if (t.files.length) meta.appendChild(el("span", "", `▤ ${t.files.length}`));
-    if (t.done && t.doneAt) meta.appendChild(el("span", "tlt-doneat", T("完成 {d}", { d: t.doneAt.slice(5) })));
-    if (t.steps.length) meta.appendChild(this.stepRing(t));
     body.appendChild(meta);
     r.appendChild(body);
+    // 右列：环（子项完成度）＋ 时间轨（时间走到哪了）
+    const aside = el("div", "tlt-task-x");
+    if (t.steps.length) aside.appendChild(this.stepRing(t));
+    const rail = this.timeRail(t);
+    if (rail) aside.appendChild(rail);
+    if (aside.childElementCount) r.appendChild(aside);
     if (this.expandedSteps.has(t.id)) r.appendChild(this.stepBlock(t));
     r.addEventListener("contextmenu", (ev) => {
       ev.preventDefault();
@@ -1451,6 +1533,9 @@ export class WorkbenchView extends ItemView {
         void (async () => {
           await this.store.addStep(task, v);
           await this.refresh();
+          // 光标回到子项输入框：连着登记第二条不用再点一次
+          const again = this.contentEl.querySelector<HTMLInputElement>(`[data-stepadd="${task.id}"]`);
+          if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
         })();
       });
     });

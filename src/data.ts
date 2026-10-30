@@ -3,6 +3,13 @@
  * 语法约定见 docs/SYNTAX.md。
  */
 
+/** 任务属于工作还是个人：显式 [scope:: 个人] 或者标签里带「个人」都算个人（两者都在用） */
+export function taskScopeOf(f: Record<string, string>): "工作" | "个人" {
+  if (f["scope"] === "个人") return "个人";
+  const tags = (f["tags"] || "").split(",").map((x) => x.trim());
+  return tags.includes("个人") ? "个人" : "工作";
+}
+
 export type Pri = 0 | 1 | 2 | 3;   // 0 是历史值（老的「低」），读取时归到 1
 export type Period = "w" | "m" | "q";
 
@@ -195,7 +202,7 @@ export function parseTaskLine(
     pri: (Math.max(1, Math.min(3, pri)) as Pri),   // 0（低）不再支持：一律归到「普通」
     owners: links(f["owner"] || f["who"] || ""),
     tags: (f["tags"] || "").split(/[,，]/).map((x) => x.trim()).filter(Boolean),
-    scope: f["scope"] === "个人" ? "个人" : "工作",
+    scope: taskScopeOf(f),
     project: ctx.project,
     milestone: ctx.milestone,
     steps: ctx.steps || [],
@@ -332,7 +339,7 @@ export function parseLogMonth(content: string, file: string): Task[] {
       wl: 0, pw: "m", pri: 1,
       owners: links(f["who"] || ""),
       tags: (f["tags"] || "").split(/[,，]/).map((x) => x.trim()).filter(Boolean),
-    scope: f["scope"] === "个人" ? "个人" : "工作",
+    scope: taskScopeOf(f),
       project: f["proj"] || "",
       milestone: f["ms"] || undefined,
       steps: [],

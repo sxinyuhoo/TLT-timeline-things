@@ -1794,7 +1794,7 @@ await t("任务视图：维度里多了「今天」，且只显示今天与逾�
   view.taskDim = "d";
   await view.render();
   const dims = [...document.querySelectorAll("[data-dim]")].map((b) => b.textContent.trim());
-  assert.deepEqual(dims, ["今天", "本周", "本月", "本季度", "全部"], `维度顺序应是今天在最前：${dims.join(",")}`);
+  assert.deepEqual(dims, ["今天", "开展中", "本周", "本月", "本季度", "全部"], `维度顺序应是今天在最前、接着开展中：${dims.join(",")}`);
   assert.ok(document.querySelector('[data-dim="d"]').classList.contains("on"), "今天应是选中态");
   const today = new Date();
   const p2 = (n) => String(n).padStart(2, "0");
@@ -1841,9 +1841,135 @@ await t("完成的任务在行上带完成日期", async () => {
   await new Promise((r) => window.setTimeout(r, 200));
   const doneRow = [...document.querySelectorAll(".tlt-task")].find((r) => r.classList.contains("done"));
   assert.ok(doneRow, "应出现已完成的行");
-  const tag = doneRow.querySelector(".tlt-doneat");
-  assert.ok(tag, `已完成的行应写明完成日期，实际：${doneRow.textContent.slice(0, 60)}`);
-  assert.ok(/完成 \d{2}-\d{2}/.test(tag.textContent), `文案应是「完成 MM-DD」：${tag.textContent}`);
+  // 完成日期现在住在右边时间轨的状态句里
+  const tag = doneRow.querySelector(".tlt-rail-s");
+  assert.ok(tag, `已完成的行应写明完成日期，实际：${doneRow.textContent.slice(0, 80)}`);
+  assert.ok(/完成于 \d{2}-\d{2}/.test(tag.textContent), `文案应是「完成于 MM-DD」：${tag.textContent}`);
+});
+
+await t("任务行右列：进度环带百分比，时间轨两端就是开始/截止", async () => {
+  document.body.empty();
+  const day = (n) => { const d = new Date(Date.parse(D) + n * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## V0.7.4 月报\n\n- [ ] 做了一半的活 🛫 ${day(-6)} 📅 ${day(7)} [created:: ${day(-6)}]\n  - [x] 第一步\n  - [ ] 第二步\n- [ ] 逾期两天 🛫 ${day(-9)} 📅 ${day(-2)}\n- [ ] 只有截止日 📅 ${day(3)}\n- [ ] 还没开始 🛫 ${day(5)} 📅 ${day(20)}\n- [ ] 没排期的事\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  view.taskDim = "all";
+  await view.render();
+  const rowOf = (name) => [...document.querySelectorAll(".tlt-task")].find((r) => (r.textContent || "").includes(name));
+
+  // ① 环：中间写百分比，悬停给子项数
+  const ringDone = rowOf("做了一半的活").querySelector(".tlt-stepring");
+  assert.equal(ringDone.querySelector("text").textContent, "50%", "环里应是百分比");
+  assert.ok(ringDone.title.includes("子项 1/2"), `悬停给子项数：${ringDone.title}`);
+
+  // ② 时间轨：两端是日期，中间一条轴，右端跟一句状态
+  const rail = rowOf("做了一半的活").querySelector(".tlt-rail");
+  assert.ok(rail, "有开始/截止的任务要有时间轨");
+  const dates = [...rail.querySelectorAll(".tlt-rail-d")].map((e) => e.textContent.trim());
+  assert.deepEqual(dates, [day(-6).slice(5), day(7).slice(5)], `轨道两端应是开始日和截止日：${dates.join(" → ")}`);
+  assert.ok(rail.querySelector(".tlt-rail-bar i"), "轨道上应有已过段");
+  assert.ok(rail.querySelector(".tlt-rail-now"), "轨道上应标出今天的位置");
+  assert.ok(/剩 |今天到期|逾期/.test(rail.querySelector(".tlt-rail-s").textContent), `状态句：${rail.querySelector(".tlt-rail-s").textContent}`);
+
+  // ③ 行上不再散落日期标签；没日期的才写「待排期」
+  const meta = rowOf("做了一半的活").querySelector(".tlt-task-m");
+  assert.ok(!/\d{2}-\d{2}/.test(meta.textContent), `日期不该再出现在标签堆里：${meta.textContent}`);
+  assert.ok(rowOf("没排期的事").querySelector(".tlt-task-m").textContent.includes("待排期"));
+  assert.ok(!rowOf("没排期的事").querySelector(".tlt-rail"), "没排期的任务不该有时间轨");
+
+  // ④ 逾期 / 只有截止日 / 未开始，三种说法各不同
+  assert.ok(rowOf("逾期两天").querySelector(".tlt-rail-s").classList.contains("late"), "逾期要标红");
+  assert.match(rowOf("逾期两天").querySelector(".tlt-rail-s").textContent, /逾期 2 天/);
+  const only = rowOf("只有截止日").querySelector(".tlt-rail");
+  assert.equal(only.querySelector(".tlt-rail-d").textContent.trim(), "今", "没填开始日：左端写「今」");
+  assert.match(only.querySelector(".tlt-rail-s").textContent, /剩 3 天/);
+  assert.match(rowOf("还没开始").querySelector(".tlt-rail-s").textContent, /5 天后开始/);
+});
+
+await t("任务视图「开展中」：只列已经开始的活，按剩余天数升序", async () => {
+  document.body.empty();
+  const day = (n) => { const d = new Date(Date.parse(D) + n * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 逾期两天 🛫 ${day(-9)} 📅 ${day(-2)}\n- [ ] 还有五天 📅 ${day(5)}\n- [ ] 今天到期 🛫 ${day(-1)} 📅 ${D}\n- [ ] 没截止但有开始 🛫 ${day(-3)}\n- [ ] 还没开始 🛫 ${day(4)} 📅 ${day(12)}\n- [ ] 没排期的事\n- [x] 已经完成 📅 ${D} [done:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  view.taskDim = "run";
+  view.proj = "示例项目";        // 只看这一个项目，别的项目里的任务不掺进来
+  await view.render();
+  const titles = [...document.querySelectorAll(".tlt-task")].map((r) => (r.querySelector(".tlt-task-t")?.textContent || "").trim());
+  assert.ok(titles.includes("逾期两天") && titles.includes("还有五天") && titles.includes("今天到期"), `该有的都得在：${titles.join(" | ")}`);
+  assert.ok(titles.includes("没截止但有开始"), "有开始没截止也算开展中");
+  assert.ok(!titles.includes("还没开始"), `没开始的不算开展中：${titles.join(" | ")}`);
+  assert.ok(!titles.includes("没排期的事"), "没日期的不算开展中");
+  assert.ok(!titles.includes("已经完成"), "完成的不算开展中");
+  // 排序：逾期的排最前，其余按截止日升序，没截止的垫底
+  assert.equal(titles[0], "逾期两天", `最该盯的排最前：${titles.join(" | ")}`);
+  assert.deepEqual(titles.slice(0, 4), ["逾期两天", "今天到期", "还有五天", "没截止但有开始"], `按剩余天数升序：${titles.join(" | ")}`);
+  assert.ok((document.querySelector(".tlt-pane-h")?.textContent || "").includes("开展中"), "工具条上要写明这是开展中");
+});
+
+await t("概览入口：点一下只切换一次（别开了又关）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  let calls = 0;
+  const old = view.plugin.togglePanel;
+  view.plugin.togglePanel = () => { calls += 1; };
+  view.contentEl.querySelector("[data-panelopen]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 60));
+  view.plugin.togglePanel = old;
+  assert.equal(calls, 1, `点一次只该切一次（点两次＝开了又关，看起来像没反应），实际 ${calls} 次`);
+});
+
+await t("工作/个人分类：标签里写「个人」的也归个人（老数据没有 [scope::]）", async () => {
+  document.body.empty();
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 工作的事 📅 ${D} [tags:: 工作]\n- [ ] 个人档案的事 📅 ${D} [tags:: 个人]\n- [ ] 什么都不写的事 📅 ${D}\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  view.taskDim = "all";
+  view.proj = "示例项目";
+  view.taskTag = "工作";
+  await view.render();
+  const workTitles = [...document.querySelectorAll(".tlt-task-t")].map((e) => e.textContent.trim());
+  assert.ok(workTitles.includes("工作的事") && workTitles.includes("什么都不写的事"), `工作档应含工作和没标注的：${workTitles.join(" | ")}`);
+  assert.ok(!workTitles.includes("个人档案的事"), `工作档不该出现个人的：${workTitles.join(" | ")}`);
+  view.taskTag = "个人";
+  await view.render();
+  const ownTitles = [...document.querySelectorAll(".tlt-task-t")].map((e) => e.textContent.trim());
+  assert.deepEqual(ownTitles, ["个人档案的事"], `个人档只该有那一条：${ownTitles.join(" | ")}`);
+});
+
+await t("子项：圆点更大、输入框更高、敲完一条焦点回到输入框", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-scb\s*{[^}]*width:\s*10px/.test(css), "子项圆点要放大到 10px（原来 7px 不好点）");
+  assert.ok(/\.tlt-step-add[^{]*{[^}]*padding:\s*5px/.test(css), "子项输入框要高一档");
+  document.body.empty();
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 带子项的任务 📅 ${D}\n  - [ ] 第一条\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  view.taskDim = "all";
+  view.proj = "示例项目";
+  await view.render();
+  const ring = document.querySelector(".tlt-stepring");
+  ring.dispatchEvent(new MouseEvent("click", { bubbles: true }));    // 点环展开子项
+  await new Promise((r) => window.setTimeout(r, 120));
+  const input = document.querySelector("[data-stepadd]");
+  assert.ok(input, "展开后应有子项输入框");
+  input.value = "第二条";
+  input.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  const input2 = document.querySelector("[data-stepadd]");
+  assert.ok(input2, "加完之后输入框还在（保持展开）");
+  assert.equal(document.activeElement, input2, "敲完一条，焦点应自动回到子项输入框，好连着敲下一条");
+  assert.ok(/\n  - \[ \] 第二条/.test(files["TLT/tasks/示例项目.md"]), `子项应写进文件：\n${files["TLT/tasks/示例项目.md"]}`);
 });
 
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {
