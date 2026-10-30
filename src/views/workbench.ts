@@ -1,7 +1,8 @@
 import { t as T } from "../i18n";
 import { ItemView, WorkspaceLeaf, Notice, TFile } from "obsidian";
 import type TLTPlugin from "../main";
-import { Store, DEFAULT_SETTINGS } from "../store";
+import { Store, DEFAULT_SETTINGS, SORT_KEYS, DEFAULT_SORT, SORT_DEFAULT_DIR } from "../store";
+import type { SortCfg, SortKey } from "../store";
 import {
   Task, Msg, Period, todayISO, addDays,
   hhmmToMin, minToHHMM, inPeriod, saturation, D, parseIdeaText, ideaTags, ideaFilterTags,
@@ -47,6 +48,11 @@ function panelIcon(): SVGSVGElement {
 }
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
 type TaskDim = "d" | "w" | "m" | "q" | "all";
+type SortScope = "project" | "milestone" | "task";
+/** 排序口径的中文名（下拉菜单和按钮上都用它） */
+function sortLabel(k: SortKey): string {
+  return { name: T("名称"), created: T("创建时间"), due: T("截止时间"), progress: T("完成进度"), pri: T("优先级") }[k];
+}
 const periodLabel = (p: Period) => ({ w: T("本周"), m: T("本月"), q: T("本季度") }[p]);
 const kindLabel = (k: string) => ({ ask: T("要求"), event: T("活动"), risk: T("风险"), note: T("通知") })[k] || k;
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
@@ -195,64 +201,84 @@ export class WorkbenchView extends ItemView {
 
   /* ---------- 左栏 ---------- */
 
-  /* ---------- 排序：项目 / 里程碑 / 任务通用 ---------- */
+  /* ---------- 排序：项目 / 里程碑 / 任务各排各的 ---------- */
 
-  private sortKey(): "name" | "created" | "due" { return this.cfg.sortBy || "name"; }
-  private sortDir(): 1 | -1 { return this.cfg.sortDir === -1 ? -1 : 1; }
+  private sortCfg(scope: SortScope): SortCfg {
+    const k = scope === "project" ? "sortProjects" : scope === "milestone" ? "sortMilestones" : "sortTasks";
+    const cfg = (this.cfg as unknown as Record<string, SortCfg | undefined>)[k];
+    if (!cfg || !cfg.by || !SORT_KEYS[scope].includes(cfg.by)) return { ...DEFAULT_SORT };
+    return cfg;
+  }
 
-  /** 一组东西按「名称 / 创建 / 截止」排序；取不到时间的排最后，同名时按名称兜底 */
-  private sortItems<T>(items: T[], keyOf: (x: T) => string, nameOf: (x: T) => string): T[] {
-    const dir = this.sortDir();
-    const byName = this.sortKey() === "name";
-    return [...items].sort((a, b) => {
-      const va = keyOf(a), vb = keyOf(b);
-      if (!va && !vb) return nameOf(a).localeCompare(nameOf(b), "zh");
-      if (!va) return 1;
-      if (!vb) return -1;
-      const c = byName ? va.localeCompare(vb, "zh") : va.localeCompare(vb);
-      return c !== 0 ? c * dir : nameOf(a).localeCompare(nameOf(b), "zh");
+  /**
+   * 通用排序：名称走中文比较；数字（进度、优先级）按数值；取不到值的一律排最后；
+   * 打平时按名称兜底，免得同值的时候顺序乱跳。
+   */
+  private sortBy<T>(scope: SortScope, items: T[], nameOf: (x: T) => string, keyOf: (x: T) => string | number | null): T[] {
+    const { by, dir } = this.sortCfg(scope);
+    if (by === "name") {
+      return [...items].sort((x, y) => nameOf(x).localeCompare(nameOf(y), "zh") * dir);
+    }
+    return [...items].sort((x, y) => {
+      const a = keyOf(x), b = keyOf(y);
+      if (a === null && b === null) return nameOf(x).localeCompare(nameOf(y), "zh");
+      if (a === null) return 1;                       // 没有值的永远垫底（不跟方向走）
+      if (b === null) return -1;
+      const c = typeof a === "number" && typeof b === "number"
+        ? a - b
+        : String(a).localeCompare(String(b));
+      return c !== 0 ? c * dir : nameOf(x).localeCompare(nameOf(y), "zh");
     });
   }
 
   /** 一组任务里最早/最晚的那个日期（项目、里程碑用它的任务推算） */
-  private edgeDate(list: Task[], pick: "min" | "max"): string {
-    const k = this.sortKey();
-    if (k === "name") return "";
-    const vals = list.map((t) => (k === "created" ? t.created : t.due) || "").filter(Boolean).sort();
-    if (!vals.length) return "";
-    return pick === "min" ? vals[0] : vals[vals.length - 1];
+  private edgeDate(list: Task[], pick: "created" | "due", min: boolean): string | null {
+    const vals = list.map((t) => (pick === "created" ? t.created : t.due) || "").filter(Boolean).sort();
+    if (!vals.length) return null;
+    return min ? vals[0] : vals[vals.length - 1];
+  }
+
+  /** 进度：已完成 ÷ 全部（0–100，没任务算 null＝排最后） */
+  private pctOf(list: Task[]): number | null {
+    if (!list.length) return null;
+    return Math.round((list.filter((t) => t.done).length / list.length) * 100);
   }
 
   private sortTasks(list: Task[]): Task[] {
-    const k = this.sortKey();
-    return this.sortItems(list,
-      (t) => (k === "created" ? t.created || "" : k === "due" ? t.due || "" : t.title),
-      (t) => t.title);
+    return this.sortBy("task", list, (t) => t.title, (t) => (
+      this.sortCfg("task").by === "pri" ? t.pri : this.sortCfg("task").by === "created" ? (t.created || null) : null
+    ));
   }
 
-  /** 工具条上的排序按钮：当前口径写在按钮上，点开选口径、再点同一个换方向 */
-  private sortControl(): HTMLElement {
+  private sortControl(scope: SortScope): HTMLElement {
     const btn = el("button", "tlt-btn tiny tlt-sortbtn");
-    const label = { name: T("名称"), created: T("创建"), due: T("截止") }[this.sortKey()];
-    btn.textContent = T("排序：{label} {dir}", { label, dir: this.sortDir() === 1 ? "↑" : "↓" });
-    btn.title = T("按名称 / 创建时间 / 截止时间排；点同一个换方向");
-    btn.dataset.sort = "1";
-    btn.onclick = (ev) => {
-      ev.stopPropagation();
-      const mark = (k: string) => (this.sortKey() === k ? (this.sortDir() === 1 ? " ↑" : " ↓") : "");
-      popMenu(btn, [
-        { label: T("按名称") + mark("name"), onClick: () => void this.pickSort("name") },
-        { label: T("按创建时间") + mark("created"), onClick: () => void this.pickSort("created") },
-        { label: T("按截止时间") + mark("due"), onClick: () => void this.pickSort("due") },
-        { label: T("反向排列"), onClick: () => void this.pickSort(this.sortKey(), true) },
-      ], "right");
-    };
+    const { by, dir } = this.sortCfg(scope);
+    btn.textContent = T("排序：{label} {dir}", { label: sortLabel(by), dir: dir === 1 ? "↑" : "↓" });
+    btn.title = T("排序（只管这一栏）：点开选口径，再点同一个换方向");
+    btn.dataset.sort = scope;
+    btn.onclick = (ev) => { ev.stopPropagation(); this.sortMenu(btn, scope); };
     return btn;
   }
 
-  private async pickSort(k: "name" | "created" | "due", flip = false) {
-    if (this.sortKey() === k && !flip) this.cfg.sortDir = this.sortDir() === 1 ? -1 : 1;
-    else { this.cfg.sortBy = k; if (flip) this.cfg.sortDir = this.sortDir() === 1 ? -1 : 1; else this.cfg.sortDir = 1; }
+  /** 排序菜单：三类东西的候选口径不一样（项目能按进度/截止，任务只能按名称/优先级/创建） */
+  private sortMenu(anchor: HTMLElement, scope: SortScope) {
+    const { by, dir } = this.sortCfg(scope);
+    const mark = (k: SortKey) => (by === k ? (dir === 1 ? " ↑" : " ↓") : "");
+    const items = SORT_KEYS[scope].map((k) => ({
+      label: sortLabel(k) + mark(k),
+      onClick: () => void this.pickSort(scope, k),
+    }));
+    items.push({ label: T("反向排列"), onClick: () => void this.pickSort(scope, by, true) });
+    popMenu(anchor, items, "right");
+  }
+
+  private async pickSort(scope: SortScope, by: SortKey, flip = false) {
+    const cur = this.sortCfg(scope);
+    const next: SortCfg = by === cur.by && !flip
+      ? { by, dir: cur.dir === 1 ? -1 : 1 }          // 点同一个＝换方向
+      : { by, dir: flip ? (cur.dir === 1 ? -1 : 1) : SORT_DEFAULT_DIR[by] };
+    const k = scope === "project" ? "sortProjects" : scope === "milestone" ? "sortMilestones" : "sortTasks";
+    (this.cfg as unknown as Record<string, SortCfg>)[k] = next;
     const p = this.plugin as unknown as { saveSettings?: () => Promise<void> };
     try { await p.saveSettings?.(); } catch { /* 存不下也不影响这次排序 */ }
     await this.render();
@@ -285,7 +311,7 @@ export class WorkbenchView extends ItemView {
     shead.appendChild(el("span", "tlt-shead-t", T("项目 · 进度")));
     const acts = el("div", "tlt-shead-acts");
     const psort = el("button", "tlt-padd", "⇅");
-    psort.title = T("项目排序：按名称 / 创建时间 / 截止时间");
+    psort.title = T("项目排序：名称 / 完成进度 / 创建时间 / 截止时间");
     psort.dataset.sortproj = "1";
     psort.onclick = (ev) => { ev.stopPropagation(); this.sidebarSortMenu(psort); };
     const padd = el("button", "tlt-padd", "＋");
@@ -297,9 +323,16 @@ export class WorkbenchView extends ItemView {
     scroll.appendChild(shead);
     const all = this.store.tasks;
     const projTasks = (name: string) => all.filter((t) => t.project === name);
-    const projects = this.sortItems(this.store.projects(),
-      (p2) => (this.sortKey() === "name" ? p2 : this.edgeDate(projTasks(p2), "min")),
-      (p2) => p2).sort((a, b) => Number(this.store.isPinned(b)) - Number(this.store.isPinned(a)));   // 置顶的永远在最上面
+    const projKey = (p2: string): string | number | null => {
+      const list2 = projTasks(p2);
+      const by = this.sortCfg("project").by;
+      if (by === "progress") return this.pctOf(list2);
+      if (by === "created") return this.edgeDate(list2, "created", true);
+      if (by === "due") return this.edgeDate(list2, "due", false);
+      return null;
+    };
+    const projects = this.sortBy("project", this.store.projects(), (p2) => p2, projKey)
+      .sort((a, b) => Number(this.store.isPinned(b)) - Number(this.store.isPinned(a)));   // 置顶的永远在最上面
     if (!projects.length) {
       // 空态也得有入口，否则新库里根本没有"新建项目"可点
       const empty = el("div", "tlt-pempty");
@@ -536,17 +569,18 @@ export class WorkbenchView extends ItemView {
     }
     const logs = this.logsOn(sel);
     // 计划块：任务自己带了时间
-    const planned = this.store.tasks.filter((t) => t.due === sel && t.st && !t.done);
+    // 完成的任务也留着它的计划块：勾完就"日程消失"会让人以为记录丢了（块上标成已完成）
+    const planned = this.store.tasks.filter((t) => t.due === sel && t.st);
     planned.forEach((t) => {
       const a = hhmmToMin(t.st) || DAY_FROM;
       const b = hhmmToMin(t.en) || a + 60;
-      const blk = el("div", "tlt-blk plan");
+      const blk = el("div", "tlt-blk plan" + (t.done ? " done" : ""));
       blk.dataset.task = t.id;
       blk.style.top = `${((a - DAY_FROM) / 60) * HOUR_PX}px`;
       blk.style.height = `${Math.max(26, ((b - a) / 60) * HOUR_PX)}px`;
       const c = el("div", "tlt-blk-c");
       c.append(el("div", "tlt-blk-t", t.title),
-        el("div", "tlt-blk-m", `${t.st}–${t.en} · ${T("计划")}${t.wl ? " · " + t.wl + "%" : ""}`));
+        el("div", "tlt-blk-m", `${t.st}–${t.en} · ${t.done ? T("已完成") : T("计划")}${t.wl ? " · " + t.wl + "%" : ""}`));
       blk.appendChild(c);
       this.wireDrag(blk, c, {
         kind: "plan", id: t.id, a, b,
@@ -893,7 +927,7 @@ export class WorkbenchView extends ItemView {
       seg.appendChild(b2);
     });
     head.appendChild(seg);
-    head.appendChild(this.sortControl());
+    head.appendChild(this.sortControl("task"));
     p.appendChild(head);
     this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
@@ -991,15 +1025,9 @@ export class WorkbenchView extends ItemView {
   }
 
   /** 项目菜单：新建里程碑 / 归档项目 / 打开文件 */
-  /** 侧栏窄，排序用一个小菜单 */
+  /** 侧栏窄，排序用一个小菜单（只排项目，跟里程碑/任务互不影响） */
   private sidebarSortMenu(anchor: HTMLElement) {
-    const mark = (k: string) => (this.sortKey() === k ? (this.sortDir() === 1 ? " ↑" : " ↓") : "");
-    popMenu(anchor, [
-      { label: T("按名称") + mark("name"), onClick: () => void this.pickSort("name") },
-      { label: T("按创建时间") + mark("created"), onClick: () => void this.pickSort("created") },
-      { label: T("按截止时间") + mark("due"), onClick: () => void this.pickSort("due") },
-      { label: T("反向排列"), onClick: () => void this.pickSort(this.sortKey(), true) },
-    ], "right");
+    this.sortMenu(anchor, "project");
   }
 
   private projectMenu(anchor: HTMLElement, p: string, at?: { x: number; y: number }) {
@@ -1291,7 +1319,7 @@ export class WorkbenchView extends ItemView {
     const head = el("div", "tlt-pane-h");
     head.append(el("span", "", T("{a} 个里程碑 · {b} 开展中 · {c} 已完成", { a: ms.length, b: active.length, c: finished.length })));
     head.appendChild(el("span", "tlt-spacer"));
-    head.appendChild(this.sortControl());
+    head.appendChild(this.sortControl("milestone"));
     p.appendChild(head);
     this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
@@ -1334,9 +1362,13 @@ export class WorkbenchView extends ItemView {
       });
     };
     const sortMs = (list: { name: string; project: string; tasks: Task[] }[]) =>
-      this.sortItems(list,
-        (m) => (this.sortKey() === "name" ? m.name : this.edgeDate(m.tasks, "min")),
-        (m) => m.name);
+      this.sortBy("milestone", list, (m) => m.name, (m) => {
+        const by = this.sortCfg("milestone").by;
+        if (by === "progress") return this.pctOf(m.tasks);
+        if (by === "created") return this.edgeDate(m.tasks, "created", true);
+        if (by === "due") return this.edgeDate(m.tasks, "due", false);
+        return null;
+      });
     paintGroup(T("开展中"), sortMs(active));
     paintGroup(T("已完成"), sortMs(finished));
     return p;

@@ -36,16 +36,32 @@ export interface TLTSettings {
   /** 工作台两侧栏是否折叠（视图状态，跟着库走） */
   sideCollapsed?: boolean;
   railCollapsed?: boolean;
-  /** 排序口径：名称 / 创建时间 / 截止时间（项目、里程碑、任务共用） */
+  /** 排序口径（老版本共用一份，现在只用于迁移） */
   sortBy?: "name" | "created" | "due";
-  /** 1 = 正序，-1 = 反向 */
+  /** 1 = 正序，-1 = 反向（老版本共用） */
   sortDir?: 1 | -1;
+  /** 三类东西各记各的排序：项目 / 里程碑 / 任务 */
+  sortProjects?: SortCfg;
+  sortMilestones?: SortCfg;
+  sortTasks?: SortCfg;
   /** 我订阅了哪些源的地址（拉取只认这一份；服务端那张订阅表是所有人共用的） */
   subs?: string[];
   /** 每库一个随机盐：让不同人发布的同名源也不会撞 ID */
   publisherSalt?: string;
   feedNames: Record<string, string>; // 本地源 → 上次用的发布名称
 }
+
+/** 项目 / 里程碑 / 任务各自的排序口径 */
+export type SortKey = "name" | "created" | "due" | "progress" | "pri";
+export interface SortCfg { by: SortKey; dir: 1 | -1 }
+export const SORT_KEYS: Record<"project" | "milestone" | "task", SortKey[]> = {
+  project: ["name", "progress", "created", "due"],
+  milestone: ["name", "created", "due", "progress"],
+  task: ["name", "pri", "created"],
+};
+export const DEFAULT_SORT: SortCfg = { by: "name", dir: 1 };
+/** 选这个口径时默认往哪个方向：优先级是"紧急在前"，其余是正序 */
+export const SORT_DEFAULT_DIR: Record<SortKey, 1 | -1> = { name: 1, created: 1, due: 1, progress: 1, pri: -1 };
 
 export const DEFAULT_SETTINGS: TLTSettings = {
   root: "",
@@ -65,6 +81,9 @@ export const DEFAULT_SETTINGS: TLTSettings = {
   railCollapsed: false,
   sortBy: "name",
   sortDir: 1,
+  sortProjects: { ...DEFAULT_SORT },
+  sortMilestones: { ...DEFAULT_SORT },
+  sortTasks: { ...DEFAULT_SORT },
 };
 
 /**

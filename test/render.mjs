@@ -66,6 +66,7 @@ await esbuild.build({
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
       export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal } from "./src/views/modals";
+      export { SORT_KEYS, DEFAULT_SORT } from "./src/store";
       export { OverviewPanelView, VIEW_TYPE_PANEL } from "./src/views/panel";
       export { MessagesView as MsgViewForPublish } from "./src/views/messages";
       export { setLanguage, t as tr } from "./src/i18n";
@@ -81,7 +82,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, SORT_KEYS, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -1289,6 +1290,30 @@ await t("今天的排期从「现在」开始，并跳过已占用的时段", as
   assert.ok(toMin(after.st) >= 9 * 60, "再早也不该早于 9 点");
 });
 
+await t("日历：勾掉任务之后，它的计划块还在（只是标成已完成）", async () => {
+  document.body.empty();
+  files["TLT/tasks/甲项目.md"] = `# 甲项目\n\n## 一期\n\n- [x] 上午谈硬件 📅 ${D} [st:: 09:00] [en:: 12:00] [done:: ${D}] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.viewDate = D;
+  await view.render();
+  const doneBlk = [...document.querySelectorAll(".tlt-blk.plan")].find((b) => (b.textContent || "").includes("上午谈硬件"));
+  assert.ok(doneBlk, "已完成任务的计划块不该消失（消失会被当成记录丢了）");
+  assert.ok(doneBlk.classList.contains("done"), "已完成的计划块要带 done 标记（淡显 + 划掉）");
+  assert.ok(/已完成/.test(doneBlk.textContent || ""), `块上的说明应写"已完成"：${doneBlk.textContent}`);
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-blk\.plan\.done\s*{[^}]*opacity/.test(css), "样式里要有已完成计划块的淡化规则");
+});
+
+await t("日记块：📝 统一贴在这一行最右端（不是跟着标题文字跑）", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-daily-b\s*{[^}]*flex:\s*1/.test(css), "任务主体要占满整行，笔才会靠右");
+  assert.ok(/\.tlt-daily-edit\s*{[^}]*margin-left:\s*auto/.test(css), "笔要自动推到最右端");
+  assert.ok(/\.tlt-daily-trow\s*{[^}]*align-items:\s*flex-start/.test(css), "标题换行时笔要对齐首行");
+});
+
 await t("日程块：拖拽改时间 + 右键菜单（删记录 / 取消排期）", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
@@ -1512,36 +1537,66 @@ await t("侧栏有「新建项目」入口，点了弹表单", async () => {
   assert.ok(/新建项目/.test(modal.textContent || ""), `表单标题应是新建项目：${(modal.textContent || "").slice(0, 40)}`);
 });
 
-await t("排序：项目 / 里程碑 / 任务都能换口径（默认按名称）", async () => {
+await t("排序：项目 / 里程碑 / 任务各排各的，候选口径不一样", async () => {
   document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  // 三个项目：进度 0/50/100、创建 10-01/10-05/10-09、截止 12-01/11-15/11-01
+  files["TLT/tasks/A项目.md"] = `# A项目\n\n## 一期\n\n- [ ] a1 📅 2026-12-01 [created:: 2026-10-01] [pri:: 1]\n- [ ] a2 📅 2026-12-01 [created:: 2026-10-01] [pri:: 1]\n`;
+  files["TLT/tasks/B项目.md"] = `# B项目\n\n## 一期\n\n- [x] b1 📅 2026-11-15 [created:: 2026-10-05] [pri:: 2] [done:: 2026-10-20]\n- [ ] b2 📅 2026-11-15 [created:: 2026-10-05] [pri:: 3]\n`;
+  files["TLT/tasks/C项目.md"] = `# C项目\n\n## 一期\n\n- [x] c1 📅 2026-11-01 [created:: 2026-10-09] [pri:: 1] [done:: 2026-10-20]\n- [x] c2 📅 2026-11-01 [created:: 2026-10-09] [pri:: 1] [done:: 2026-10-21]\n`;
+  store.settings.sortProjects = { by: "name", dir: 1 };
+  store.settings.sortMilestones = { by: "name", dir: 1 };
+  store.settings.sortTasks = { by: "name", dir: 1 };
+  await store.load();
+
   const view = mount(WorkbenchView);
   await view.onOpen();
-  view.tab = "month";
+  view.tab = "ms";
   await view.render();
-  assert.equal(view.sortKey(), "name", "默认应是在按名称排");
-  const btn = document.querySelector(".tlt-sortbtn");
-  assert.ok(btn, "任务页工具条上应有排序按钮");
-  assert.ok(btn.textContent.includes("名称"), `按钮应写明当前口径：${btn.textContent}`);
 
-  const groupNames = () => [...document.querySelectorAll(".tlt-mgrp")].map((g) =>
-    [...g.querySelectorAll(".tlt-task")].map((r) => (r.querySelector(".tlt-task-t")?.textContent || "").replace(/^[!！]+/, "").trim()));
-  const byName = groupNames().flat();
-  assert.ok(byName.length >= 2, `本月页应有任务，实际 ${byName.join(" | ")}`);
-  const nameOk = groupNames().every((ns) =>
-    JSON.stringify(ns) === JSON.stringify([...ns].sort((a, b) => a.localeCompare(b, "zh"))));
-  assert.ok(nameOk, `按名称排序后每组内部应是中文序：${JSON.stringify(groupNames())}`);
+  // 三份默认口径互不干扰
+  assert.deepEqual(view.sortCfg("project"), { by: "name", dir: 1 });
+  assert.deepEqual(view.sortCfg("milestone"), { by: "name", dir: 1 });
+  assert.deepEqual(view.sortCfg("task"), { by: "name", dir: 1 });
 
-  await view.pickSort("due");
-  assert.equal(view.sortKey(), "due");
-  const btn2 = document.querySelector(".tlt-sortbtn");
-  assert.ok(btn2.textContent.includes("截止"), `按钮应变成按截止：${btn2.textContent}`);
-  const duesOf = () => [...document.querySelectorAll(".tlt-mgrp")].map((g) =>
-    [...g.querySelectorAll(".tlt-task")].map((r) => store.tasks.find((t) => t.id === r.dataset.task)?.due || "").filter(Boolean));
-  assert.ok(duesOf().every((ds) => ds.every((d, i) => i === 0 || ds[i - 1] <= d)), `按截止排后组内应是升序：${JSON.stringify(duesOf())}`);
+  const projOrder = () => [...document.querySelectorAll("[data-proj]")].map((e) => e.dataset.proj);
+  assert.deepEqual(projOrder(), ["A项目", "B项目", "C项目"], `默认按名称：${projOrder().join(",")}`);
 
-  await view.pickSort("due");   // 同一个口径再点一次＝反向
-  assert.equal(view.sortDir(), -1, "再点一次同一个口径应反向");
-  assert.ok(duesOf().every((ds) => ds.every((d, i) => i === 0 || ds[i - 1] >= d)), `反向后应是降序：${JSON.stringify(duesOf())}`);
+  // 项目按进度：0 → 50 → 100
+  await view.pickSort("project", "progress");
+  assert.deepEqual(projOrder(), ["A项目", "B项目", "C项目"], `按进度升序：${projOrder().join(",")}`);
+  await view.pickSort("project", "progress");        // 再点一次＝反向
+  assert.deepEqual(projOrder(), ["C项目", "B项目", "A项目"], `按进度降序：${projOrder().join(",")}`);
+  // 项目排序不影响另外两栏
+  assert.equal(view.sortCfg("milestone").by, "name");
+  assert.equal(view.sortCfg("task").by, "name");
+
+  // 项目按截止：C(11-01) → B(11-15) → A(12-01)
+  await view.pickSort("project", "due");
+  assert.equal(view.sortCfg("project").dir, 1);
+  assert.deepEqual(projOrder(), ["C项目", "B项目", "A项目"], `按截止升序：${projOrder().join(",")}`);
+
+  // 里程碑：同一份数据里的三个里程碑，按完成进度排
+  await view.pickSort("milestone", "progress");
+  // 里程碑名都叫「一期」，靠卡片上的项目标签区分先后
+  const msOrder = () => [...document.querySelectorAll("[data-ms]")].map((e) => (e.querySelector(".tlt-ms-p")?.textContent || "").trim());
+  assert.deepEqual(msOrder(), ["A项目", "B项目", "C项目"], `里程碑按进度升序：${msOrder().join(",")}`);
+  assert.equal(view.sortCfg("project").by, "due", "里程碑排序不该动到项目");
+
+  // 任务：按优先级排（紧急在前＝默认反向）
+  view.tab = "month";
+  view.taskDim = "all";
+  view.proj = "B项目";
+  await view.pickSort("task", "pri");
+  assert.deepEqual(view.sortCfg("task"), { by: "pri", dir: -1 }, "选优先级默认紧急在前");
+  await view.render();
+  const taskTitles = [...document.querySelectorAll(".tlt-task")].map((r) => (r.querySelector(".tlt-task-t")?.textContent || "").trim());
+  assert.deepEqual(taskTitles.slice(0, 2), ["b2", "b1"], `紧急的该在前：${taskTitles.join(" | ")}`);
+
+  // 候选口径：任务没有"截止时间"，项目有"完成进度"
+  assert.ok(!SORT_KEYS.task.includes("due"), "任务的排序口径里不该有截止时间");
+  assert.ok(SORT_KEYS.project.includes("progress"), "项目要能按进度排");
+  assert.deepEqual(SORT_KEYS.milestone, ["name", "created", "due", "progress"]);
 });
 
 await t("排序：侧栏有入口；空库时也能新建项目", async () => {

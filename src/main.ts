@@ -3,6 +3,7 @@ import {
   type SettingDefinition, type SettingDefinitionItem,
 } from "obsidian";
 import { Store, TLTSettings, DEFAULT_SETTINGS, pathsFromRoot, PATH_KEYS } from "./store";
+import type { SortCfg } from "./store";
 import { WorkbenchView, VIEW_TYPE_WORKBENCH } from "./views/workbench";
 import { MessagesView, VIEW_TYPE_MESSAGES } from "./views/messages";
 import { addIcon } from "obsidian";
@@ -300,6 +301,14 @@ export class TLTPlugin extends Plugin {
   async loadSettings() {
     const saved = (await this.loadData()) as Partial<Settings> | null;
     this.settings = { ...DEFAULTS, ...saved };
+    // 老版本的排序是项目/里程碑/任务共用一份：一次性摊到三份上，之后各排各的
+    if (saved && !saved.sortProjects && !saved.sortMilestones && !saved.sortTasks && (saved.sortBy || saved.sortDir)) {
+      const by = saved.sortBy || "name";
+      const legacy: SortCfg = { by, dir: saved.sortDir === -1 ? -1 : 1 };
+      this.settings.sortProjects = { ...legacy };
+      this.settings.sortMilestones = { ...legacy };
+      this.settings.sortTasks = { ...legacy };
+    }
   }
   async saveSettings() {
     await this.saveData(this.settings);
