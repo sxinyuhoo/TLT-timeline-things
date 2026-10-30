@@ -173,17 +173,8 @@ scope: all      # all | work | personal
 
 「今日已完成」**只看真实的完成时间**（`[done:: 日期]`）——没有任何"按截止日猜"的逻辑：那天到期、隔天才勾掉的任务，出现在**它真正被勾掉的那天**的日记里。
 
-- **点标题**＝打开任务详情（改项目 / 日期 / 负责人 / 人天…），和在工作台里点任务一样
 - **点方块**＝勾选，写回项目文件（不会把代码块切成源码视图）
-
-**早期任务没有完成时间怎么办**：TLT 从 0.9.0 才开始记 `[done::]`。旧库（Tasks 插件语法）里每条已完成任务带 `✅ 日期`，用 `tools/backfill-done-from-backup.mjs` 按标题对上、一次性补回来：
-
-```bash
-node tools/backfill-done-from-backup.mjs "<旧库备份目录>" "<TLT/tasks 目录>"          # 先 dry-run 看能补多少
-node tools/backfill-done-from-backup.mjs "<旧库备份目录>" "<TLT/tasks 目录>" --write  # 确认后写入
-```
-
-备份目录只读；只往「已勾选、且还没有 `[done::]`」的行尾追加 `[done:: 日期]`，不动别的字符。对不上的会逐条列出来（备份里也没有完成的会跳过，不猜）。
+- **任务名后面那个 📝**＝打开任务详情（改项目 / 日期 / 负责人 / 人天…），和在工作台里点任务一样
 
 配套脚本：`tools/migrate-diary-queries.py`（把日记里旧的 ```tasks 查询批量换成 `tlt-daily`）。
 

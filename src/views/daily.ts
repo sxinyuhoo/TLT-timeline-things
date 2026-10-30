@@ -101,14 +101,18 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
     });
     r.appendChild(cb);
     const body = el("div", "tlt-daily-b");
-    const titleEl = el("div", "tlt-daily-t", t.title);
-    titleEl.title = T("点击打开任务详情（可改项目 / 日期 / 负责人…）");
-    titleEl.addEventListener("mousedown", hold);
-    titleEl.addEventListener("click", (ev) => {
+    const titleLine = el("div", "tlt-daily-trow");
+    titleLine.appendChild(el("div", "tlt-daily-t", t.title));
+    // 任务名后面一个笔：点它编辑（标题本身不响应点击，免得误触）
+    const edit = el("button", "tlt-daily-edit", "📝");
+    edit.title = T("编辑这条任务");
+    edit.addEventListener("mousedown", hold);
+    edit.addEventListener("click", (ev) => {
       hold(ev);
       new TaskModal(plugin.app, store, t, () => plugin.refreshDailyBlocks()).open();
     });
-    body.appendChild(titleEl);
+    titleLine.appendChild(edit);
+    body.appendChild(titleLine);
     const bits: string[] = [`${t.project}${t.milestone ? " · " + t.milestone : ""}`];
     if (t.due && kind !== "done") bits.push(t.due === date ? T("今天到期") : T("截止 {d}", { d: t.due }));
     if (t.due && kind === "done") bits.push(T("截止 {d}", { d: t.due }));

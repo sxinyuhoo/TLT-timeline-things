@@ -626,7 +626,7 @@ export class TaskModal extends TltModal {
 
     const pri = row(contentEl, T("优先级"));
     // 用 ?? 而不是 ||：优先级「低」是 0，用 || 会被当成"没选"，显示成「普通」
-    seg<number>(pri, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri ?? 1, (v) => (this.draft.pri = v as Pri));
+    seg<number>(pri, [{ v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri || 1, (v) => (this.draft.pri = v as Pri));
 
     const whoRowD = row(contentEl, T("负责人"));
     ownerSelect(this.app, this.store, whoRowD, this.draft);
@@ -954,7 +954,7 @@ export class QuickTaskModal extends TltModal {
 
     // 优先级
     const priRow = row(contentEl, T("优先级"));
-    seg<Pri>(priRow, [{ v: 0, t: T("低") }, { v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri, (v) => (this.draft.pri = v));
+    seg<Pri>(priRow, [{ v: 1, t: T("普通") }, { v: 2, t: T("高") }, { v: 3, t: T("紧急") }], this.draft.pri || 1, (v) => (this.draft.pri = v));
 
     // 负责人：一个紧凑的框选控件（点开是带搜索的勾选列表）
     const whoRow = row(contentEl, T("负责人"));
@@ -1723,7 +1723,7 @@ export class TagEditModal extends TltModal {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
     contentEl.appendChild(el("div", "tlt-m-title", T("编辑标签")));
-    contentEl.appendChild(el("div", "tlt-m-meta", T("改名会同时更新 {n} 条随手记。", { n: this.store.ideas.filter((i) => (i.tags || []).includes(this.name)).length })));
+    contentEl.appendChild(el("div", "tlt-m-meta", T("改名会同时更新 {n} 条随手记。", { n: this.store.ideas.filter((i) => ideaFilterTags(i).includes(this.name)).length })));
 
     const input = el("input", "tlt-input wide");
     input.value = this.name;

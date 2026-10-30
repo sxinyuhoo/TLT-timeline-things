@@ -83,6 +83,12 @@ await esbuild.build({
 });
 const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
+/** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
+const ideaTagsOf = (it) => {
+  const out = (it.tags || []).slice();
+  if (it.type && it.type !== "想法" && !out.includes(it.type)) out.unshift(it.type);
+  return out;
+};
 
 /* ---------- 3) 假 vault ---------- */
 const now = new Date();
@@ -1982,6 +1988,67 @@ await t("个人消息源能删；发布过的/订阅来的不给删", async () =
     }
   }
   void StoreCls;
+});
+
+await t("随手记标签：不写 type 就不该冒出一个「想法」标签", async () => {
+  document.body.empty();
+  files["TLT/ideas.md"] = `# 想法池\n\n- 没有类型的一条 [at:: ${D}] [tags:: sparkle]\n`;
+  await store.load();
+  const it = store.ideas.find((x) => x.title.includes("没有类型的一条"));
+  assert.ok(it, "夹具没读出来");
+  assert.equal(it.type, "", "没有 [type::] 时 type 应为空，而不是默认「想法」");
+  assert.deepEqual(ideaTagsOf(it), ["sparkle"], `标签只该有 sparkle：${ideaTagsOf(it).join(",")}`);
+
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "ideas";
+  await view.render();
+  const chips = [...document.querySelectorAll("[data-itag]")].map((b) => b.textContent.trim());
+  assert.ok(!chips.includes("想法"), `筛选条里不该有「想法」：${chips.join(" / ")}`);
+});
+
+await t("随手记标签：标签库改名能改到 [type::] 上的标签", async () => {
+  document.body.empty();
+  files["TLT/ideas.md"] = `# 想法池\n\n- 专利点一 [type:: patent] [at:: ${D}]\n- 专利点二 [type:: patent] [at:: ${D}]\n- 另类 [tags:: patent] [at:: ${D}]\n`;
+  await store.load();
+  const ok = await store.renameTag("patent", "专利");
+  assert.ok(ok, "改名应成功");
+  const text = files["TLT/ideas.md"];
+  assert.ok(!/\[type:: patent\]/.test(text), `type 里的旧名应改掉：\n${text}`);
+  assert.ok(!/\[tags:: patent\]/.test(text), `tags 里的旧名也应改掉：\n${text}`);
+  await store.load();
+  const names = store.ideas.map((i) => ideaTagsOf(i).join(","));
+  assert.ok(names.every((n) => !n.includes("patent")), `重新读盘后不该再有 patent：${names.join(" | ")}`);
+  assert.ok(names.some((n) => n.includes("专利")), `应出现新名字：${names.join(" | ")}`);
+});
+
+await t("随手记标签：删掉基于 [type::] 的标签，保存后不再回来", async () => {
+  document.body.empty();
+  files["TLT/ideas.md"] = `# 想法池\n\n- 带类型的 [type:: paper] [at:: ${D}]\n`;
+  await store.load();
+  const it = store.ideas.find((x) => x.title === "带类型的");
+  assert.deepEqual(ideaTagsOf(it), ["paper"], "先确认显示为 paper");
+  it.tags = ideaTagsOf(it).filter((t) => t !== "paper");   // 弹窗里把它删掉
+  await store.updateIdea(it);
+  await store.load();
+  const after = store.ideas.find((x) => x.title === "带类型的");
+  assert.deepEqual(ideaTagsOf(after), [], `保存后不该再有 paper：${ideaTagsOf(after).join(",")}`);
+  assert.ok(!/\[type:: paper\]/.test(files["TLT/ideas.md"]), `文件里也不该留着 type：\n${files["TLT/ideas.md"]}`);
+});
+
+await t("优先级：只保留 普通/高/紧急，历史值 0 归到普通", async () => {
+  document.body.empty();
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 低优先级的旧任务 📅 ${D} [pri:: 0]\n- [ ] 普通任务 📅 ${D} [pri:: 1]\n- [ ] 高任务 📅 ${D} [pri:: 2]\n- [ ] 紧急任务 📅 ${D} [pri:: 3]\n`;
+  await store.load();
+  const pri = (title) => store.tasks.find((t) => t.title.includes(title))?.pri;
+  assert.equal(pri("低优先级"), 1, "pri 0 应归到 1（普通）");
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month";
+  await view.render();
+  assert.equal(document.querySelectorAll(".tlt-priflag").length, 0, "行上不该再有「高/紧急」文字标签");
+  const dots = [...document.querySelectorAll(".tlt-pd")];
+  assert.equal(dots.length, 2, `只有 高/紧急 两条该有点：${dots.length}`);
 });
 
 await t("独立消息中心渲染", async () => {

@@ -1380,11 +1380,20 @@ export class Store {
         .join("\n"));
     }
     for (const it of this.ideas) {
-      if (!(it.tags || []).includes(from)) continue;
-      it.tags = (it.tags || []).map((t) => (t === from ? n : t));
-      await this.updateIdea(it);
+      let touched = false;
+      // 老数据把标签存在 [type::] / [stage::] 里，那些也会显示成标签——一起改，
+      // 并顺手转成正规的 [tags::]（updateIdea 会把 type/stage 从行里去掉）
+      if (it.type === from) { it.type = ""; touched = true; }
+      if (it.stage === from) { it.stage = ""; touched = true; }
+      if ((it.tags || []).includes(from)) {
+        it.tags = (it.tags || []).map((t) => (t === from ? n : t));
+        touched = true;
+      } else if (touched) {
+        it.tags = [...(it.tags || []).filter((t) => t !== n), n];
+      }
+      if (touched) await this.updateIdea(it);
     }
-    this.tags = this.tags.map((t) => (t === from ? n : t));
+    this.tags = this.tags.map((t) => (t === from ? n : t)).filter((t, i, a) => a.indexOf(t) === i);
     return true;
   }
 
@@ -1396,9 +1405,11 @@ export class Store {
         .join("\n")}\n`);
     }
     for (const it of this.ideas) {
-      if (!(it.tags || []).includes(name)) continue;
-      it.tags = (it.tags || []).filter((t) => t !== name);
-      await this.updateIdea(it);
+      let touched = false;
+      if (it.type === name) { it.type = ""; touched = true; }
+      if (it.stage === name) { it.stage = ""; touched = true; }
+      if ((it.tags || []).includes(name)) { it.tags = (it.tags || []).filter((t) => t !== name); touched = true; }
+      if (touched) await this.updateIdea(it);
     }
     this.tags = this.tags.filter((t) => t !== name);
     return true;

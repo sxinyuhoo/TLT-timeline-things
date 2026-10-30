@@ -163,7 +163,7 @@ await t("没有完成时间的旧任务不进「已完成」（不做按截止�
   assert.ok(!/按截止日/.test(text), "不该再有按截止日的标注");
 });
 
-await t("点方块不冒泡（阅读视图里不会跳到源码）；点标题打开任务详情", async () => {
+await t("点方块不冒泡；任务名后面的 📝 打开任务详情", async () => {
   fixture();
   const { store } = await makeStore();
   const host = document.createElement("div");
@@ -179,14 +179,20 @@ await t("点方块不冒泡（阅读视图里不会跳到源码）；点标题�
   await flush(60);
   assert.ok(!store.tasks.find((t) => t.title.includes("今天到期的活"))?.done === false || true, "勾选照常生效");
 
-  // 点标题 → 打开任务详情弹窗
+  // 任务名后面的 📝 → 打开任务详情；标题本身不再响应点击
   document.body.querySelectorAll(".modal, .tlt-host").forEach((m) => m.remove());
   const title = host.querySelector(".tlt-daily-t");
-  title.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
   title.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  await flush(60);
+  assert.ok(!document.querySelector(".tlt-host"), "点标题不该弹窗（入口是后面的 📝）");
+  const pen = host.querySelector(".tlt-daily-edit");
+  assert.ok(pen, "任务名后面应有 📝");
+  assert.equal(pen.textContent, "📝");
+  pen.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  pen.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
   await flush(80);
   const modal = document.querySelector(".tlt-host");
-  assert.ok(modal, "点标题应弹出任务详情");
+  assert.ok(modal, "点 📝 应弹出任务详情");
   assert.ok(/任务|标题/.test(modal.textContent || ""), `弹窗内容看着不对：${(modal.textContent || "").slice(0, 60)}`);
 });
 

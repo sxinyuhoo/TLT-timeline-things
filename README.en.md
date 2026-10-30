@@ -163,8 +163,12 @@ scope: all      # all | work | personal
 ````
 
 Four groups: **Overdue / Due today / Planned for today / Done today**, each line carrying project · milestone · effort · owner.
-Ticking a box writes `[done:: date]` into the project file and the line moves between groups immediately.
 No Tasks or Dataview plugin needed — it reads TLT's own data.
+
+“Done today” uses **the real completion date** (`[done:: date]`) and nothing else — no “file it by due date” guessing: a task due that day but ticked later shows up in the diary of the day it was actually ticked.
+
+- **Click the box** = tick it and write back to the project file (it will not flip the block into source view)
+- **The 📝 after the task name** = open the task's details (project / dates / owners / effort…), same as clicking a task in the workbench
 
 Helper: `tools/migrate-diary-queries.py` (batch-replace old ```tasks queries with `tlt-daily`).
 

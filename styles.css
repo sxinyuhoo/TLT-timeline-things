@@ -367,8 +367,6 @@ body.tlt-light {
 .tlt-task.done .tlt-task-t { color: var(--tlt-ink4); text-decoration: line-through; }
 .tlt-pd { width: 5px; height: 5px; border-radius: 50%; background: #D9A05F; flex: none; }
 .tlt-pd.u { width: 6px; height: 6px; background: #E5534B; box-shadow: 0 0 0 2px rgba(229, 83, 75, .22); }
-.tlt-priflag { font-size: 8.5px; color: #D9A05F; }
-.tlt-priflag.u { color: #E5534B; }
 .tlt-task-m {
   display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 8.5px;
   color: var(--tlt-ink4); font-variant-numeric: tabular-nums; flex-wrap: wrap;
@@ -1653,3 +1651,10 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   background: none; border: 1px dashed var(--tlt-line2); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
 .tlt-pickadd:hover { color: var(--tlt-acc); border-color: var(--tlt-acc); }
 .tlt-daily-note { font-size: 9.5px; color: var(--tlt-ink5); margin-top: 6px; line-height: 1.6; }
+
+/* 日记块：任务名后面那个小笔（点它编辑） */
+.tlt-daily-trow { display: flex; align-items: baseline; gap: 4px; }
+.tlt-daily-trow .tlt-daily-t { flex: 1; min-width: 0; }
+.tlt-daily-edit { flex: none; padding: 0 2px; border: 0; background: none; cursor: pointer;
+  font-size: 10px; line-height: 1; opacity: .45; }
+.tlt-daily-edit:hover { opacity: 1; }

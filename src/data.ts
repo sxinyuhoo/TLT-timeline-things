@@ -3,7 +3,7 @@
  * 语法约定见 docs/SYNTAX.md。
  */
 
-export type Pri = 0 | 1 | 2 | 3;
+export type Pri = 0 | 1 | 2 | 3;   // 0 是历史值（老的「低」），读取时归到 1
 export type Period = "w" | "m" | "q";
 
 export interface Step { done: boolean; text: string; }
@@ -183,7 +183,7 @@ export function parseTaskLine(
   const title = stripFields(body).replace(/\s{2,}/g, " ").trim();
   if (!title) return null;
 
-  const pri = (parseInt(f["pri"] || "1", 10) || 0) as Pri;
+  const pri = (parseInt(f["pri"] || "1", 10) || 1) as Pri;
   return {
     id: `${ctx.file}#${ctx.line}`,
     file: ctx.file, line: ctx.line, raw,
@@ -192,7 +192,7 @@ export function parseTaskLine(
     wl: parseInt(f["wl"] || "0", 10) || 0,
     est: f["est"] !== undefined ? Number(f["est"]) : undefined,
     pw: (f["pw"] as Period) || "m",
-    pri: (Math.max(0, Math.min(3, pri)) as Pri),
+    pri: (Math.max(1, Math.min(3, pri)) as Pri),   // 0（低）不再支持：一律归到「普通」
     owners: links(f["owner"] || f["who"] || ""),
     tags: (f["tags"] || "").split(/[,，]/).map((x) => x.trim()).filter(Boolean),
     scope: f["scope"] === "个人" ? "个人" : "工作",
@@ -365,8 +365,10 @@ export function parseIdeaLine(line: string, file: string, idx: number, body: str
   if (!title) return null;
   return {
     id: `${file}#${idx}`, file, line: idx, title, body,
-    type: f["type"] || "想法",
-    stage: f["stage"] || "沉淀",
+    // 不兜默认值：没写 type/stage 就是没有。以前兜成「想法」「沉淀」，
+    // 导致每条随手记都凭空显示一个「想法」标签，删掉保存后又回来（解析时又生成了）。
+    type: f["type"] || "",
+    stage: f["stage"] || "",
     star: parseInt(f["star"] || "1", 10) || 1,
     at: f["at"] || todayISO(),
     src: f["src"] || "",
@@ -419,7 +421,8 @@ export const IDEA_STAGES = ["沉淀", "待验证", "已验证", "已立项", "�
 /** 筛选用的标签：只取类型与 #标签，不含阶段 */
 export function ideaFilterTags(it: { type?: string; tags?: string[] }): string[] {
   const out = (it.tags || []).slice();
-  if (it.type && !out.includes(it.type)) out.unshift(it.type);
+  // 「想法」是老数据里的类型名，不是标签——别把它混进标签列表（否则删不掉、一直冒出来）
+  if (it.type && it.type !== "想法" && !out.includes(it.type)) out.unshift(it.type);
   return out;
 }
 

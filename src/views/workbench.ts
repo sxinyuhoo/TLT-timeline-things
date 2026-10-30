@@ -1101,8 +1101,6 @@ export class WorkbenchView extends ItemView {
     (t.tags || []).forEach((tg) => meta.appendChild(el("span", "tlt-tag", tg)));
     if (t.owners.length) meta.appendChild(el("span", "", t.owners.join(T("、"))));
     if (t.files.length) meta.appendChild(el("span", "", `▤ ${t.files.length}`));
-    if (t.pri >= 3) meta.appendChild(el("span", "tlt-priflag u", T("紧急")));
-    else if (t.pri === 2) meta.appendChild(el("span", "tlt-priflag", T("高")));
     if (t.done && t.doneAt) meta.appendChild(el("span", "tlt-doneat", T("完成 {d}", { d: t.doneAt.slice(5) })));
     if (t.steps.length) meta.appendChild(this.stepRing(t));
     body.appendChild(meta);
