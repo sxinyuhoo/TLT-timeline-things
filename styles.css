@@ -317,7 +317,6 @@ body.tlt-light {
 }
 .tlt-blk:hover { filter: brightness(1.14); }
 .tlt-blk.log { background: var(--tlt-surface2); }
-.tlt-blk.extra { background: transparent; border-style: dashed; }
 .tlt-blk-c { padding: 5px 8px 5px 9px; }
 .tlt-blk-t { font-size: 11px; color: var(--tlt-ink); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tlt-blk-m { font-size: 8.5px; color: var(--tlt-ink4); margin-top: 3px; font-variant-numeric: tabular-nums; }
@@ -599,9 +598,12 @@ body.theme-light .tlt-root .tlt-chip.on, body.tlt-light .tlt-root .tlt-chip.on {
 .tlt-hint { font-size: 9px; color: var(--tlt-ink5); line-height: 1.7; }
 
 /* ---- 计划块（任务带时间） ---- */
-.tlt-blk.plan { background: rgba(91, 108, 255, .10); border-color: rgba(91, 108, 255, .32); }
+/* 计划块：色相来自自己那一块（相邻/重叠的块颜色不一样），左边一条实的色条 */
+.tlt-blk.plan { background: color-mix(in srgb, var(--hue, #5B6CFF) 14%, transparent);
+  border-color: color-mix(in srgb, var(--hue, #5B6CFF) 38%, transparent);
+  border-left: 3px solid var(--hue, #5B6CFF); }
 body.tlt-light .tlt-root .tlt-blk.plan,
-body.theme-light .tlt-root .tlt-blk.plan { background: rgba(75, 90, 224, .09); }
+body.theme-light .tlt-root .tlt-blk.plan { background: color-mix(in srgb, var(--hue, #5B6CFF) 11%, transparent); }
 
 /* ---- 发布 / 订阅面板 ---- */
 .tlt-hub {
@@ -1722,3 +1724,19 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 /* 正文里的待办可以直接点 */
 .tlt-md-cb-live { cursor: pointer; }
 .tlt-md-cb-live:hover { border-color: var(--tlt-acc); background: color-mix(in srgb, var(--tlt-acc) 22%, transparent); }
+
+/* ---- 日历块：同色相系里的记录块 / 重叠分栏 / 已完成 ---- */
+.tlt-blk.log { background: color-mix(in srgb, var(--hue, #7C8BA1) 7%, transparent);
+  border-color: color-mix(in srgb, var(--hue, #7C8BA1) 26%, transparent);
+  border-left: 3px dashed var(--hue, #7C8BA1); }
+.tlt-blk.plan.done { opacity: .5; }
+.tlt-blk.plan.done .tlt-blk-t { text-decoration: line-through; }
+.tlt-blk-lane .tlt-blk-c { padding-left: 7px; padding-right: 5px; }
+.tlt-blk-lane .tlt-blk-m { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 重叠时选中/悬停的那块浮到最上面，方便看清 */
+.tlt-blk:hover { z-index: 5; }
+
+/* 三栏以上（特别窄）的块：标题给两行，副信息先让位，免得全是省略号 */
+.tlt-blk-narrow .tlt-blk-m { display: none; }
+.tlt-blk-narrow .tlt-blk-t { white-space: normal; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }

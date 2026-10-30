@@ -16,6 +16,9 @@ import { newProjectFlow } from "../actions";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
 
+/** 日历块的色相盘：低饱和、跟插件配色一路 */
+const BLK_PALETTE = ["#5B6CFF", "#4FB59A", "#8B7CF6", "#D9A05F", "#D9755C", "#7C8BA1", "#B58BC4"];
+
 /**
  * 概览面板的入口图标：一个"右侧栏"轮廓（描边、无填充，和插件整体一个脾气）。
  * 之前用的 ▤ 是个文字方块，太糙了。
@@ -570,40 +573,48 @@ export class WorkbenchView extends ItemView {
       inner.appendChild(h);
     }
     const logs = this.logsOn(sel);
-    // 计划块：任务自己带了时间
-    // 完成的任务也留着它的计划块：勾完就"日程消失"会让人以为记录丢了（块上标成已完成）
-    const planned = this.store.tasks.filter((t) => t.due === sel && t.st);
-    planned.forEach((t) => {
-      const a = hhmmToMin(t.st) || DAY_FROM;
-      const b = hhmmToMin(t.en) || a + 60;
-      const blk = el("div", "tlt-blk plan" + (t.done ? " done" : ""));
-      blk.dataset.task = t.id;
-      blk.style.top = `${((a - DAY_FROM) / 60) * HOUR_PX}px`;
-      blk.style.height = `${Math.max(26, ((b - a) / 60) * HOUR_PX)}px`;
-      const c = el("div", "tlt-blk-c");
-      c.append(el("div", "tlt-blk-t", t.title),
-        el("div", "tlt-blk-m", `${t.st}–${t.en} · ${t.done ? T("已完成") : T("计划")}${t.wl ? " · " + t.wl + "%" : ""}`));
-      blk.appendChild(c);
-      this.wireDrag(blk, c, {
-        kind: "plan", id: t.id, a, b,
-        onMenu: (at) => this.blockMenu("plan", t, at),
+    // 计划块：任务自己带了时间。完成的任务也留着它的计划块——勾完就"日程消失"会让人以为记录丢了
+    const plans = this.store.tasks.filter((t) => t.due === sel && t.st)
+      .map((t) => {
+        const a = hhmmToMin(t.st) || DAY_FROM;
+        const b = hhmmToMin(t.en) || a + 60;
+        return { kind: "plan" as const, id: t.id, item: t, title: t.title, a, b,
+          meta: `${t.st}–${t.en} · ${t.done ? T("已完成") : T("计划")}${t.wl ? " · " + t.wl + "%" : ""}`,
+          done: t.done };
       });
-      inner.appendChild(blk);
-    });
-    logs.forEach((l) => {
+    const recs = logs.map((l) => {
       const a = hhmmToMin(l.st) || DAY_FROM;
       const b = hhmmToMin(l.en) || a + 30;
-      const blk = el("div", "tlt-blk log");
-      blk.dataset.log = l.id;
-      blk.style.top = `${((a - DAY_FROM) / 60) * HOUR_PX}px`;
-      blk.style.height = `${Math.max(26, ((b - a) / 60) * HOUR_PX)}px`;
+      return { kind: "log" as const, id: l.id, item: l, title: l.title, a, b,
+        meta: `${l.st}–${l.en} · ${T("记录")}${l.project ? " · " + l.project : ""}`,
+        done: false };
+    });
+    // 重叠的块并排（同一簇共用车道数），每块配一个稳定的色相
+    const all = [...plans, ...recs].sort((x, y) => x.a - y.a || x.b - y.b);
+    const lay = this.laneLayout(all.map((x) => ({ a: x.a, b: x.b })));
+    const usedHues = new Set<string>();
+    all.forEach((x, i) => {
+      const { lane, lanes } = lay[i];
+      const blk = el("div", `tlt-blk ${x.kind}` + (x.done ? " done" : ""));
+      if (x.kind === "plan") blk.dataset.task = x.id; else blk.dataset.log = x.id;
+      blk.style.top = `${((x.a - DAY_FROM) / 60) * HOUR_PX}px`;
+      blk.style.height = `${Math.max(26, ((x.b - x.a) / 60) * HOUR_PX)}px`;
+      if (lanes > 1) {
+        // 并排：按车道切宽度，右边留 3px 缝，重叠时也能各自读清
+        const w = 100 / lanes;
+        blk.style.left = `calc(${(lane * w).toFixed(2)}% + 2px)`;
+        blk.style.width = `calc(${w.toFixed(2)}% - 5px)`;
+        blk.classList.add("tlt-blk-lane");
+        if (lanes >= 3) blk.classList.add("tlt-blk-narrow");     // 特别窄的：标题给两行，副信息收起来
+      }
+      blk.style.setProperty("--hue", this.hueFor(x.id, usedHues));
+      blk.title = `${x.title}\n${x.meta}`;
       const c = el("div", "tlt-blk-c");
-      c.append(el("div", "tlt-blk-t", l.title),
-        el("div", "tlt-blk-m", `${l.st}–${l.en} · ${T("记录")}${l.project ? " · " + l.project : ""}`));
+      c.append(el("div", "tlt-blk-t", x.title), el("div", "tlt-blk-m", x.meta));
       blk.appendChild(c);
       this.wireDrag(blk, c, {
-        kind: "log", id: l.id, a, b,
-        onMenu: (at) => this.blockMenu("log", l, at),
+        kind: x.kind, id: x.id, a: x.a, b: x.b,
+        onMenu: (at) => this.blockMenu(x.kind, x.item, at),
       });
       inner.appendChild(blk);
     });
@@ -1400,6 +1411,49 @@ export class WorkbenchView extends ItemView {
     box.appendChild(chips);
     p.appendChild(box);
     return p;
+  }
+
+  /** 一天里每块一个色相：散列取色（稳定），撞了就往下一个顺延，保证相邻/重叠的块不撞色 */
+  private hueFor(key: string, used: Set<string>): string {
+    let i = 0;
+    for (let k = 0; k < key.length; k++) i = (i * 31 + key.charCodeAt(k)) >>> 0;
+    let h = BLK_PALETTE[i % BLK_PALETTE.length];
+    let guard = 0;
+    while (used.has(h) && guard < BLK_PALETTE.length) {
+      h = BLK_PALETTE[(BLK_PALETTE.indexOf(h) + 1) % BLK_PALETTE.length];
+      guard += 1;
+    }
+    used.add(h);
+    return h;
+  }
+
+  /**
+   * 时间段重叠的块并排显示，互不遮挡。
+   * 做法：按开始时间扫一遍——每个块放进"最早空出来的那条车道"，
+   * 同一簇（互相重叠的一串）共用车道数，最后每块拿到 lane / lanes。
+   */
+  private laneLayout(items: { a: number; b: number }[]): { lane: number; lanes: number }[] {
+    const res = items.map(() => ({ lane: 0, lanes: 1 }));
+    const order = items.map((_, i) => i).sort((x, y) => items[x].a - items[y].a || items[x].b - items[y].b);
+    let cluster: number[] = [];
+    let clusterEnd = -1;
+    let laneEnds: number[] = [];
+    const flush = () => {
+      const n = Math.max(1, laneEnds.length);
+      cluster.forEach((i) => { res[i].lanes = n; });
+      cluster = []; laneEnds = []; clusterEnd = -1;
+    };
+    for (const i of order) {
+      const it = items[i];
+      if (cluster.length && it.a >= clusterEnd) flush();          // 跟上一簇不搭界：收掉
+      let L = laneEnds.findIndex((end) => end <= it.a);
+      if (L < 0) { L = laneEnds.length; laneEnds.push(it.b); } else laneEnds[L] = it.b;
+      res[i].lane = L;
+      cluster.push(i);
+      clusterEnd = Math.max(clusterEnd, it.b);
+    }
+    if (cluster.length) flush();
+    return res;
   }
 
   private paneMilestones(): HTMLElement {

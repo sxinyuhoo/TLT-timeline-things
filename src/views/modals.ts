@@ -784,7 +784,11 @@ export class LogModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", this.log.title));
+    // 标题要能改：以前这里是个静态文字，只能编辑正文，改个名字都改不了
+    const title = el("input", "tlt-input wide tlt-log-title");
+    title.value = this.log.title;
+    title.placeholder = T("这条记录叫什么");
+    contentEl.appendChild(title);
     contentEl.appendChild(el("div", "tlt-m-meta",
       `${this.log.due} · ${this.log.st || ""}${this.log.en ? "–" + this.log.en : ""}${this.log.project ? " · " + this.log.project : ""}`));
 
@@ -807,7 +811,9 @@ export class LogModal extends TltModal {
     };
     const ok = el("button", "tlt-btn pri", T("保存"));
     ok.onclick = () => { void (async () => {
-      await this.store.updateLogBody(this.log, body.value);
+      const t = title.value.trim();
+      if (!t) { new Notice(T("标题不能空")); return; }
+      await this.store.updateLog(this.log, { title: t, body: body.value });
       this.close(); void this.onChange(); new Notice(T("已写回记录"));
     })(); };
     foot.append(del, open, ok);

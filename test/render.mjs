@@ -68,7 +68,7 @@ await esbuild.build({
       export { TLTSettingTab, TLTPlugin } from "./src/main";
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
-      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal } from "./src/views/modals";
+      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal, LogModal } from "./src/views/modals";
       export { SORT_KEYS, DEFAULT_SORT } from "./src/store";
       export { registerTltIcons, refreshTabHeaders, reviveTltLeaves } from "./src/main";
       export { registeredIcons } from "obsidian";
@@ -87,7 +87,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, LogModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -2135,6 +2135,73 @@ await t("重启后的占位页签：注册完视图要把它们重新实例化�
   app.workspace.getLeavesOfType = old;
   assert.equal(calls.length, 1, `只有占位那个会被重建，真视图不动；实际重建 ${calls.length} 次`);
   assert.deepEqual(calls[0], { type: "tlt-messages", active: false });
+});
+
+await t("日历：记录能改名字（原来只能编辑正文）", async () => {
+  document.body.empty();
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  const mon = "TLT/logs/" + D.slice(0, 7) + ".md";
+  files[mon] = `# 记录 ${D.slice(0, 7)}\n\n## ${D}\n\n- 09:00–11:00 早上开会 [proj:: 示例项目] [kind:: log]\n  > 原来的正文\n`;
+  await store.load();
+  const log = store.logs.find((l) => l.title === "早上开会");
+  assert.ok(log, "夹具里应有这条记录");
+  const modal = new LogModal(leaf.app ?? plugin.app, store, log, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 80));
+  const input = modal.contentEl.querySelector("input.tlt-log-title");
+  assert.ok(input, "记录详情里标题要是个输入框");
+  assert.equal(input.value, "早上开会", "标题要预填");
+  input.value = "早上对齐会（改名）";
+  const ok = [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent === "保存");
+  ok.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  const text = files[mon];
+  assert.match(text, /- 09:00–11:00 早上对齐会（改名） \[proj:: 示例项目\] \[kind:: log\]/, `标题要换掉、时间和字段要留着：\n${text}`);
+  assert.match(text, /> 原来的正文/, "正文不该丢");
+});
+
+await t("日历：重叠的块并排显示，各自的颜色不一样", async () => {
+  document.body.empty();
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  const mon = "TLT/logs/" + D.slice(0, 7) + ".md";
+  files[mon] = `# 记录 ${D.slice(0, 7)}\n\n## ${D}\n\n- 09:00–11:00 早上开会 [proj:: 示例项目] [kind:: log]\n`;
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 十点到十二点的活 📅 ${D} [st:: 10:00] [en:: 12:00] [created:: ${D}]\n- [ ] 下午单独的活 📅 ${D} [st:: 14:00] [en:: 15:00] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.viewDate = D;
+  await view.render();
+  const blkOf = (name) => [...document.querySelectorAll(".tlt-blk")].find((b) => (b.textContent || "").includes(name));
+  const a = blkOf("早上开会");
+  const b = blkOf("十点到十二点的活");
+  const c = blkOf("下午单独的活");
+  assert.ok(a && b && c, "三个块都该在");
+  // 重叠的两个：并排（左右各半），互不遮挡
+  assert.ok(a.classList.contains("tlt-blk-lane") && b.classList.contains("tlt-blk-lane"), "重叠的块要分栏");
+  assert.notEqual(a.style.left, b.style.left, `并排就该左右不同：${a.style.left} / ${b.style.left}`);
+  assert.match(a.style.width, /calc\(50/, `两块重叠时各占一半：${a.style.width}`);
+  // 不重叠的那个：不占车道，满宽
+  assert.ok(!c.classList.contains("tlt-blk-lane"), "不重叠的块不该分栏");
+  assert.equal(c.style.left, "", "不重叠就不该有 left 偏移");
+  // 颜色：按块取，相邻/重叠的块不一样
+  // 再加一块跟这两块都重叠 → 三栏，进入"窄块"分支
+  files["TLT/tasks/示例项目.md"] += `- [ ] 十点半到十三点 📅 ${D} [st:: 10:30] [en:: 13:00] [created:: ${D}]\n`;
+  await store.load();
+  await view.render();
+  const narrow = [...document.querySelectorAll(".tlt-blk")].filter((b) => b.classList.contains("tlt-blk-narrow"));
+  assert.equal(narrow.length, 3, `三块互相重叠时都该是窄块：${narrow.length}`);
+  assert.equal(narrow[0].style.left, "calc(0% + 2px)", "第一块贴左");
+  assert.match(narrow[2].style.left, /calc\(66\.6/, `第三块在最右：${narrow[2].style.left}`);
+  const hueA = a.style.getPropertyValue("--hue"), hueB = b.style.getPropertyValue("--hue");
+  assert.ok(hueA && hueB, "每块都要有 --hue");
+  assert.notEqual(hueA, hueB, `相邻的块颜色不该一样：${hueA} / ${hueB}`);
+  // 记录块是虚线左边条、计划块是实线
+  assert.match(css, /\.tlt-blk\.log\s*{[^}]*border-left:\s*3px dashed/);
+  assert.match(css, /\.tlt-blk\.plan\s*{[^}]*border-left:\s*3px solid/);
+  // 三栏以上特别窄：副信息让位、标题给两行
+  assert.match(css, /\.tlt-blk-narrow \.tlt-blk-m\s*{\s*display:\s*none/);
+  assert.match(css, /\.tlt-blk-narrow \.tlt-blk-t\s*{[^}]*-webkit-line-clamp:\s*2/);
 });
 
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {

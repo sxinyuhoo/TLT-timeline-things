@@ -97,6 +97,7 @@ export const EN: Record<string, string> = {
   "按创建时间": "By created",
   "按截止时间": "By due",
   "反向排列": "Reverse",
+  "这条记录叫什么": "Name this entry",
   "正文还是空的，点「编辑」写点什么": "Body is empty — hit “Edit” to write something",
   "取消勾选": "Uncheck",
   "勾上": "Check",

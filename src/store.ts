@@ -1291,6 +1291,37 @@ export class Store {
     return ok;
   }
 
+  /**
+   * 改一条记录：标题 / 正文都能改。
+   * 行首的 `09:30–11:00` 和行尾的字段（[proj::] / [kind::]）都原样保留，只换中间那截标题。
+   */
+  async updateLog(log: Task, patch: { title?: string; body?: string }) {
+    const file = await this.fileByPath(log.file);
+    if (!file) return false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      let start = log.line;
+      if (!/^\s*[-*+]\s+/.test(lines[start] || "")) {
+        start = lines.findIndex((l) => l.includes(log.title) && /^\s*[-*+]\s+/.test(l));
+        if (start < 0) return data;
+      }
+      const next = patch.title?.trim();
+      if (next) {
+        // 行首时间段 + 标题 + 行尾字段（字段里可能带 [[双链]]，所以按"最后一个字段起点"切）
+        const m = /^(\s*[-*+]\s+(?:\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}\s+)?)([\s\S]*?)((?:\s+\[[^\]]*(?:\]\][^\]]*)*\])*)\s*$/.exec(lines[start]);
+        if (m) lines[start] = `${m[1]}${next}${m[3] ? " " + m[3].trim() : ""}`;
+      }
+      if (patch.body !== undefined) {
+        let end = start + 1;
+        while (end < lines.length && /^\s{2,}>/.test(lines[end])) end++;
+        const quoted = patch.body.trim() ? patch.body.trim().split(/\r?\n/).map((l) => `  > ${l}`) : [];
+        lines.splice(start + 1, end - start - 1, ...quoted);
+      }
+      return lines.join("\n");
+    });
+    return true;
+  }
+
   async updateLogBody(log: Task, body: string) {
     const file = await this.fileByPath(log.file);
     if (!file) return false;

@@ -350,6 +350,7 @@ export function parseLogMonth(content: string, file: string): Task[] {
     out.push({
       id: `${file}#${i}`, file, line: i, raw: line,
       title, done: false,
+      note: body.length ? body.map((b) => b.replace(/^\s{2,}>\s?/, "")).join("\n").trim() : undefined,
       due: day, st: m[1], en: m[2],
       wl: 0, pw: "m", pri: 1,
       owners: links(f["who"] || ""),
