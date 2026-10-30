@@ -592,13 +592,13 @@ export class WorkbenchView extends ItemView {
     logs.forEach((l) => {
       const a = hhmmToMin(l.st) || DAY_FROM;
       const b = hhmmToMin(l.en) || a + 30;
-      const blk = el("div", "tlt-blk " + (l.extra ? "extra" : "log"));
+      const blk = el("div", "tlt-blk log");
       blk.dataset.log = l.id;
       blk.style.top = `${((a - DAY_FROM) / 60) * HOUR_PX}px`;
       blk.style.height = `${Math.max(26, ((b - a) / 60) * HOUR_PX)}px`;
       const c = el("div", "tlt-blk-c");
       c.append(el("div", "tlt-blk-t", l.title),
-        el("div", "tlt-blk-m", `${l.st}–${l.en} · ${l.extra ? T("临时") : T("记录")}${l.project ? " · " + l.project : ""}`));
+        el("div", "tlt-blk-m", `${l.st}–${l.en} · ${T("记录")}${l.project ? " · " + l.project : ""}`));
       blk.appendChild(c);
       this.wireDrag(blk, c, {
         kind: "log", id: l.id, a, b,
@@ -639,11 +639,10 @@ export class WorkbenchView extends ItemView {
     } else b1.appendChild(el("div", "tlt-empty", T("都排上了")));
     side.appendChild(b1);
 
-    const plan = logs.filter((l) => !l.extra).length;
-    const extra = logs.filter((l) => l.extra).length;
+    const plan = this.store.tasks.filter((t) => t.due === sel && t.st).length;
     const b2 = el("div", "tlt-box");
     b2.appendChild(el("div", "tlt-box-h", T("这天 · 计划与实际")));
-    [[T("计划"), plan], [T("记录"), logs.length], [T("其中临时"), extra]].forEach(([n, v]) => {
+    [[T("计划"), plan], [T("记录"), logs.length]].forEach(([n, v]) => {
       const r = el("div", "tlt-sum");
       r.append(el("span", "tlt-sum-n", String(n)));
       const bar2 = el("span", "tlt-sum-b");
@@ -652,10 +651,6 @@ export class WorkbenchView extends ItemView {
       r.append(bar2, el("span", "tlt-sum-v", T("{n} 条", { n: v })));
       b2.appendChild(r);
     });
-    if (logs.length) {
-      const pct = Math.round((extra / logs.length) * 100);
-      b2.appendChild(el("div", "tlt-hint", T("临时占了这天记录的 {n}%", { n: pct })));
-    }
     side.appendChild(b2);
     wrap.appendChild(side);
     p.appendChild(wrap);

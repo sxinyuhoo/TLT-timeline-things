@@ -438,7 +438,7 @@ export const EN: Record<string, string> = {
   "订阅地址（可粘贴 @URL:…）": "Subscribe URL (you can paste @URL:…)",
   "订阅失败：": "Subscribe failed: ",
   "记录": "Logged",
-  "记录是「实际发生」的事；计划外的事也记在这里": "Entries are what actually happened; things outside the plan get logged here too",
+  "记录是「实际发生」的事": "Entries are what actually happened",
   "识别到": "Detected",
   "说明": "About",
   "谁在场 / 谁交办，逗号分开": "Who was there / who asked — comma separated",

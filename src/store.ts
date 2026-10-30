@@ -854,7 +854,7 @@ export class Store {
   }
 
   /** 追加记录到月文件（按 ## 日期分节） */
-  async addLog(dateISO: string, rec: { st?: string; en?: string; title: string; project?: string; extra?: boolean; body?: string }) {
+  async addLog(dateISO: string, rec: { st?: string; en?: string; title: string; project?: string; body?: string }) {
     await this.ensureFolder(this.settings.logsFolder);
     const month = dateISO.slice(0, 7);
     const path = normalizePath(`${this.settings.logsFolder}/${month}.md`);

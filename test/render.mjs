@@ -57,7 +57,7 @@ EP.createEl = function (tag, o = {}) {
 await esbuild.build({
   stdin: {
     contents: `
-      export { parseIdeaText } from "./src/data";
+      export { parseIdeaText, newLogLine } from "./src/data";
       export { WorkbenchView } from "./src/views/workbench";
       export { MessagesView } from "./src/views/messages";
       export { Store } from "./src/store";
@@ -82,7 +82,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, SORT_KEYS, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, SORT_KEYS, newLogLine, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -1925,24 +1925,38 @@ await t("概览入口：点一下只切换一次（别开了又关）", async ()
   assert.equal(calls, 1, `点一次只该切一次（点两次＝开了又关，看起来像没反应），实际 ${calls} 次`);
 });
 
-await t("工作/个人分类：标签里写「个人」的也归个人（老数据没有 [scope::]）", async () => {
+await t("工作/个人分类：只认 [scope:: 个人]（老数据的 tags 写法已迁移，不再猜）", async () => {
   document.body.empty();
-  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 工作的事 📅 ${D} [tags:: 工作]\n- [ ] 个人档案的事 📅 ${D} [tags:: 个人]\n- [ ] 什么都不写的事 📅 ${D}\n`;
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 工作的事 📅 ${D} [tags:: 工作]\n- [ ] 规范的个人事 📅 ${D} [scope:: 个人]\n- [ ] 只有旧标签的个人事 📅 ${D} [tags:: 个人]\n- [ ] 什么都不写的事 📅 ${D}\n`;
   await store.load();
+  const byTitle = (n) => store.tasks.find((t) => t.title === n);
+  assert.equal(byTitle("规范的个人事").scope, "个人", "[scope:: 个人] → 个人");
+  assert.equal(byTitle("只有旧标签的个人事").scope, "工作", "只靠 [tags:: 个人] 不再算个人（已迁移）");
+
   const view = mount(WorkbenchView);
   await view.onOpen();
   view.tab = "month";
   view.taskDim = "all";
   view.proj = "示例项目";
-  view.taskTag = "工作";
-  await view.render();
-  const workTitles = [...document.querySelectorAll(".tlt-task-t")].map((e) => e.textContent.trim());
-  assert.ok(workTitles.includes("工作的事") && workTitles.includes("什么都不写的事"), `工作档应含工作和没标注的：${workTitles.join(" | ")}`);
-  assert.ok(!workTitles.includes("个人档案的事"), `工作档不该出现个人的：${workTitles.join(" | ")}`);
   view.taskTag = "个人";
   await view.render();
-  const ownTitles = [...document.querySelectorAll(".tlt-task-t")].map((e) => e.textContent.trim());
-  assert.deepEqual(ownTitles, ["个人档案的事"], `个人档只该有那一条：${ownTitles.join(" | ")}`);
+  const own = [...document.querySelectorAll(".tlt-task-t")].map((e) => e.textContent.trim());
+  assert.deepEqual(own, ["规范的个人事"], `个人档只该有条字段的：${own.join(" | ")}`);
+});
+
+await t("记录：不再有「计划外」开关，也不写 [extra::]", async () => {
+  const line = newLogLine({ st: "09:00", en: "10:00", title: "临时被叫去开会" });
+  assert.ok(!/extra/.test(line), `记录行不该再带 extra 字段：${line}`);
+  document.body.empty();
+  files["TLT/logs/" + D.slice(0, 7) + ".md"] = `# 记录 ${D.slice(0, 7)}\n\n## ${D}\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.viewDate = D;
+  await view.render();
+  // 日历右栏「计划与实际」不再出现"临时"
+  assert.ok(!(view.contentEl.textContent || "").includes("临时"), "日历里不该再有临时口径");
 });
 
 await t("子项：圆点更大、输入框更高、敲完一条焦点回到输入框", async () => {

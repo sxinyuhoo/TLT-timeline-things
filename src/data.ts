@@ -3,11 +3,9 @@
  * 语法约定见 docs/SYNTAX.md。
  */
 
-/** 任务属于工作还是个人：显式 [scope:: 个人] 或者标签里带「个人」都算个人（两者都在用） */
+/** 任务属于工作还是个人：**只认 `[scope:: 个人]`**（老数据已一次性迁移过来，别再猜 tags） */
 export function taskScopeOf(f: Record<string, string>): "工作" | "个人" {
-  if (f["scope"] === "个人") return "个人";
-  const tags = (f["tags"] || "").split(",").map((x) => x.trim());
-  return tags.includes("个人") ? "个人" : "工作";
+  return f["scope"] === "个人" ? "个人" : "工作";
 }
 
 export type Pri = 0 | 1 | 2 | 3;   // 0 是历史值（老的「低」），读取时归到 1
@@ -230,7 +228,6 @@ export function newTaskLine(t: Partial<Task> & { title: string }): string {
   if (t.en) s += ` [en:: ${t.en}]`;
   if (t.created) s += ` [created:: ${t.created}]`;
   if (t.doneAt) s += ` [done:: ${t.doneAt}]`;
-  if (t.extra) s += ` [extra:: true]`;
   if (t.files && t.files.length) s += ` [out:: ${t.files.map((o) => `[[${o}]]`).join(", ")}]`;
   return s;
 }
@@ -313,7 +310,7 @@ export function newMsgLine(m: Partial<Msg> & { title: string }): string {
 /**
  * 月文件：
  * ## 2026-10-20
- * - 09:30–11:00 做了什么 [proj:: 示例项目] [kind:: log] [extra:: false]
+ * - 09:30–11:00 做了什么 [proj:: 示例项目] [kind:: log]
  *   > 正文
  */
 export function parseLogMonth(content: string, file: string): Task[] {
@@ -352,12 +349,11 @@ export function parseLogMonth(content: string, file: string): Task[] {
   return out;
 }
 
-export function newLogLine(t: { st?: string; en?: string; title: string; project?: string; extra?: boolean; body?: string }): string {
+export function newLogLine(t: { st?: string; en?: string; title: string; project?: string; body?: string }): string {
   let s = "- ";
   if (t.st) s += `${t.st}${t.en ? "–" + t.en : ""} `;
   s += t.title;
   if (t.project) s += ` [proj:: ${t.project}]`;
-  if (t.extra) s += ` [extra:: true]`;
   if (t.body) s += `\n  > ${t.body.replace(/\n/g, "\n  > ")}`;
   return s;
 }

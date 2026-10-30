@@ -785,7 +785,7 @@ export class LogModal extends TltModal {
     contentEl.addClass("tlt-modal");
     contentEl.appendChild(el("div", "tlt-m-title", this.log.title));
     contentEl.appendChild(el("div", "tlt-m-meta",
-      `${this.log.due} · ${this.log.st || ""}${this.log.en ? "–" + this.log.en : ""}${this.log.extra ? " · " + T("计划外") : ""}${this.log.project ? " · " + this.log.project : ""}`));
+      `${this.log.due} · ${this.log.st || ""}${this.log.en ? "–" + this.log.en : ""}${this.log.project ? " · " + this.log.project : ""}`));
 
     const body = el("textarea", "tlt-textarea");
     body.placeholder = T("谈了什么 / 决定了什么 / 下一步（会写成文件里的引用块）");
@@ -1038,7 +1038,7 @@ export class QuickLogModal extends TltModal {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
     contentEl.appendChild(el("div", "tlt-m-title", T("记一条 · {d}", { d: this.date })));
-    contentEl.appendChild(el("div", "tlt-m-meta", T("记录是「实际发生」的事；计划外的事也记在这里")));
+    contentEl.appendChild(el("div", "tlt-m-meta", T("记录是「实际发生」的事")));
 
     const st = el("input", "tlt-input");
     st.type = "time"; st.value = this.startAt;
@@ -1057,17 +1057,12 @@ export class QuickLogModal extends TltModal {
     body.placeholder = T("正文（可留空）");
     contentEl.appendChild(body);
 
-    const extra = el("label", "tlt-check");
-    const cb = el("input"); cb.type = "checkbox";
-    extra.append(cb, el("span", "", T("计划外（临时插入）")));
-    contentEl.appendChild(extra);
-
     const foot = el("div", "tlt-m-foot");
     const ok = el("button", "tlt-btn pri", T("记录"));
     ok.onclick = () => { void (async () => {
       if (!title.value.trim()) return;
       await this.store.addLog(this.date, {
-        st: st.value, en: en.value, title: title.value.trim(), body: body.value.trim() || undefined, extra: cb.checked,
+        st: st.value, en: en.value, title: title.value.trim(), body: body.value.trim() || undefined,
       });
       this.close(); void this.onChange(); new Notice(T("已写入记录"));
     })(); };
