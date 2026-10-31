@@ -2602,7 +2602,12 @@ await t("日历档位：日/周/月/年切换，导航按档位步进", async ()
 
   document.querySelector('[data-calview="y"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 120));
-  assert.equal(document.querySelectorAll(".tlt-ymonth").length, 12, "年视图该有 12 个月");
+  // 年视图现在是一整条热力图：列＝周、行＝星期（7 行 53 列左右），月份以标签标出来
+  const rows = document.querySelectorAll(".tlt-yhrow");
+  assert.equal(rows.length, 8, `7 行星期 + 1 行月份标签：${rows.length}`);
+  assert.equal(rows[0].querySelectorAll(".tlt-yhmtxt").length, 53, `一年约 53 周：${rows[0].querySelectorAll(".tlt-yhmtxt").length}`);
+  const monthLabels = [...rows[0].querySelectorAll(".tlt-yhmtxt")].filter((e) => e.textContent.trim()).length;
+  assert.equal(monthLabels, 12, `月份标签该有 12 个：${monthLabels}`);
   assert.ok(/^\d{4} 年/.test(label()), `年标签：${label()}`);
   const beforeY = view.viewDate;
   document.querySelector('[data-dnav="1"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -2711,7 +2716,7 @@ await t("年视图：热力图四档（1–2 浅、3–4 中、5+ 深）", async
   view.calView = "y";
   view.viewDate = `${y}-03-05`;
   await view.render();
-  assert.equal(document.querySelectorAll(".tlt-ymonth").length, 12, "12 个月");
+
   const cellOf = (d) => [...document.querySelectorAll(".tlt-ycell")].find((c) => c.dataset.day === d);
   assert.ok(cellOf(`${y}-03-05`).classList.contains("l1"), "1 条＝浅蓝");
   assert.ok(cellOf(`${y}-03-06`).classList.contains("l2"), "3 条＝天蓝");

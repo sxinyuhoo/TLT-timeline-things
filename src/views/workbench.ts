@@ -1616,6 +1616,7 @@ export class WorkbenchView extends ItemView {
     const days = weekDays(this.viewDate, start);
     const HOUR = 30, GUTTER = 52;
 
+    p.appendChild(this.rhythm());          // 节奏保持在上面：切视图它不动
     p.appendChild(this.calBar());          // 档位切换 + 导航，四个视图共用
     const head = el("div", "tlt-whead");
     head.appendChild(el("div", "tlt-wgut"));
@@ -1675,6 +1676,7 @@ export class WorkbenchView extends ItemView {
   /** 周视图里拖块：上下改时间、左右换天（任务→改排期日；完成的连带把完成日挪过去；记录→换到那天的记录里） */
   private wireWeekDrag(blk: HTMLElement, x: CalBlock, day: string) {
     let mode: "move" | null = null;
+    let moved = false;
     let y0 = 0, x0 = 0, a0 = x.a, b0 = x.b;
     let curA = x.a, shiftDay = 0;
     const col = blk.parentElement;
@@ -1692,6 +1694,7 @@ export class WorkbenchView extends ItemView {
       ev.preventDefault();
       const dy = ev.clientY - y0;
       const dx = ev.clientX - x0;
+      if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;      // 动过就不当点击了
       const snap = (m: number) => Math.round(m / 15) * 15;
       curA = Math.max(DAY_FROM, Math.min(DAY_TO - 15, snap(a0 + (dy / HOUR_css()) * 60)));
       blk.style.top = `${((curA - DAY_FROM) / 60) * HOUR_css()}px`;
@@ -1732,7 +1735,11 @@ export class WorkbenchView extends ItemView {
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     });
-    blk.addEventListener("click", (ev) => { ev.stopPropagation(); });
+    blk.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (moved) { moved = false; return; }                   // 刚才是拖，不是点
+      this.openBlock(x);                                      // 点击＝看详情、直接改
+    });
     blk.addEventListener("contextmenu", (ev) => { ev.preventDefault(); ev.stopPropagation(); this.blockMenu(x.kind, x.item, { x: ev.clientX, y: ev.clientY }); });
   }
 
@@ -1745,6 +1752,7 @@ export class WorkbenchView extends ItemView {
     const start = this.store.settings.weekStart === 0 ? 0 : 1;
     const sel = D(this.viewDate);
     const monthKey = `${sel.getFullYear()}-${String(sel.getMonth() + 1).padStart(2, "0")}`;
+    p.appendChild(this.rhythm());
     p.appendChild(this.calBar());
     const grid = el("div", "tlt-mgrid");
     const head = el("div", "tlt-mhead");
@@ -1786,8 +1794,10 @@ export class WorkbenchView extends ItemView {
   }
 
   /**
-   * 年视图：12 个月的热力图（一天一格，颜色深浅＝那天几件日程）。
-   * 蓝色系四档；自带图例和一句"怎么读"。
+   * 年视图：一整年铺成一张热力图——**一列一周、一行一周里的第几天**（GitHub 那种）。
+   * 好处是 53 周 × 7 天只占一百来像素高，正常窗口一屏放得下，不用滚；
+   * 窗口窄了才会横向滚动，那时自动把**当月**带到中间来。
+   * 颜色四档：空 / 1–2 条 / 3–4 条 / 5 条以上。
    */
   private paneCalYear(): HTMLElement {
     const p = el("div", "tlt-pane");
@@ -1796,41 +1806,83 @@ export class WorkbenchView extends ItemView {
     const counts = this.yearCounts(year);
     const lvl = (n: number) => (n === 0 ? 0 : n <= 2 ? 1 : n <= 4 ? 2 : 3);
 
+    p.appendChild(this.rhythm());
     p.appendChild(this.calBar());
+
     const legend = el("div", "tlt-ylg");
     legend.append(el("span", "", T("淡＝没有日程，越深越忙：")),
       el("i", "tlt-ycell lg l0"), el("span", "tlt-ylgt", T("1–2 条")), el("i", "tlt-ycell lg l1"),
       el("span", "tlt-ylgt", T("3–4 条")), el("i", "tlt-ycell lg l2"),
-      el("span", "tlt-ylgt", T("5 条以上")), el("i", "tlt-ycell lg l3"));
+      el("span", "tlt-ylgt", T("5 条以上")), el("i", "tlt-ycell lg l3"),
+      el("span", "tlt-ylgt", T("（点某天进那一天）")));
     p.appendChild(legend);
 
-    const wrap = el("div", "tlt-ywrap");
-    for (let m = 0; m < 12; m++) {
-      const box = el("div", "tlt-ymonth");
-      const title = el("div", "tlt-ymt");
-      const first = `${year}-${String(m + 1).padStart(2, "0")}-01`;
-      title.append(el("b", "", String(m + 1)), el("span", "", T("月")));
-      title.append(el("i", "", T("{n} 条", { n: monthGrid(first, start)
-        .filter((k) => k.startsWith(`${year}-${String(m + 1).padStart(2, "0")}-`))
-        .reduce((n, k) => n + (counts.get(k) || 0), 0) })));
-      box.appendChild(title);
-      const g = el("div", "tlt-ygrid");
-      for (let i = 0; i < 7; i++) g.appendChild(el("i", "tlt-yhd", weekday((start + i) % 7)));
-      monthGrid(first, start).forEach((k) => {
-        const d = D(k);
-        const inMonth = d.getMonth() === m;
+    // 从"这一年第一周的第一天"铺到"最后一周的最后一天"
+    const jan1 = `${year}-01-01`, dec31 = `${year}-12-31`;
+    const firstDay = weekStartOf(jan1, start);
+    const lastDay = addDays(weekStartOf(dec31, start), 6);
+    const weeks: string[][] = [];
+    for (let d = firstDay; d <= lastDay; d = addDays(d, 7)) {
+      weeks.push(Array.from({ length: 7 }, (_, i) => addDays(d, i)));
+    }
+
+    const scroll = el("div", "tlt-yheat-scroll");
+    const heat = el("div", "tlt-yheat");
+    const mrow = el("div", "tlt-yhrow tlt-yhm");
+    mrow.appendChild(el("i", "tlt-yhgut"));
+    // 月份标签：从某月第一天所在的那一列开始写
+    const monthAt = new Map<number, number>();
+    weeks.forEach((w, i) => {
+      w.forEach((k) => {
+        if (!k.startsWith(`${year}-`)) return;
+        const m = Number(k.slice(5, 7));
+        if (!monthAt.has(m)) monthAt.set(m, i);
+      });
+    });
+    weeks.forEach((_, i) => {
+      const m = [...monthAt.entries()].find(([, col]) => col === i)?.[0];
+      mrow.appendChild(el("i", "tlt-yhmtxt", m ? T("{n} 月", { n: m }) : ""));
+    });
+    heat.appendChild(mrow);
+    for (let row = 0; row < 7; row++) {
+      const r = el("div", "tlt-yhrow");
+      r.appendChild(el("i", "tlt-yhgut", weekday((start + row) % 7)));
+      weeks.forEach((w) => {
+        const k = w[row];
+        const inYear = k.startsWith(`${year}-`);
         const n = counts.get(k) || 0;
         const cell = el("i", `tlt-ycell l${lvl(n)}`
-          + (inMonth ? " in" : " out")
+          + (inYear ? " in" : " out")
           + (k === todayISO() ? " today" : ""));
         cell.dataset.day = k;
         cell.title = `${k} · ${n ? T("{n} 条日程", { n }) : T("没有日程")}`;
-        g.appendChild(cell);
+        r.appendChild(cell);
       });
-      box.appendChild(g);
-      wrap.appendChild(box);
+      heat.appendChild(r);
     }
-    p.appendChild(wrap);
+    scroll.appendChild(heat);
+    p.appendChild(scroll);
+
+    // 窗口放得下就不滚；窄了才会横滚——滚的时候把**当月**带到中间（不是从 1 月开始看）。
+    // 注意：回调里现查 DOM——视图可能已经被重画过一轮，闭包里的元素会变成"拆下来的旧节点"。
+    const centerOnMonth = (): number => {
+      try {
+        const box = this.contentEl.querySelector<HTMLElement>(".tlt-yheat-scroll");
+        if (!box) return 0;
+        const mid = `${year}-${String(D(this.viewDate).getMonth() + 1).padStart(2, "0")}-15`;
+        const cur = box.querySelector<HTMLElement>(`.tlt-ycell[data-day="${mid}"]`);
+        if (!cur || box.scrollWidth <= box.clientWidth + 4) return 0;      // 放得下就不动
+        const r = cur.getBoundingClientRect(), b = box.getBoundingClientRect();
+        const delta = (r.left + r.width / 2) - (b.left + b.width / 2);
+        if (Math.abs(delta) < 2) return 0;
+        box.scrollLeft = Math.max(0, box.scrollLeft + delta);
+        return Math.abs(delta);
+      } catch { return 0; }
+    };
+    window.setTimeout(() => {
+      // 布局可能还没稳、视图也可能刚被重画：差得远就再对一次，之后交给用户自己滚
+      if (centerOnMonth() > 60) window.setTimeout(centerOnMonth, 240);
+    }, 40);
     return p;
   }
 
