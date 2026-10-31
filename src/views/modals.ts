@@ -376,9 +376,35 @@ function ownerSelect(app: App, store: Store, parent: HTMLElement, draft: { owner
  *   - 选了开始日、而截止日还没被用户自己改过 → 截止日 = 开始日（并同步写进任务）
  *   - 用户自己选/清过截止日 → 以后不再自动跟（尊重用户的选择）
  */
-function seedDue(due: HTMLInputElement, start: HTMLInputElement, commit: (v: string) => void, followExisting = true) {
-  // followExisting=false：改已有任务时，人家本来填好的截止日不能被开始日顶掉
-  let userSet = !followExisting && due.value !== "";
+function seedDue(
+  due: HTMLInputElement, start: HTMLInputElement, commit: (v: string) => void,
+  mode: "follow" | "peek" = "follow",
+) {
+  // follow：新建任务——选开始日就把截止日填成同一天（所见即所得，会写进任务）
+  // peek：改已有任务——**绝不写**。只在截止框空着时临时填一下，让日历开到开始日那个月，
+  //        点开又退出就还原成空。（以前这里会偷偷把截止日写成开始日，是错的）
+  if (mode === "peek") {
+    let seeded = false;
+    const seed = () => {
+      if (seeded || due.value || !start.value) return;
+      due.value = start.value;
+      due.classList.add("is-auto");
+      seeded = true;
+    };
+    due.addEventListener("pointerdown", seed, true);
+    due.addEventListener("mousedown", seed, true);
+    due.addEventListener("keydown", seed);
+    due.addEventListener("focus", seed);
+    due.addEventListener("input", () => { seeded = false; due.classList.remove("is-auto"); commit(due.value); });
+    due.addEventListener("change", () => { seeded = false; due.classList.remove("is-auto"); commit(due.value); });
+    due.addEventListener("blur", () => {
+      if (seeded && due.value === start.value) { due.value = ""; }
+      due.classList.remove("is-auto");
+      seeded = false;
+    });
+    return;
+  }
+  let userSet = false;
   const follow = () => {
     if (userSet || !start.value || due.value === start.value) return;
     due.value = start.value;
@@ -639,7 +665,7 @@ export class TaskModal extends TltModal {
     dIn.value = this.draft.due || "";
     dIn.title = T("截止");
     dIn.onchange = () => { this.draft.due = dIn.value || undefined; };
-    seedDue(dIn, start, (v) => (this.draft.due = v || undefined), false);   // 改已有任务：不硬跟
+    seedDue(dIn, start, (v) => (this.draft.due = v || undefined), "peek");   // 改已有任务：只看不写
     dline.append(start, arrow, dIn);
     dates.appendChild(dline);
 

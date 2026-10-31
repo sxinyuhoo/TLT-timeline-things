@@ -2472,6 +2472,47 @@ await t("工作台侧栏：去掉了本周期档位，「完成 a/b」跟选中�
   assert.ok(!/我 \d+%/.test(foot()), `不该再有"本周我"那项：${foot()}`);
 });
 
+await t("日历：已完成的块挂在「完成于」那天；改回完成时间，块也回去", async () => {
+  document.body.empty();
+  const day = (n) => { const d = new Date(Date.parse(D) + n * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  const yesterday = day(-1);
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [x] 第二天才补勾的活 📅 ${D} [st:: 09:00] [en:: 10:00] [done:: ${yesterday}] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  const blkOn = async (d) => {
+    view.viewDate = d;
+    await view.render();
+    return [...document.querySelectorAll(".tlt-blk.plan")].find((b) => (b.textContent || "").includes("第二天才补勾的活"));
+  };
+  assert.ok(await blkOn(yesterday), "已完成：块该在「完成于」那天（昨天）");
+  assert.ok(!(await blkOn(D)), "已完成：截止日那天不该再挂着一个块（否则就成了两块）");
+  // 事后把完成时间改回今天 → 块跟着回到今天
+  const task = store.tasks.find((x) => x.title === "第二天才补勾的活");
+  await store.setDoneAt(task, D);
+  await store.load();
+  assert.ok(await blkOn(D), "改回完成时间后，块该回到那天");
+  assert.ok(!(await blkOn(yesterday)), "原来那天就不该再留着");
+});
+
+await t("任务详情：有开始日但没截止日的旧任务，保存不该偷偷补一个截止日", async () => {
+  document.body.empty();
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 只有开始日 🛫 ${D} [created:: ${D}]\n`;
+  await store.load();
+  const task = store.tasks.find((x) => x.title === "只有开始日");
+  const modal = new TaskModal(leaf.app ?? plugin.app, store, task, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 120));
+  const save = [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent.trim() === "保存");
+  save.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  const text = files["TLT/tasks/示例项目.md"];
+  assert.ok(!/📅/.test(text), `不该凭空多出截止日：\n${text}`);
+  assert.ok(!/\[due::/.test(text), "也不该多出 due 字段");
+  assert.match(text, /- \[ \] 只有开始日 🛫 \S+/, "开始日要留着");
+});
+
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {
   document.body.empty();
   plugin.activeProject = null;

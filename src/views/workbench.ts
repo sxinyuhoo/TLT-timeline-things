@@ -569,7 +569,9 @@ export class WorkbenchView extends ItemView {
     }
     const logs = this.logsOn(sel);
     // 计划块：任务自己带了时间。完成的任务也留着它的计划块——勾完就"日程消失"会让人以为记录丢了
-    const plans = this.store.tasks.filter((t) => t.due === sel && t.st)
+    // 计划块挂在哪天：没完成 → 截止日那天；已完成 → **完成于那天**。
+    // 这样"第二天才补勾"会把块挪到实际完成的那天；事后把完成时间改回去，块也跟着回去。
+    const plans = this.store.tasks.filter((t) => t.st && (t.done && t.doneAt ? t.doneAt === sel : t.due === sel))
       .map((t) => {
         const a = hhmmToMin(t.st) || DAY_FROM;
         const b = hhmmToMin(t.en) || a + 60;
