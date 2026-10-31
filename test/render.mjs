@@ -2424,10 +2424,19 @@ await t("任务详情：完成时间能补改，但入口藏在时间线里且�
   modal.open();
   await new Promise((r) => window.setTimeout(r, 100));
   // 行上不该有入口（要进详情）；详情里也要先展开时间线
-  // 时间线可能默认收起：收着就点「展开」，没收起就直接找入口
-  const tlBtn = [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent === "展开");
-  if (tlBtn) { tlBtn.dispatchEvent(new MouseEvent("click", { bubbles: true })); await new Promise((r) => window.setTimeout(r, 120)); }
+  // 时间线默认收起，而且**必须真的有个「展开」按钮**（以前这个按钮挂错了节点，永远打不开）
+  const tlBtn = [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent.trim() === "展开");
+  assert.ok(tlBtn, `时间线默认收起，就该有「展开」可点：${[...modal.contentEl.querySelectorAll("button")].map((b) => b.textContent.trim()).join("|")}`);
+  const tlBox = modal.contentEl.querySelector(".tlt-tl");
+  assert.ok(tlBox.classList.contains("tlt-hidden"), "默认应该是收起的");
+  tlBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 160));
+  const tlOpen = modal.contentEl.querySelector(".tlt-tl");
+  assert.ok(!tlOpen.classList.contains("tlt-hidden"), "点了展开就该露出来");
+  assert.equal([...modal.contentEl.querySelectorAll("button")].filter((b) => b.textContent.trim() === "收起").length, 1, "展开后按钮应变成「收起」");
   const fix = [...modal.contentEl.querySelectorAll("button")].find((b) => b.title.includes("补改完成时间"));
+  assert.ok(fix, "展开后应该看得到补改入口");
+  assert.match(fix.textContent, /补改/, `入口带上文字更好找：${fix.textContent}`);
   assert.ok(fix, `时间线里要有 ✎ 补改入口：${[...modal.contentEl.querySelectorAll("button")].map((b) => b.textContent).join("|")}`);
   fix.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 120));

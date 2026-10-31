@@ -716,7 +716,7 @@ export class TaskModal extends TltModal {
       // 只有已完成、且真的记了日期的任务，才给这个入口：
       // 补改是"偶发补救"，不是随手就能改的——所以藏在详情的时间线里，还要过一道确认弹窗
       if (k === T("完成") && this.task.done) {
-        const fix = el("button", "tlt-btn tiny", "✎");
+        const fix = el("button", "tlt-btn tiny", "✎ " + T("补改"));
         fix.title = T("补改完成时间（忘了按时勾选时用）");
         fix.onclick = () => new DoneAtModal(this.app, this.store, this.task, () => {
           void (async () => { await this.refreshSteps(); void this.onChange(); })();
@@ -728,7 +728,8 @@ export class TaskModal extends TltModal {
     const tlToggle = el("button", "tlt-btn tiny", this.showTimeline ? T("收起") : T("展开"));
     tlToggle.onclick = () => { this.showTimeline = !this.showTimeline; this.contentEl.empty(); void this.onOpen(); };
     if (!this.showTimeline) tl.addClass("tlt-hidden");
-    tlRow.querySelector(".tlt-row-l")?.appendChild(tlToggle);
+    // 注意：row() 返回的是「值」那一格，标题在它的兄弟节点上——从父节点找，别在值里找
+    tlRow.parentElement?.querySelector(".tlt-row-l")?.appendChild(tlToggle);
     tlRow.appendChild(tl);
 
     const foot = el("div", "tlt-m-foot");

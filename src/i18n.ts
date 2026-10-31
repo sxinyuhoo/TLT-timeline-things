@@ -97,6 +97,7 @@ export const EN: Record<string, string> = {
   "按创建时间": "By created",
   "按截止时间": "By due",
   "反向排列": "Reverse",
+  "补改": "Fix date",
   "已删除（下次推送时同步）": "Deleted (will sync on the next push)",
   "已删除，并已推送到发布服务": "Deleted, and pushed to the publish service",
   "没找到这条消息，文件可能刚被改过": "That message could not be found — the file may have just changed",
