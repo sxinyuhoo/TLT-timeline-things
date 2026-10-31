@@ -40,6 +40,12 @@ export interface Task {
   done: boolean;
   start?: string;
   due?: string;
+  /**
+   * 排期日：被「排进时间表」时落在哪一天。
+   * 和截止日**没有关系**——排期是"打算哪天做这件事"，截止是"最晚什么时候要交"。
+   * 老数据没有这个字段：按截止日（已完成则按完成日）算。
+   */
+  plan?: string;
   st?: string;
   en?: string;
   wl: number;
@@ -211,6 +217,7 @@ export function parseTaskLine(
     id: `${ctx.file}#${ctx.line}`,
     file: ctx.file, line: ctx.line, raw,
     title, done, start, due,
+    plan: f["plan"] || undefined,
     st: f["st"] || undefined, en: f["en"] || undefined,
     wl: parseInt(f["wl"] || "0", 10) || 0,
     est: f["est"] !== undefined ? Number(f["est"]) : undefined,
@@ -235,6 +242,7 @@ export function newTaskLine(t: Partial<Task> & { title: string }): string {
   let s = `- [ ] ${t.title}`;
   if (t.start) s += ` 🛫 ${t.start}`;
   if (t.due) s += ` 📅 ${t.due}`;
+  if (t.plan) s += ` [plan:: ${t.plan}]`;
   if (t.est) s += ` [est:: ${t.est}]`;
   if (t.wl) s += ` [wl:: ${t.wl}]`;
   if (t.pw && t.pw !== "m") s += ` [pw:: ${t.pw}]`;

@@ -2180,7 +2180,8 @@ await t("日历：重叠的块并排显示，各自的颜色不一样", async ()
   // 重叠的两个：并排（左右各半），互不遮挡
   assert.ok(a.classList.contains("tlt-blk-lane") && b.classList.contains("tlt-blk-lane"), "重叠的块要分栏");
   assert.notEqual(a.style.left, b.style.left, `并排就该左右不同：${a.style.left} / ${b.style.left}`);
-  assert.match(a.style.width, /calc\(50/, `两块重叠时各占一半：${a.style.width}`);
+  assert.match(a.style.width, /100% - 60px/, `宽度要在"扣掉左侧刻度"的可用区里分：${a.style.width}`);
+  assert.ok(a.style.left.includes("52px"), `第一栏要从刻度右边开始，不能压住时间：${a.style.left}`);
   // 不重叠的那个：不占车道，满宽
   assert.ok(!c.classList.contains("tlt-blk-lane"), "不重叠的块不该分栏");
   assert.equal(c.style.left, "", "不重叠就不该有 left 偏移");
@@ -2191,8 +2192,8 @@ await t("日历：重叠的块并排显示，各自的颜色不一样", async ()
   await view.render();
   const narrow = [...document.querySelectorAll(".tlt-blk")].filter((b) => b.classList.contains("tlt-blk-narrow"));
   assert.equal(narrow.length, 3, `三块互相重叠时都该是窄块：${narrow.length}`);
-  assert.equal(narrow[0].style.left, "calc(0% + 2px)", "第一块贴左");
-  assert.match(narrow[2].style.left, /calc\(66\.6/, `第三块在最右：${narrow[2].style.left}`);
+  assert.ok(narrow[0].style.left.includes("52px"), `第一块贴着刻度右边：${narrow[0].style.left}`);
+  assert.notEqual(narrow[0].style.left, narrow[2].style.left, "三栏的话最右那块不该和最左一样");
   const hueA = a.style.getPropertyValue("--hue"), hueB = b.style.getPropertyValue("--hue");
   assert.ok(hueA && hueB, "每块都要有 --hue");
   assert.notEqual(hueA, hueB, `相邻的块颜色不该一样：${hueA} / ${hueB}`);
@@ -2511,6 +2512,56 @@ await t("任务详情：有开始日但没截止日的旧任务，保存不该�
   assert.ok(!/📅/.test(text), `不该凭空多出截止日：\n${text}`);
   assert.ok(!/\[due::/.test(text), "也不该多出 due 字段");
   assert.match(text, /- \[ \] 只有开始日 🛫 \S+/, "开始日要留着");
+});
+
+await t("排进时间表：只写排期日和时段，绝不改截止日；块挂在排期日那天", async () => {
+  document.body.empty();
+  const day = (n) => { const d = new Date(Date.parse(D) + n * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  const later = day(3);
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 交期在后头的活 📅 ${later} [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.viewDate = D;
+  await view.render();
+  const task = store.tasks.find((x) => x.title === "交期在后头的活");
+  await view.scheduleTask(task);
+  await new Promise((r) => window.setTimeout(r, 150));
+
+  const text = files["TLT/tasks/示例项目.md"];
+  assert.match(text, new RegExp(`📅 ${later}`), `截止日一个字都不能动：\n${text}`);
+  assert.match(text, /\[plan:: \d{4}-\d{2}-\d{2}\]/, `要写下排期日：\n${text}`);
+  assert.match(text, /\[st:: \d{2}:\d{2}\]/, "要写开始时间");
+  assert.match(text, /\[en:: \d{2}:\d{2}\]/, "要写结束时间");
+
+  // 排完：块出现在"今天"（排期日），不是截止日那天
+  await store.load();
+  await view.render();
+  const here = [...document.querySelectorAll(".tlt-blk.plan")].find((b) => (b.textContent || "").includes("交期在后头的活"));
+  assert.ok(here, "块该排在今天（排期日）");
+  view.viewDate = later;
+  await view.render();
+  const there = [...document.querySelectorAll(".tlt-blk.plan")].find((b) => (b.textContent || "").includes("交期在后头的活"));
+  assert.ok(!there, "截止日那天不该出现这个块（排期和截止是两回事）");
+});
+
+await t("计划块优先看排期日：有 [plan::] 就不按截止日/完成日挂", async () => {
+  document.body.empty();
+  const day = (n) => { const d = new Date(Date.parse(D) + n * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  const planDay = day(-2);
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [x] 有排期日的活 📅 ${D} [plan:: ${planDay}] [st:: 09:00] [en:: 10:00] [done:: ${D}] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  const blkOn = async (d) => {
+    view.viewDate = d;
+    await view.render();
+    return [...document.querySelectorAll(".tlt-blk.plan")].some((b) => (b.textContent || "").includes("有排期日的活"));
+  };
+  assert.ok(await blkOn(planDay), "块该挂在排期日");
+  assert.ok(!(await blkOn(D)), "不该按完成日/截止日再挂一块");
 });
 
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {

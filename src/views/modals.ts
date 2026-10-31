@@ -733,6 +733,8 @@ export class TaskModal extends TltModal {
     const tl = el("div", "tlt-tl");
     const tlItems: [string, string][] = [
       [T("创建"), this.task.created || T("未记录")],
+      // 排期日和截止日是两回事，两个都写出来，免得看日历的人以为块挂错了日子
+      [T("排期"), this.task.plan ? this.task.plan : T("没排进时间表")],
       [T("完成"), this.task.doneAt || T("未完成")],
       [T("进度"), this.task.steps.length ? T("{a}/{b}", { a: this.task.steps.filter((x) => x.done).length, b: this.task.steps.length }) : T("无子项")],
     ];

@@ -97,6 +97,8 @@ export const EN: Record<string, string> = {
   "按创建时间": "By created",
   "按截止时间": "By due",
   "反向排列": "Reverse",
+  "没排进时间表": "not scheduled",
+  "排期": "Scheduled",
   "补改": "Fix date",
   "已删除（下次推送时同步）": "Deleted (will sync on the next push)",
   "已删除，并已推送到发布服务": "Deleted, and pushed to the publish service",

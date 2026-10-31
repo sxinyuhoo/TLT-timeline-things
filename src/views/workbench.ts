@@ -52,6 +52,18 @@ function panelIcon(): SVGSVGElement {
   return svg;
 }
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
+/** 时间轴左边留给刻度、右边留边距（与 styles.css 里 .tlt-blk 的 left/right 保持一致） */
+const GUTTER = 52, RIGHT_PAD = 8;
+
+/**
+ * 一个任务的日程块挂在哪一天：排期日 → 完成日（已完成）→ 截止日。
+ * 排期日和截止日是两件事，这里只决定"画在哪天的日历上"。
+ */
+function dayOfBlock(t: Task): string {
+  if (t.plan) return t.plan;
+  if (t.done && t.doneAt) return t.doneAt;
+  return t.due || "";
+}
 type TaskDim = "d" | "run" | "w" | "m" | "q" | "all";
 type SortScope = "project" | "milestone" | "task";
 /** 排序口径的中文名（下拉菜单和按钮上都用它） */
@@ -569,9 +581,10 @@ export class WorkbenchView extends ItemView {
     }
     const logs = this.logsOn(sel);
     // 计划块：任务自己带了时间。完成的任务也留着它的计划块——勾完就"日程消失"会让人以为记录丢了
-    // 计划块挂在哪天：没完成 → 截止日那天；已完成 → **完成于那天**。
-    // 这样"第二天才补勾"会把块挪到实际完成的那天；事后把完成时间改回去，块也跟着回去。
-    const plans = this.store.tasks.filter((t) => t.st && (t.done && t.doneAt ? t.doneAt === sel : t.due === sel))
+    // 计划块挂在哪天，按优先级：排期日（[plan::]）→ 完成日（已完成）→ 截止日。
+    // 排期日和截止日**是两回事**：排期说"打算哪天做"，截止说"最晚什么时候交"，
+    // 所以「排进时间表」只写排期日，不动截止日。
+    const plans = this.store.tasks.filter((t) => t.st && dayOfBlock(t) === sel)
       .map((t) => {
         const a = hhmmToMin(t.st) || DAY_FROM;
         const b = hhmmToMin(t.en) || a + 60;
@@ -597,10 +610,10 @@ export class WorkbenchView extends ItemView {
       blk.style.top = `${((x.a - DAY_FROM) / 60) * HOUR_PX}px`;
       blk.style.height = `${Math.max(26, ((x.b - x.a) / 60) * HOUR_PX)}px`;
       if (lanes > 1) {
-        // 并排：按车道切宽度，右边留 3px 缝，重叠时也能各自读清
-        const w = 100 / lanes;
-        blk.style.left = `calc(${(lane * w).toFixed(2)}% + 2px)`;
-        blk.style.width = `calc(${w.toFixed(2)}% - 5px)`;
+        // 并排：在"刻度右侧的可用区"里等分——左边 52px 留给时间刻度、右边 8px 留边距，
+        // 不能按整条宽度算，否则第一栏会盖住刻度（这就是之前并排时块压住时间的原因）
+        blk.style.left = `calc(${GUTTER}px + (100% - ${GUTTER + RIGHT_PAD}px) * ${(lane / lanes).toFixed(4)})`;
+        blk.style.width = `calc((100% - ${GUTTER + RIGHT_PAD}px) / ${lanes} - 4px)`;
         blk.classList.add("tlt-blk-lane");
         if (lanes >= 3) blk.classList.add("tlt-blk-narrow");     // 特别窄的：标题给两行，副信息收起来
       }
@@ -1988,6 +2001,7 @@ export class WorkbenchView extends ItemView {
         },
       });
       items.push({ label: T("取消排期"), danger: true, onClick: async () => {
+        await this.store.setField(item, "plan", null);
         await this.store.setField(item, "st", null);
         await this.store.setField(item, "en", null);
         new Notice(T("已取消排期"), 2500);
@@ -2020,7 +2034,7 @@ export class WorkbenchView extends ItemView {
     const day = this.viewDate;
     const spans = [
       ...this.store.logs.filter((l) => l.due === day),
-      ...this.store.tasks.filter((x) => x.due === day && x.st && !x.done && x.id !== t.id),
+      ...this.store.tasks.filter((x) => x.st && !x.done && x.id !== t.id && dayOfBlock(x) === day),
     ]
       .map((b) => ({ a: hhmmToMin(b.st) || DAY_FROM, b: hhmmToMin(b.en) || (hhmmToMin(b.st) || DAY_FROM) + 30 }))
       .filter((r) => r.b > r.a)
@@ -2040,7 +2054,8 @@ export class WorkbenchView extends ItemView {
     start = Math.round(start / 5) * 5;
     if (start >= 22 * 60) { new Notice(T("这天排满了，换一天试试")); return; }
     const end = Math.min(23 * 60, start + 60);
-    if (t.due !== day) await this.store.setDue(t, day);
+    // 只排时间：截止日是"什么时候要交"，跟"哪天做"没有关系，一个字都不动
+    await this.store.setField(t, "plan", day);
     await this.store.setField(t, "st", minToHHMM(start));
     await this.store.setField(t, "en", minToHHMM(end));
     this.scrollToMin = start;
