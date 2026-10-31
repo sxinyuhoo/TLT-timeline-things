@@ -1652,7 +1652,8 @@ export class WorkbenchView extends ItemView {
     cols.appendChild(el("div", "tlt-wgut2"));        // 第一格留给左侧刻度，别让周一到周五挤进 52px 里
     inner.appendChild(cols);
     days.forEach((k) => {
-      const col = el("div", "tlt-wcol" + (k === todayISO() ? " today" : "") + (k === this.viewDate ? " sel" : ""));
+      // 周视图不给"选中日"整列上底色：两个蓝底并排看着像蒙版；今天留一层极淡的
+      const col = el("div", "tlt-wcol" + (k === todayISO() ? " today" : ""));
       col.dataset.day = k;
       cols.appendChild(col);
       const blocks = this.blocksOn(k);
@@ -1673,6 +1674,7 @@ export class WorkbenchView extends ItemView {
         blk.title = `${x.title}\n${x.st || ""}${x.en ? "–" + x.en : ""} · ${x.kind === "plan" ? T("计划") : T("记录")}`;
         blk.append(el("b", "tlt-wbt", x.title),
           el("span", "tlt-wbm", `${x.st || ""}${x.en ? "–" + x.en : ""}`));
+        blk.appendChild(el("span", "tlt-wgrip"));      // 下缘把人拖：只改结束时间
         this.wireWeekDrag(blk, x, k);
         col.appendChild(blk);
       });
@@ -1685,10 +1687,10 @@ export class WorkbenchView extends ItemView {
 
   /** 周视图里拖块：上下改时间、左右换天（任务→改排期日；完成的连带把完成日挪过去；记录→换到那天的记录里） */
   private wireWeekDrag(blk: HTMLElement, x: CalBlock, day: string) {
-    let mode: "move" | null = null;
+    let mode: "move" | "resize" | null = null;
     let moved = false;
     let y0 = 0, x0 = 0, a0 = x.a, b0 = x.b;
-    let curA = x.a, shiftDay = 0;
+    let curA = x.a, curB = x.b, shiftDay = 0;
     const col = blk.parentElement;
     // 列宽拿不到（还没布局）时按 120px 估，免得横向拖一下跳到很远的天
     const colW = () => { const w = col ? col.getBoundingClientRect().width : 0; return w > 8 ? w : 120; };
@@ -1706,6 +1708,11 @@ export class WorkbenchView extends ItemView {
       const dx = ev.clientX - x0;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;      // 动过就不当点击了
       const snap = (m: number) => Math.round(m / 15) * 15;
+      if (mode === "resize") {                   // 拖下缘：只动结束时间
+        curB = Math.max(a0 + 15, Math.min(DAY_TO, snap(b0 + (dy / HOUR_css()) * 60)));
+        blk.style.height = `${Math.max(16, ((curB - a0) / 60) * HOUR_css())}px`;
+        return;
+      }
       curA = Math.max(DAY_FROM, Math.min(DAY_TO - 15, snap(a0 + (dy / HOUR_css()) * 60)));
       blk.style.top = `${((curA - DAY_FROM) / 60) * HOUR_css()}px`;
       const target = dayAt(dx);
@@ -1713,6 +1720,22 @@ export class WorkbenchView extends ItemView {
       blk.classList.toggle("shifting", shiftDay !== 0);
     };
     const onUp = (ev: PointerEvent) => {
+      if (mode === "resize") {                   // 高度拖完：写回结束时间
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        blk.classList.remove("dragging", "shifting");
+        const wasResize = curB !== b0;
+        mode = null;
+        if (wasResize) {
+          void (async () => {
+            if (x.kind === "plan") await this.store.setField(x.item, "en", minToHHMM(curB));
+            else await this.store.setLogTime(x.item, minToHHMM(curA), minToHHMM(curB));
+            new Notice(T("已改到 {a}–{b}", { a: minToHHMM(curA), b: minToHHMM(curB) }), 2500);
+            await this.refresh();
+          })();
+        }
+        return;
+      }
       if (mode && !moved) {                       // 没拖动过＝一次普通点击：让它去开详情，不要写文件、也别报"已改到…"
         mode = null; blk.removeClass("dragging");
         window.removeEventListener("pointermove", onMove);
@@ -1745,8 +1768,9 @@ export class WorkbenchView extends ItemView {
     };
     blk.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0) return;
-      mode = "move";
-      y0 = ev.clientY; x0 = ev.clientX; a0 = x.a; b0 = x.b; curA = x.a;
+      // 抓住下缘的把手＝改结束时间；抓别处＝整体挪
+      mode = (ev.target as HTMLElement).classList.contains("tlt-wgrip") ? "resize" : "move";
+      y0 = ev.clientY; x0 = ev.clientX; a0 = x.a; b0 = x.b; curA = x.a; curB = x.b;
       blk.classList.add("dragging");
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
@@ -1801,7 +1825,8 @@ export class WorkbenchView extends ItemView {
       if (blocks.length) num.appendChild(el("span", "tlt-mdc", T("{n} 条", { n: blocks.length })));
       cell.appendChild(num);
       const list = el("div", "tlt-mlist");
-      const shown = blocks.slice(0, blocks.length > 4 ? 3 : 4);
+      // 最多 4 条，多出来的收成「+N 个」（用户要的：4 条大概占满一格）
+      const shown = blocks.slice(0, blocks.length > 4 ? 4 : blocks.length);
       shown.forEach((b) => {
         const row = el("div", "tlt-mrow " + b.kind + (b.done ? " done" : ""));
         row.style.setProperty("--hue", this.hueFor(b.item.id, new Set<string>()));
@@ -1811,8 +1836,8 @@ export class WorkbenchView extends ItemView {
         list.appendChild(row);
       });
       if (blocks.length > 4) {
-        const more = el("div", "tlt-mmore", T("+{n} 个", { n: blocks.length - 3 }));
-        more.title = blocks.slice(3).map((b) => b.title).join("\n");
+        const more = el("div", "tlt-mmore", T("+{n} 个", { n: blocks.length - shown.length }));
+        more.title = blocks.slice(shown.length).map((b) => b.title).join("\n");
         more.onclick = (ev) => { ev.stopPropagation(); this.viewDate = k; this.calView = "d"; void this.render(); };
         list.appendChild(more);
       }

@@ -2693,8 +2693,8 @@ await t("月视图：每格最多 4 行，多出来的收成「+N 个」；点�
   await view.render();
   const cell = [...document.querySelectorAll(".tlt-mcell")].find((c) => c.dataset.day === D);
   assert.ok(cell, "该有今天这一格");
-  assert.equal(cell.querySelectorAll(".tlt-mrow").length, 3, `6 条时只列前 3 条：${cell.querySelectorAll(".tlt-mrow").length}`);
-  assert.equal(cell.querySelector(".tlt-mmore").textContent, "+3 个", `多出来的要写 +N：${cell.querySelector(".tlt-mmore")?.textContent}`);
+  assert.equal(cell.querySelectorAll(".tlt-mrow").length, 4, `6 条时列前 4 条：${cell.querySelectorAll(".tlt-mrow").length}`);
+  assert.equal(cell.querySelector(".tlt-mmore").textContent, "+2 个", `多出来的要写 +N：${cell.querySelector(".tlt-mmore")?.textContent}`);
   assert.match(cell.querySelector(".tlt-mdc").textContent, /6 条/, "格子角上要写当天总数");
   // 点「+N 个」→ 进那天的日视图
   cell.querySelector(".tlt-mmore").dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -2866,12 +2866,47 @@ await t("周视图：点一下块（没拖动）不写文件、也不报「已�
   assert.ok(files["TLT/tasks/示例项目.md"].includes(before), `点一下不该改文件：\n${files["TLT/tasks/示例项目.md"]}`);
 });
 
+await t("周视图：拖块的下缘＝只改结束时间（开始时间不动）", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 高度试验 📅 ${D} [st:: 09:00] [en:: 10:00] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "w"; view.viewDate = D;
+  await view.render();
+  const blk = [...view.contentEl.querySelectorAll(".tlt-wblk")].find((b) => b.textContent.includes("高度试验"));
+  assert.ok(blk, "该有周块");
+  const grip = blk.querySelector(".tlt-wgrip");
+  assert.ok(grip, "块的下缘要有把手（拖高度）");
+  const PE = dom.window.PointerEvent || dom.window.MouseEvent;
+  const mk = (type, x, y) => new PE(type, { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y });
+  grip.dispatchEvent(mk("pointerdown", 100, 230));
+  window.dispatchEvent(mk("pointermove", 100, 260));      // 往下 30px＝+1 小时
+  window.dispatchEvent(mk("pointerup", 100, 260));
+  await new Promise((r) => window.setTimeout(r, 300));
+  const text = files["TLT/tasks/示例项目.md"];
+  assert.match(text, /\[st:: 09:00\]/, `开始时间不该动：${text}`);
+  assert.match(text, /\[en:: 11:00\]/, `结束时间该变 11:00：${JSON.stringify(text)}`);
+});
+
+await t("样式：年视图铺满宽度、选中日不再整列蒙底色", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-yheat\s*{[^}]*width:\s*100%/.test(css), "年视图热力图要铺满（不再 max-content 左对齐）");
+  assert.ok(/\.tlt-yhrow\s+\.tlt-ycell\s*{[^}]*flex:\s*1 1 0/.test(css), "热力格的列要均分宽度");
+  assert.ok(/\.tlt-wgrip\s*{[^}]*bottom:\s*0/.test(css), "周块下缘要有高度把手");
+  const wts = (await import("node:fs")).readFileSync("src/views/workbench.ts", "utf8");
+  assert.ok(/"tlt-wcol" \+ \(k === todayISO\(\) \? " today" : ""\)/.test(wts), "周列只挂 today，不再挂 sel");
+});
+
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // 现在的契约：列能缩（minmax(0,1fr)）、行跟内容长（auto），格子有 min-height 兜底
   assert.ok(/\.tlt-mgrid\s*{[^}]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/.test(css), "列必须能缩，否则窄窗口整张表横向溢出");
   assert.ok(/\.tlt-mgrid\s*{[^}]*grid-auto-rows:\s*auto/.test(css), "行高要跟内容长，不能钉死");
-  assert.ok(/\.tlt-mcell\s*{[^}]*min-height:\s*108px/.test(css), "格子要给「3 条 + +N」留够高度");
+  assert.ok(/\.tlt-mcell\s*{[^}]*min-height:\s*120px/.test(css), "格子要给「4 条 + +N」留够高度");
+  assert.ok(/\.tlt-mrow\s*{[^}]*min-height:\s*17px/.test(css), "行的行高要够（字大一点、别挤）");
+  assert.ok(/\.tlt-mrow\s*{[^}]*font-size:\s*10px/.test(css), "月视图日程字号 10px");
   assert.ok(/\.tlt-mrow,\s*\.tlt-mmore\s*{\s*flex:\s*none/.test(css), "行不许被压扁");
   document.body.empty();
   Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
@@ -2890,7 +2925,7 @@ await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () 
   assert.ok(more, "该有 +N 行");
   // 内容没被裁：列表内容高 ≤ 列表可视高
   assert.ok(list.scrollHeight <= list.clientHeight + 1, `列表内容被裁了：${list.scrollHeight} > ${list.clientHeight}`);
-  assert.equal([...list.children].length, 4, `3 条 + +N = 4 行：${list.children.length}`);
+  assert.equal([...list.children].length, 5, `4 条 + +N = 5 行：${list.children.length}`);
 });
 await t("里程碑视图：「＋ 新建里程碑」按钮在页头，点了能起名", async () => {
   document.body.empty();
