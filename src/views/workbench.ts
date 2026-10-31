@@ -54,6 +54,8 @@ function panelIcon(): SVGSVGElement {
 const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
 /** 时间轴左边留给刻度、右边留边距（与 styles.css 里 .tlt-blk 的 left/right 保持一致） */
 const GUTTER = 52, RIGHT_PAD = 8;
+/** 周视图里一小时占多少像素（比日视图压得紧） */
+const HOUR_css = () => 30;
 
 /**
  * 一个任务的日程块挂在哪一天：排期日 → 完成日（已完成）→ 截止日。
@@ -65,6 +67,7 @@ function dayOfBlock(t: Task): string {
   return t.due || "";
 }
 type TaskDim = "d" | "run" | "w" | "m" | "q" | "all";
+type CalView = "d" | "w" | "m" | "y";
 type SortScope = "project" | "milestone" | "task";
 /** 排序口径的中文名（下拉菜单和按钮上都用它） */
 function sortLabel(k: SortKey): string {
@@ -73,6 +76,47 @@ function sortLabel(k: SortKey): string {
 const kindLabel = (k: string) => ({ ask: T("要求"), event: T("活动"), risk: T("风险"), note: T("通知") })[k] || k;
 const KIND_COLOR: Record<string, string> = { ask: "#8B7CF6", event: "#4FB59A", risk: "#D98B5F", note: "#7C8BA1" };
 const weekday = (i: number) => [T("日"), T("一"), T("二"), T("三"), T("四"), T("五"), T("六")][i] || "";
+
+/** ISO 周号（第几周） */
+function isoWeek(isoDate: string): number {
+  const d = D(isoDate);
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+/** 把日期挪到所在周的第一天（周几开头由设置决定） */
+function weekStartOf(isoDate: string, start: 0 | 1): string {
+  const d = D(isoDate);
+  const back = (d.getDay() - start + 7) % 7;
+  return addDays(isoDate, -back);
+}
+/** 周的 7 天 */
+function weekDays(isoDate: string, start: 0 | 1): string[] {
+  const first = weekStartOf(isoDate, start);
+  return Array.from({ length: 7 }, (_, i) => addDays(first, i));
+}
+/** 某个月的网格：从该月第一天所在周的第一天开始，铺满 6 行（月视图固定高度，不会跳） */
+function monthGrid(isoDate: string, start: 0 | 1): string[] {
+  const d = D(isoDate);
+  const first = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  const gridStart = weekStartOf(first, start);
+  return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+}
+
+/** 一块日程（计划块或记录块）——日/周/月/年四种视图共用同一份口径 */
+interface CalBlock {
+  kind: "plan" | "log";
+  item: Task;
+  title: string;
+  a: number;
+  b: number;
+  st?: string;
+  en?: string;
+  done: boolean;
+}
 const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
 /** 粗略估宽（星图标签 9.5px 字号）：中文按 10px，其余按 5.8px */
 const labelWidth = (s: string) => Array.from(s).reduce((w, ch) => w + (/[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? 10 : 5.8), 0);
@@ -91,6 +135,8 @@ export class WorkbenchView extends ItemView {
   private get cfg() { return (this.plugin as { store?: Store } | undefined)?.store?.settings ?? DEFAULT_SETTINGS; }
   private tab = "today";
   private viewDate = todayISO();
+  /** 日历的档位：日 / 周 / 月 / 年 */
+  private calView: CalView = "d";
   private period: Period;
   private proj: string | null = null;
   private q = "";
@@ -505,7 +551,12 @@ export class WorkbenchView extends ItemView {
     m.appendChild(tabs);
 
     const work = el("div", "tlt-work");
-    if (this.tab === "today") work.appendChild(this.paneToday());
+    if (this.tab === "today") {
+      if (this.calView === "d") work.appendChild(this.paneToday());
+      else if (this.calView === "w") work.appendChild(this.paneCalWeek());
+      else if (this.calView === "m") work.appendChild(this.paneCalMonth());
+      else work.appendChild(this.paneCalYear());
+    }
     if (this.tab === "month") work.appendChild(this.paneMonth());
     if (this.tab === "staff") work.appendChild(this.paneStaff());
     if (this.tab === "ideas") work.appendChild(this.paneIdeas());
@@ -539,17 +590,6 @@ export class WorkbenchView extends ItemView {
     const p = el("div", "tlt-pane");
     const sel = this.viewDate;
 
-    // 日期导航
-    const bar = el("div", "tlt-dbar");
-    const prev = el("button", "tlt-dnav", "‹"); prev.dataset.dnav = "-1";
-    const next = el("button", "tlt-dnav", "›"); next.dataset.dnav = "1";
-    const dl = D(sel);
-    const lab = el("div", "tlt-dlabel");
-    lab.append(T("{m} 月 {d} 日", { m: dl.getMonth() + 1, d: dl.getDate() }));
-    lab.createEl("em", { text: T("周{w}", { w: weekday(dl.getDay()) }) + (sel === todayISO() ? T(" · 今天") : "") });
-    const todayBtn = el("button", "tlt-btn", T("回到今天")); todayBtn.dataset.today = "1";
-    bar.append(prev, lab, next, todayBtn, el("span", "tlt-spacer"),
-      el("span", "tlt-dhint", T("{a} 条记录 · {b} 未排", { a: this.logsOn(sel).length, b: this.unscheduled(sel).length })));
 
     // 7 天条
     const strip = el("div", "tlt-strip");
@@ -562,9 +602,9 @@ export class WorkbenchView extends ItemView {
       cell.appendChild(b);
       strip.appendChild(cell);
     }
-    // 节奏在上，日期选择紧跟其后（和下面的日历配套）
+    // 节奏在上：档位切换 + 日期导航 + 7 天条
     p.appendChild(this.rhythm());
-    p.appendChild(bar);
+    p.appendChild(this.calBar());
     p.appendChild(strip);
 
     // 时间轴 + 右栏
@@ -1489,6 +1529,311 @@ export class WorkbenchView extends ItemView {
     return res;
   }
 
+  /** 某天的所有日程块：计划块（排期日优先）+ 记录块，按开始时间排 */
+  private blocksOn(date: string): CalBlock[] {
+    const plans: CalBlock[] = this.store.tasks
+      .filter((t) => t.st && dayOfBlock(t) === date)
+      .map((t) => ({
+        kind: "plan" as const, item: t, title: t.title,
+        a: hhmmToMin(t.st) || DAY_FROM, b: hhmmToMin(t.en) || (hhmmToMin(t.st) || DAY_FROM) + 30,
+        st: t.st, en: t.en, done: t.done,
+      }));
+    const recs: CalBlock[] = this.store.logs
+      .filter((l) => l.due === date)
+      .map((l) => ({
+        kind: "log" as const, item: l, title: l.title,
+        a: hhmmToMin(l.st) || DAY_FROM, b: hhmmToMin(l.en) || (hhmmToMin(l.st) || DAY_FROM) + 30,
+        st: l.st, en: l.en, done: false,
+      }));
+    return [...plans, ...recs].sort((x, y) => x.a - y.a || x.b - y.b);
+  }
+
+  /** 一整年每天的块数（年视图热力图用；一次算好，别一天一天去扫） */
+  private yearCounts(year: number): Map<string, number> {
+    const map = new Map<string, number>();
+    const bump = (d?: string) => { if (d && d.startsWith(`${year}-`)) map.set(d, (map.get(d) || 0) + 1); };
+    this.store.tasks.filter((t) => t.st).forEach((t) => bump(dayOfBlock(t)));
+    this.store.logs.forEach((l) => bump(l.due));
+    return map;
+  }
+
+  /** 打开一块日程对应的详情 */
+  private openBlock(b: CalBlock) {
+    if (b.kind === "plan") new TaskModal(this.app, this.store, b.item, () => this.refresh()).open();
+    else new LogModal(this.app, this.store, b.item, () => this.refresh()).open();
+  }
+
+  /** 日历顶部的档位切换 + 导航标签 */
+  private calBar(): HTMLElement {
+    const p = this.store.settings.weekStart === 0 ? 0 : 1;
+    const sel = this.viewDate;
+    const bar = el("div", "tlt-dbar");
+    const seg = el("div", "tlt-seg tlt-calview");
+    ([["d", T("日")], ["w", T("周")], ["m", T("月")], ["y", T("年")]] as const).forEach(([k, label]) => {
+      const b = el("button", "tlt-seg-b" + (this.calView === k ? " on" : ""), label);
+      b.dataset.calview = k;
+      seg.appendChild(b);
+    });
+    bar.appendChild(seg);
+
+    const prev = el("button", "tlt-dnav", "‹"); prev.dataset.dnav = "-1";
+    const next = el("button", "tlt-dnav", "›"); next.dataset.dnav = "1";
+    const lab = el("div", "tlt-dlabel");
+    if (this.calView === "d") {
+      const dl = D(sel);
+      lab.append(T("{m} 月 {d} 日", { m: dl.getMonth() + 1, d: dl.getDate() }));
+      lab.createEl("em", { text: T("周{w}", { w: weekday(dl.getDay()) }) + (sel === todayISO() ? T(" · 今天") : "") });
+    } else if (this.calView === "w") {
+      const days = weekDays(sel, p);
+      const a = D(days[0]), b = D(days[6]);
+      lab.append(T("{y} 年 {m} 月 {d} 日", { y: a.getFullYear(), m: a.getMonth() + 1, d: a.getDate() }));
+      lab.createEl("em", { text: T("到 {m} 月 {d} 日（第 {w} 周）", { m: b.getMonth() + 1, d: b.getDate(), w: isoWeek(days[0]) }) });
+    } else if (this.calView === "m") {
+      const dl = D(sel);
+      lab.append(T("{y} 年 {m} 月", { y: dl.getFullYear(), m: dl.getMonth() + 1 }));
+      const inMonth = monthGrid(sel, p).filter((k) => k.startsWith(`${dl.getFullYear()}-${String(dl.getMonth() + 1).padStart(2, "0")}-`));
+      lab.createEl("em", { text: T("{n} 条日程", { n: inMonth.reduce((n, k) => n + this.blocksOn(k).length, 0) }) });
+    } else {
+      const dl = D(sel);
+      lab.append(T("{y} 年", { y: dl.getFullYear() }));
+      lab.createEl("em", { text: T("{n} 条日程", { n: [...this.yearCounts(dl.getFullYear()).values()].reduce((a, b) => a + b, 0) }) });
+    }
+    const todayBtn = el("button", "tlt-btn", T("回到今天")); todayBtn.dataset.today = "1";
+    bar.append(prev, lab, next, todayBtn, el("span", "tlt-spacer"));
+    if (this.calView === "d") {
+      bar.appendChild(el("span", "tlt-dhint", T("{a} 条记录 · {b} 未排", { a: this.logsOn(sel).length, b: this.unscheduled(sel).length })));
+    }
+    return bar;
+  }
+
+  /**
+   * 周视图：7 列 × 同一条时间轴，列头可点（切到那天）。
+   * 块的写法照 macOS 日历：标题 + 起止时间；计划块实线左边条、记录块虚线。
+   */
+  private paneCalWeek(): HTMLElement {
+    const p = el("div", "tlt-pane");
+    const start = this.store.settings.weekStart === 0 ? 0 : 1;
+    const days = weekDays(this.viewDate, start);
+    const HOUR = 30, GUTTER = 52;
+
+    p.appendChild(this.calBar());          // 档位切换 + 导航，四个视图共用
+    const head = el("div", "tlt-whead");
+    head.appendChild(el("div", "tlt-wgut"));
+    days.forEach((k) => {
+      const d = D(k);
+      const c = el("div", "tlt-wd" + (k === todayISO() ? " today" : ""));
+      c.dataset.day = k;                       // 点列头＝切到那天（沿用日视图的日期点击逻辑）
+      c.append(el("span", "tlt-wdw", weekday(d.getDay())), el("span", "tlt-wdn", String(d.getDate())));
+      head.appendChild(c);
+    });
+    p.appendChild(head);
+
+    const scroll = el("div", "tlt-wscroll");
+    const inner = el("div", "tlt-winner");
+    inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR}px`;
+    for (let mnt = DAY_FROM; mnt <= DAY_TO; mnt += 60) {
+      const h = el("div", "tlt-hour");
+      h.style.top = `${((mnt - DAY_FROM) / 60) * HOUR}px`;
+      h.appendChild(el("span", "", minToHHMM(mnt)));
+      inner.appendChild(h);
+    }
+    const cols = el("div", "tlt-wcols");
+    cols.appendChild(el("div", "tlt-wgut2"));        // 第一格留给左侧刻度，别让周一到周五挤进 52px 里
+    inner.appendChild(cols);
+    days.forEach((k) => {
+      const col = el("div", "tlt-wcol" + (k === todayISO() ? " today" : "") + (k === this.viewDate ? " sel" : ""));
+      col.dataset.day = k;
+      cols.appendChild(col);
+      const blocks = this.blocksOn(k);
+      const lay = this.laneLayout(blocks.map((x) => ({ a: x.a, b: x.b })));
+      blocks.forEach((x, i) => {
+        const { lane, lanes } = lay[i];
+        const blk = el("div", `tlt-wblk ${x.kind}` + (x.done ? " done" : "") + (lanes > 1 ? " lane" : ""));
+        blk.dataset.task = x.kind === "plan" ? x.item.id : "";
+        blk.dataset.log = x.kind === "log" ? x.item.id : "";
+        blk.dataset.day = k;
+        blk.style.top = `${((x.a - DAY_FROM) / 60) * HOUR}px`;
+        blk.style.height = `${Math.max(20, ((x.b - x.a) / 60) * HOUR)}px`;
+        if (lanes > 1) {
+          blk.style.left = `calc((100% - 3px) * ${(lane / lanes).toFixed(4)})`;
+          blk.style.width = `calc((100% - 3px) / ${lanes} - 2px)`;
+        }
+        blk.style.setProperty("--hue", this.hueFor(x.item.id, new Set<string>()));
+        blk.title = `${x.title}\n${x.st || ""}${x.en ? "–" + x.en : ""} · ${x.kind === "plan" ? T("计划") : T("记录")}`;
+        blk.append(el("b", "tlt-wbt", x.title),
+          el("span", "tlt-wbm", `${x.st || ""}${x.en ? "–" + x.en : ""}`));
+        this.wireWeekDrag(blk, x, k);
+        col.appendChild(blk);
+      });
+    });
+    scroll.appendChild(inner);
+    p.appendChild(scroll);
+    void GUTTER;
+    return p;
+  }
+
+  /** 周视图里拖块：上下改时间、左右换天（任务→改排期日；完成的连带把完成日挪过去；记录→换到那天的记录里） */
+  private wireWeekDrag(blk: HTMLElement, x: CalBlock, day: string) {
+    let mode: "move" | null = null;
+    let y0 = 0, x0 = 0, a0 = x.a, b0 = x.b;
+    let curA = x.a, shiftDay = 0;
+    const col = blk.parentElement;
+    // 列宽拿不到（还没布局）时按 120px 估，免得横向拖一下跳到很远的天
+    const colW = () => { const w = col ? col.getBoundingClientRect().width : 0; return w > 8 ? w : 120; };
+    const dayAt = (dx: number) => {
+      const start = this.store.settings.weekStart === 0 ? 0 : 1;
+      const days = weekDays(this.viewDate, start);
+      const idx = days.indexOf(day);
+      const move = Math.round(dx / colW());
+      return days[Math.max(0, Math.min(6, idx + move))] || day;
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (!mode) return;
+      ev.preventDefault();
+      const dy = ev.clientY - y0;
+      const dx = ev.clientX - x0;
+      const snap = (m: number) => Math.round(m / 15) * 15;
+      curA = Math.max(DAY_FROM, Math.min(DAY_TO - 15, snap(a0 + (dy / HOUR_css()) * 60)));
+      blk.style.top = `${((curA - DAY_FROM) / 60) * HOUR_css()}px`;
+      const target = dayAt(dx);
+      shiftDay = target === day ? 0 : (D(target).getTime() - D(day).getTime()) / 86400000;
+      blk.classList.toggle("shifting", shiftDay !== 0);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (!mode) return;
+      mode = null;
+      blk.classList.remove("dragging", "shifting");
+      void (async () => {
+        const st = minToHHMM(curA), en = minToHHMM(curA + (b0 - a0));
+        if (x.kind === "plan") {
+          if (shiftDay) {
+            const target = addDays(day, shiftDay);
+            await this.store.setField(x.item, "plan", target);
+            // 已经完成的：完成日也跟着挪——用户就是这么理解这块的（"哪天做了这件事"）
+            if (x.item.done) await this.store.setDoneAt({ ...x.item, plan: target }, target);
+          }
+          if (curA !== a0 || shiftDay) { await this.store.setField(x.item, "st", st); await this.store.setField(x.item, "en", en); }
+          new Notice(shiftDay ? T("已挪到 {d} {a}–{b}", { d: addDays(day, shiftDay), a: st, b: en }) : T("已改到 {a}–{b}", { a: st, b: en }), 2500);
+        } else {
+          if (shiftDay) await this.store.moveLogToDate(x.item, addDays(day, shiftDay));
+          await this.store.setLogTime(x.item, st, en);
+          new Notice(shiftDay ? T("记录已挪到 {d}", { d: addDays(day, shiftDay) }) : T("已改到 {a}–{b}", { a: st, b: en }), 2500);
+        }
+        await this.refresh();
+      })();
+    };
+    blk.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0) return;
+      mode = "move";
+      y0 = ev.clientY; x0 = ev.clientX; a0 = x.a; b0 = x.b; curA = x.a;
+      blk.classList.add("dragging");
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+    blk.addEventListener("click", (ev) => { ev.stopPropagation(); });
+    blk.addEventListener("contextmenu", (ev) => { ev.preventDefault(); ev.stopPropagation(); this.blockMenu(x.kind, x.item, { x: ev.clientX, y: ev.clientY }); });
+  }
+
+  /**
+   * 月视图：6×7 格，每格最多 4 行（前 3 条 + 「+N 个」）。
+   * 格子里只做"看一眼密度 + 点开详情"，不给拖拽（macOS 也是切到日/周再动）。
+   */
+  private paneCalMonth(): HTMLElement {
+    const p = el("div", "tlt-pane");
+    const start = this.store.settings.weekStart === 0 ? 0 : 1;
+    const sel = D(this.viewDate);
+    const monthKey = `${sel.getFullYear()}-${String(sel.getMonth() + 1).padStart(2, "0")}`;
+    p.appendChild(this.calBar());
+    const grid = el("div", "tlt-mgrid");
+    const head = el("div", "tlt-mhead");
+    for (let i = 0; i < 7; i++) head.appendChild(el("div", "tlt-mhd", weekday((start + i) % 7)));
+    p.appendChild(head);
+    monthGrid(this.viewDate, start).forEach((k) => {
+      const d = D(k);
+      const cell = el("div", "tlt-mcell"
+        + (k.startsWith(monthKey) ? "" : " out")
+        + (k === todayISO() ? " today" : "")
+        + (k === this.viewDate ? " sel" : ""));
+      cell.dataset.day = k;
+      const num = el("div", "tlt-mdnum");
+      num.append(el("span", "", String(d.getDate())));
+      const blocks = this.blocksOn(k);
+      if (blocks.length) num.appendChild(el("span", "tlt-mdc", T("{n} 条", { n: blocks.length })));
+      cell.appendChild(num);
+      const list = el("div", "tlt-mlist");
+      const shown = blocks.slice(0, blocks.length > 4 ? 3 : 4);
+      shown.forEach((b) => {
+        const row = el("div", "tlt-mrow " + b.kind + (b.done ? " done" : ""));
+        row.style.setProperty("--hue", this.hueFor(b.item.id, new Set<string>()));
+        row.append(el("span", "tlt-mrt", b.st ? b.st : T("全天")), el("span", "tlt-mrn", b.title));
+        row.title = `${b.title}\n${b.st || ""}${b.en ? "–" + b.en : ""}`;
+        row.onclick = (ev) => { ev.stopPropagation(); this.openBlock(b); };
+        list.appendChild(row);
+      });
+      if (blocks.length > 4) {
+        const more = el("div", "tlt-mmore", T("+{n} 个", { n: blocks.length - 3 }));
+        more.title = blocks.slice(3).map((b) => b.title).join("\n");
+        more.onclick = (ev) => { ev.stopPropagation(); this.viewDate = k; this.calView = "d"; void this.render(); };
+        list.appendChild(more);
+      }
+      cell.appendChild(list);
+      grid.appendChild(cell);
+    });
+    p.appendChild(grid);
+    return p;
+  }
+
+  /**
+   * 年视图：12 个月的热力图（一天一格，颜色深浅＝那天几件日程）。
+   * 蓝色系四档；自带图例和一句"怎么读"。
+   */
+  private paneCalYear(): HTMLElement {
+    const p = el("div", "tlt-pane");
+    const year = D(this.viewDate).getFullYear();
+    const start = this.store.settings.weekStart === 0 ? 0 : 1;
+    const counts = this.yearCounts(year);
+    const lvl = (n: number) => (n === 0 ? 0 : n <= 2 ? 1 : n <= 4 ? 2 : 3);
+
+    p.appendChild(this.calBar());
+    const legend = el("div", "tlt-ylg");
+    legend.append(el("span", "", T("淡＝没有日程，越深越忙：")),
+      el("i", "tlt-ycell lg l0"), el("span", "tlt-ylgt", T("1–2 条")), el("i", "tlt-ycell lg l1"),
+      el("span", "tlt-ylgt", T("3–4 条")), el("i", "tlt-ycell lg l2"),
+      el("span", "tlt-ylgt", T("5 条以上")), el("i", "tlt-ycell lg l3"));
+    p.appendChild(legend);
+
+    const wrap = el("div", "tlt-ywrap");
+    for (let m = 0; m < 12; m++) {
+      const box = el("div", "tlt-ymonth");
+      const title = el("div", "tlt-ymt");
+      const first = `${year}-${String(m + 1).padStart(2, "0")}-01`;
+      title.append(el("b", "", String(m + 1)), el("span", "", T("月")));
+      title.append(el("i", "", T("{n} 条", { n: monthGrid(first, start)
+        .filter((k) => k.startsWith(`${year}-${String(m + 1).padStart(2, "0")}-`))
+        .reduce((n, k) => n + (counts.get(k) || 0), 0) })));
+      box.appendChild(title);
+      const g = el("div", "tlt-ygrid");
+      for (let i = 0; i < 7; i++) g.appendChild(el("i", "tlt-yhd", weekday((start + i) % 7)));
+      monthGrid(first, start).forEach((k) => {
+        const d = D(k);
+        const inMonth = d.getMonth() === m;
+        const n = counts.get(k) || 0;
+        const cell = el("i", `tlt-ycell l${lvl(n)}`
+          + (inMonth ? " in" : " out")
+          + (k === todayISO() ? " today" : ""));
+        cell.dataset.day = k;
+        cell.title = `${k} · ${n ? T("{n} 条日程", { n }) : T("没有日程")}`;
+        g.appendChild(cell);
+      });
+      box.appendChild(g);
+      wrap.appendChild(box);
+    }
+    p.appendChild(wrap);
+    return p;
+  }
+
   private paneMilestones(): HTMLElement {
     const p = el("div", "tlt-pane");
     const ms = this.store.milestones(this.proj || undefined)
@@ -1699,10 +2044,31 @@ export class WorkbenchView extends ItemView {
     if (tab) { this.tab = tab.dataset.tab!; await this.render(); return; }
 
     const day = pick("[data-day]");
-    if (day && !pick("[data-slotgrid]")) { this.viewDate = day.dataset.day!; await this.render(); return; }
+    if (day && !pick("[data-slotgrid]")) {
+      const k = day.dataset.day ?? "";
+      // 周/月/年视图里点某天＝进那天的日视图（macOS 的手感）；日视图里就是切日子
+      if (this.calView !== "d") this.calView = "d";
+      this.viewDate = k;
+      await this.render(); return;
+    }
+
+    const calview = pick("[data-calview]");
+    if (calview) { this.calView = (calview.dataset.calview || "d") as CalView; await this.render(); return; }
 
     const dnav = pick("[data-dnav]");
-    if (dnav) { this.viewDate = addDays(this.viewDate, Number(dnav.dataset.dnav)); await this.render(); return; }
+    if (dnav) {
+      const step = Number(dnav.dataset.dnav);
+      if (this.calView === "w") this.viewDate = addDays(this.viewDate, 7 * step);
+      else if (this.calView === "m") {
+        const d = D(this.viewDate);
+        const m = new Date(d.getFullYear(), d.getMonth() + step, 1);
+        this.viewDate = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, "0")}-01`;
+      } else if (this.calView === "y") {
+        const d = D(this.viewDate);
+        this.viewDate = `${d.getFullYear() + step}-01-01`;
+      } else this.viewDate = addDays(this.viewDate, step);
+      await this.render(); return;
+    }
     if (pick("[data-today]")) { this.viewDate = todayISO(); await this.render(); return; }
 
     const msCard = pick("[data-ms]");
@@ -2053,7 +2419,7 @@ export class WorkbenchView extends ItemView {
     }
     start = Math.round(start / 5) * 5;
     if (start >= 22 * 60) { new Notice(T("这天排满了，换一天试试")); return; }
-    const end = Math.min(23 * 60, start + 60);
+    const end = Math.min(23 * 60, start + 30);        // 默认半小时，细化的自己在日历上拖
     // 只排时间：截止日是"什么时候要交"，跟"哪天做"没有关系，一个字都不动
     await this.store.setField(t, "plan", day);
     await this.store.setField(t, "st", minToHHMM(start));

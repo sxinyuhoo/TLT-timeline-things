@@ -98,6 +98,7 @@ const ideaTagsOf = (it) => {
 
 /* ---------- 3) 假 vault ---------- */
 const now = new Date();
+const day2 = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const pad = (n) => String(n).padStart(2, "0");
 const D = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 const files = {
@@ -462,7 +463,7 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   const el2 = tab.containerEl;
   assert.equal(el2.querySelectorAll("h1, h2, h3").length, 0, "不该手写标题元素");
   const names = [...el2.querySelectorAll(".setting-item-name")].map((e) => e.textContent);
-  assert.deepEqual(names.slice(0, 2), ["界面语言", "主题"], `通用项应排在最前，实际 ${names.slice(0, 2)}`);
+  assert.deepEqual(names.slice(0, 3), ["界面语言", "每周从哪天开始", "主题"], `通用项应排在最前，实际 ${names.slice(0, 3)}`);
   const heads = [...el2.querySelectorAll(".setting-item-heading .setting-item-name")].map((e) => e.textContent);
   assert.deepEqual(heads, ["目录", "口径", "消息服务", "维护"], `分节：${heads}`);
   const buttons = [...el2.querySelectorAll("button")].map((b) => b.textContent);
@@ -2562,6 +2563,181 @@ await t("计划块优先看排期日：有 [plan::] 就不按截止日/完成日
   };
   assert.ok(await blkOn(planDay), "块该挂在排期日");
   assert.ok(!(await blkOn(D)), "不该按完成日/截止日再挂一块");
+});
+
+await t("日历档位：日/周/月/年切换，导航按档位步进", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 本周的活 📅 ${D} [st:: 09:00] [en:: 10:00] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  await view.render();
+  const segs = [...document.querySelectorAll("[data-calview]")].map((b) => b.textContent.trim());
+  assert.deepEqual(segs, ["日", "周", "月", "年"], `档位该是 日周月年：${segs.join(",")}`);
+  const label = () => document.querySelector(".tlt-dlabel")?.textContent || "";
+
+  document.querySelector('[data-calview="w"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.equal(document.querySelectorAll(".tlt-wcol").length, 7, "周视图该有 7 列");
+  // 列容器是 52px 刻度 + 7 列：第一格必须是占位，不然周一会挤进 52px 那栏
+  const colsBox = document.querySelector(".tlt-wcols");
+  assert.ok(colsBox && colsBox.firstElementChild.classList.contains("tlt-wgut2"), "列容器第一格该是刻度占位");
+  assert.ok(/第 \d+ 周/.test(label()), `周标签要带周号：${label()}`);
+  const beforeW = view.viewDate;
+  document.querySelector('[data-dnav="1"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.equal(view.viewDate, day2(beforeW, 7), `周视图的 › 该跳一周：${beforeW} → ${view.viewDate}`);
+
+  document.querySelector('[data-calview="m"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.equal(document.querySelectorAll(".tlt-mcell").length, 42, "月视图该是 6×7 格");
+  assert.ok(/年 \d+ 月/.test(label()), `月标签：${label()}`);
+  const beforeM = view.viewDate;
+  document.querySelector('[data-dnav="1"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  const bm = new Date(beforeM + "T00:00:00");
+  assert.equal(view.viewDate, `${bm.getFullYear()}-${pad(bm.getMonth() + 2 > 12 ? 1 : bm.getMonth() + 2)}-01`, `月视图的 › 该跳一个月：${beforeM} → ${view.viewDate}`);
+
+  document.querySelector('[data-calview="y"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.equal(document.querySelectorAll(".tlt-ymonth").length, 12, "年视图该有 12 个月");
+  assert.ok(/^\d{4} 年/.test(label()), `年标签：${label()}`);
+  const beforeY = view.viewDate;
+  document.querySelector('[data-dnav="1"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.ok(view.viewDate.startsWith(String(Number(beforeY.slice(0, 4)) + 1)), `年视图的 › 该跳一年：${beforeY} → ${view.viewDate}`);
+});
+
+await t("周视图：块写标题+起止时间，点列头进那天的日视图", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 周里的一条 📅 ${D} [st:: 09:00] [en:: 10:30] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.calView = "w";
+  view.viewDate = D;
+  await view.render();
+  const blk = [...document.querySelectorAll(".tlt-wblk")].find((b) => (b.textContent || "").includes("周里的一条"));
+  assert.ok(blk, "周视图里该有这一块");
+  assert.equal(blk.querySelector(".tlt-wbm").textContent, "09:00–10:30", `块上要写起止时间：${blk.textContent}`);
+  assert.ok(blk.style.getPropertyValue("--hue"), "块要有自己的色相");
+  // 点列头 = 进那天的日视图
+  const head = [...document.querySelectorAll(".tlt-wd")].find((c) => c.dataset.day === D);
+  head.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  assert.equal(view.calView, "d", "点列头该进日视图");
+  assert.equal(view.viewDate, D, "而且停在点的那天");
+});
+
+await t("周视图：跨天拖动＝改排期日（完成的连带改完成日），上下拖＝改时间", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  const next = day2(D, 1);
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n`
+    + `- [ ] 拖到明天的活 📅 ${D} [st:: 09:00] [en:: 10:00] [created:: ${D}]\n`
+    + `- [x] 完成的活 📅 ${D} [st:: 14:00] [en:: 15:00] [done:: ${D}] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.calView = "w";
+  view.viewDate = D;
+  await view.render();
+  const drag = async (title, dx, dy) => {
+    const blk = [...document.querySelectorAll(".tlt-wblk")].find((b) => (b.textContent || "").includes(title));
+    assert.ok(blk, `没找到块：${title}`);
+    blk.dispatchEvent(new dom.window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, clientY: 200 }));
+    window.dispatchEvent(new dom.window.PointerEvent("pointermove", { bubbles: true, clientX: 100 + dx, clientY: 200 + dy }));
+    window.dispatchEvent(new dom.window.PointerEvent("pointerup", { bubbles: true, clientX: 100 + dx, clientY: 200 + dy }));
+    await new Promise((r) => window.setTimeout(r, 200));
+  };
+  // 往右拖一列（120px 兜底列宽）→ 排期日变成明天
+  await drag("拖到明天的活", 120, 0);
+  let text = files["TLT/tasks/示例项目.md"];
+  assert.match(text, new RegExp(`- \\[ \\] 拖到明天的活 📅 ${D}[^\\n]*\\[plan:: ${next}\\]`), `排期日该挪到明天、截止日不动：\n${text}`);
+  // 完成的活：排期日和完成日一起挪
+  await drag("完成的活", 120, 0);
+  text = files["TLT/tasks/示例项目.md"];
+  assert.match(text, new RegExp(`\\[plan:: ${next}\\]`), `完成的活也该挪：\n${text}`);
+  assert.match(text, new RegExp(`- \\[x\\] 完成的活[^\\n]*\\[done:: ${next}\\]`), `完成日要跟着挪：\n${text}`);
+});
+
+await t("月视图：每格最多 4 行，多出来的收成「+N 个」；点日程开详情、点格子进那天", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/") || k.startsWith("TLT/logs/")) delete files[k]; });
+  const lines = [1, 2, 3, 4, 5, 6].map((n) => `- [ ] 第${n}件事 📅 ${D} [st:: 0${n}:00] [en:: 0${n}:30] [created:: ${D}]`).join("\n");
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n${lines}\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.calView = "m";
+  view.viewDate = D;
+  await view.render();
+  const cell = [...document.querySelectorAll(".tlt-mcell")].find((c) => c.dataset.day === D);
+  assert.ok(cell, "该有今天这一格");
+  assert.equal(cell.querySelectorAll(".tlt-mrow").length, 3, `6 条时只列前 3 条：${cell.querySelectorAll(".tlt-mrow").length}`);
+  assert.equal(cell.querySelector(".tlt-mmore").textContent, "+3 个", `多出来的要写 +N：${cell.querySelector(".tlt-mmore")?.textContent}`);
+  assert.match(cell.querySelector(".tlt-mdc").textContent, /6 条/, "格子角上要写当天总数");
+  // 点「+N 个」→ 进那天的日视图
+  cell.querySelector(".tlt-mmore").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  assert.equal(view.calView, "d", "点 +N 该进日视图");
+  assert.equal(view.viewDate, D, "停在那天");
+  // 点某一条 → 弹详情
+  view.calView = "m";
+  await view.render();
+  const cell2 = [...document.querySelectorAll(".tlt-mcell")].find((c) => c.dataset.day === D);
+  cell2.querySelector(".tlt-mrow").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  assert.ok(document.querySelector(".tlt-host, .modal"), "点日程该弹详情");
+});
+
+await t("年视图：热力图四档（1–2 浅、3–4 中、5+ 深）", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  const y = D.slice(0, 4);
+  const mk = (n, day) => Array.from({ length: n }, (_, i) => `- [ ] ${day} 第${i}件 📅 ${day} [st:: 09:00] [en:: 09:30] [created:: ${day}]`).join("\n");
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n`
+    + mk(1, `${y}-03-05`) + "\n" + mk(3, `${y}-03-06`) + "\n" + mk(5, `${y}-03-07`) + "\n";
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.calView = "y";
+  view.viewDate = `${y}-03-05`;
+  await view.render();
+  assert.equal(document.querySelectorAll(".tlt-ymonth").length, 12, "12 个月");
+  const cellOf = (d) => [...document.querySelectorAll(".tlt-ycell")].find((c) => c.dataset.day === d);
+  assert.ok(cellOf(`${y}-03-05`).classList.contains("l1"), "1 条＝浅蓝");
+  assert.ok(cellOf(`${y}-03-06`).classList.contains("l2"), "3 条＝天蓝");
+  assert.ok(cellOf(`${y}-03-07`).classList.contains("l3"), "5 条＝深蓝");
+  assert.ok(cellOf(`${y}-03-08`).classList.contains("l0"), "没有日程的格子是空的");
+  assert.ok(/条日程|没有日程/.test(cellOf(`${y}-03-06`).title), `格子要有悬停说明：${cellOf(`${y}-03-06`).title}`);
+});
+
+await t("点空白创建日程：默认半小时", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 排一下 📅 ${D} [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.viewDate = D;
+  await view.render();
+  const task = store.tasks.find((x) => x.title === "排一下");
+  await view.scheduleTask(task);
+  await new Promise((r) => window.setTimeout(r, 150));
+  const line = files["TLT/tasks/示例项目.md"].split("\n").find((l) => l.includes("排一下"));
+  const st = /\[st:: (\d{2}):(\d{2})\]/.exec(line);
+  const en = /\[en:: (\d{2}):(\d{2})\]/.exec(line);
+  const mins = (m) => Number(m[1]) * 60 + Number(m[2]);
+  assert.equal(mins(en) - mins(st), 30, `默认该是半小时：${line}`);
 });
 
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {

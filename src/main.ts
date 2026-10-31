@@ -945,6 +945,19 @@ export class TLTSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName(t("每周从哪天开始"))
+      .setDesc(t("日历的周 / 月 / 年视图以此为准（默认周一）。"))
+      .addDropdown((dd) => {
+        dd.addOption("1", t("周一"))
+          .addOption("0", t("周日"))
+          .setValue(String(p.settings.weekStart ?? 1))
+          .onChange((v) => {
+            p.settings.weekStart = v === "0" ? 0 : 1;
+            void p.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
       .setName(t("主题"))
       .setDesc(T("跟随 Obsidian，或强制深色/浅色。主界面右上角的按钮也能切。"))
       .addDropdown((d) =>

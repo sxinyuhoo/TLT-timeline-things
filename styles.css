@@ -1755,3 +1755,88 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-row-pen:hover { opacity: 1 !important; }
 
 .tlt-pn-note { font-size: 9px; color: var(--tlt-ink5); line-height: 1.5; }
+
+/* ================= 日历：档位切换 + 周 / 月 / 年 视图 =================
+   一套配色贯穿四档：计划块实线左边条、记录块虚线左边条，色相按块稳定分配 */
+.tlt-calview { margin-right: 6px; }
+
+/* ---- 周视图：7 列 × 同一条时间轴 ---- */
+.tlt-whead { display: grid; grid-template-columns: 52px repeat(7, 1fr); gap: 3px; padding: 0 8px 4px 0; }
+.tlt-wgut { }
+.tlt-wd { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0 5px;
+  border-radius: 8px; cursor: pointer; }
+.tlt-wd:hover { background: var(--tlt-surface2); }
+.tlt-wd.today { background: rgba(91, 108, 255, .12); }
+.tlt-wdw { font-size: 8.5px; color: var(--tlt-ink5); }
+.tlt-wdn { font-size: 12px; color: var(--tlt-ink2); font-variant-numeric: tabular-nums; }
+.tlt-wd.today .tlt-wdn { color: var(--tlt-acc-ink); font-weight: 600; }
+
+.tlt-wscroll { position: relative; height: 480px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--tlt-line); border-radius: 11px; background: var(--tlt-bg2); }
+.tlt-winner { position: relative; width: 100%; }
+.tlt-wcols { position: absolute; inset: 0 8px 0 0; display: grid; grid-template-columns: 52px repeat(7, 1fr); gap: 3px; }
+.tlt-wgut2 { }
+.tlt-wcol { position: relative; border-left: 1px solid var(--tlt-line4); }
+.tlt-wcol:first-child { border-left: 0; }
+.tlt-wcol.today { background: rgba(91, 108, 255, .05); }
+.tlt-wcol.sel { background: rgba(91, 108, 255, .07); }
+.tlt-wblk { position: absolute; left: 2px; right: 2px; border-radius: 6px; overflow: hidden; cursor: grab;
+  background: color-mix(in srgb, var(--hue, #5B6CFF) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hue, #5B6CFF) 36%, transparent);
+  border-left: 3px solid var(--hue, #5B6CFF); padding: 2px 5px 2px 6px; display: flex; flex-direction: column; gap: 1px; }
+.tlt-wblk.log { border-left-style: dashed; background: color-mix(in srgb, var(--hue, #7C8BA1) 9%, transparent); }
+.tlt-wblk.done { opacity: .55; }
+.tlt-wblk.done .tlt-wbt { text-decoration: line-through; }
+.tlt-wblk.dragging { opacity: .85; z-index: 6; box-shadow: 0 6px 18px rgba(0,0,0,.28); cursor: grabbing; }
+.tlt-wblk.shifting { outline: 1px dashed var(--tlt-acc); }
+.tlt-wbt { font-size: 10px; color: var(--tlt-ink); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlt-wbm { font-size: 8.5px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; }
+
+/* ---- 月视图：6×7 格，最多 4 行 ---- */
+.tlt-mhead { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 0 2px 4px; }
+.tlt-mhd { font-size: 9px; color: var(--tlt-ink5); text-align: center; }
+.tlt-mgrid { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(86px, auto); gap: 4px; }
+.tlt-mcell { border: 1px solid var(--tlt-line); border-radius: 9px; background: var(--tlt-bg2);
+  padding: 4px 5px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; overflow: hidden; }
+.tlt-mcell:hover { border-color: var(--tlt-line2); }
+.tlt-mcell.out { opacity: .45; }
+.tlt-mcell.today { border-color: rgba(91, 108, 255, .5); background: rgba(91, 108, 255, .06); }
+.tlt-mcell.sel { border-color: rgba(91, 108, 255, .38); }
+.tlt-mdnum { display: flex; align-items: baseline; gap: 5px; font-size: 11px; color: var(--tlt-ink2);
+  font-variant-numeric: tabular-nums; }
+.tlt-mcell.today .tlt-mdnum span:first-child { color: var(--tlt-acc-ink); font-weight: 600; }
+.tlt-mdc { font-size: 8px; color: var(--tlt-ink5); }
+.tlt-mlist { display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+.tlt-mrow { display: flex; gap: 4px; align-items: baseline; font-size: 9.5px; padding: 1px 4px 1px 5px;
+  border-radius: 5px; border-left: 2.5px solid var(--hue, #5B6CFF);
+  background: color-mix(in srgb, var(--hue, #5B6CFF) 13%, transparent); overflow: hidden; }
+.tlt-mrow.log { border-left-style: dashed; background: color-mix(in srgb, var(--hue, #7C8BA1) 9%, transparent); }
+.tlt-mrow.done { opacity: .55; }
+.tlt-mrow.done .tlt-mrn { text-decoration: line-through; }
+.tlt-mrt { flex: none; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; font-size: 8.5px; }
+.tlt-mrn { flex: 1; min-width: 0; color: var(--tlt-ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlt-mmore { font-size: 9px; color: var(--tlt-ink4); padding-left: 5px; cursor: pointer; }
+.tlt-mmore:hover { color: var(--tlt-acc-ink); }
+
+/* ---- 年视图：热力图（蓝色系四档） ---- */
+.tlt-ylg { display: flex; align-items: center; gap: 6px; font-size: 9px; color: var(--tlt-ink5); margin-bottom: 8px; }
+.tlt-ylgt { margin-right: 4px; }
+.tlt-ylg .tlt-ycell { width: 11px; height: 11px; aspect-ratio: auto; }
+.tlt-ywrap { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.tlt-ymonth { border: 1px solid var(--tlt-line); border-radius: 10px; padding: 7px 8px 8px; background: var(--tlt-bg2); }
+.tlt-ymt { display: flex; align-items: baseline; gap: 4px; margin-bottom: 5px; font-size: 10px; color: var(--tlt-ink3); }
+.tlt-ymt b { font-size: 12px; color: var(--tlt-ink); }
+.tlt-ymt i { margin-left: auto; font-style: normal; font-size: 8.5px; color: var(--tlt-ink5); }
+.tlt-ygrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.tlt-yhd { font-size: 7.5px; color: var(--tlt-ink5); text-align: center; font-style: normal; }
+.tlt-ycell { display: block; aspect-ratio: 1; border-radius: 3px; background: var(--tlt-line4); cursor: pointer; }
+.tlt-ycell.in { background: var(--tlt-line3); }
+.tlt-ycell.l0 { background: var(--tlt-line4); }
+.tlt-ycell.l1 { background: rgba(91, 108, 255, .28); }
+.tlt-ycell.l2 { background: rgba(91, 108, 255, .55); }
+.tlt-ycell.l3 { background: rgba(91, 108, 255, .9); }
+.tlt-ycell.out { opacity: .3; }
+.tlt-ycell.today { outline: 1.5px solid var(--tlt-acc); outline-offset: 1px; }
+body.theme-light .tlt-ycell.l1, body.tlt-light .tlt-ycell.l1 { background: rgba(75, 90, 224, .3); }
+body.theme-light .tlt-ycell.l2, body.tlt-light .tlt-ycell.l2 { background: rgba(75, 90, 224, .55); }
+body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(75, 90, 224, .85); }

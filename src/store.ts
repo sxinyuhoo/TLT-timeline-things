@@ -40,6 +40,8 @@ export interface TLTSettings {
   sortBy?: "name" | "created" | "due";
   /** 1 = 正序，-1 = 反向（老版本共用） */
   sortDir?: 1 | -1;
+  /** 日历：每周从周一（1）还是周日（0）开始 */
+  weekStart?: 0 | 1;
   /** 三类东西各记各的排序：项目 / 里程碑 / 任务 */
   sortProjects?: SortCfg;
   sortMilestones?: SortCfg;
@@ -81,6 +83,7 @@ export const DEFAULT_SETTINGS: TLTSettings = {
   railCollapsed: false,
   sortBy: "name",
   sortDir: 1,
+  weekStart: 1,
   sortProjects: { ...DEFAULT_SORT },
   sortMilestones: { ...DEFAULT_SORT },
   sortTasks: { ...DEFAULT_SORT },
@@ -1426,6 +1429,71 @@ export class Store {
       while (end < lines.length && /^\s{2,}>/.test(lines[end])) end++;
       const quoted = body.trim() ? body.trim().split(/\r?\n/).map((l) => `  > ${l}`) : [];
       lines.splice(start + 1, end - start - 1, ...quoted);
+      return lines.join("\n");
+    });
+    return true;
+  }
+
+  /**
+   * 把一条记录挪到另一天：删掉原位置那行（含正文），插到目标日期的 `## 日期` 段里。
+   * 跨天拖动记录块用的——记录是"实际发生的事"，挪位置就是改它记在哪一天。
+   */
+  async moveLogToDate(log: Task, dateISO: string): Promise<boolean> {
+    const file = await this.fileByPath(log.file);
+    if (!file) return false;
+    const month = dateISO.slice(0, 7);
+    const sameFile = log.file.endsWith(`/${month}.md`);
+    const line = newLogLine({ st: log.st, en: log.en, title: log.title, project: log.project, body: log.note });
+    if (sameFile) {
+      let ok = false;
+      await this.app.vault.process(file, (data) => {
+        const lines = data.split(/\r?\n/);
+        let start = lines.findIndex((l) => /^\s*[-*+]\s+/.test(l) && l.includes(`[mid:: ${log.id}]`));
+        if (start < 0) start = lines.findIndex((l) => /^\s*[-*+]\s+\d{1,2}:\d{2}/.test(l) && l.includes(log.title));
+        if (start < 0) return data;
+        let end = start + 1;
+        while (end < lines.length && /^\s{2,}>/.test(lines[end])) end++;
+        lines.splice(start, end - start);
+        const h = lines.findIndex((l) => new RegExp(`^##\\s+${dateISO}\\s*$`).test(l));
+        const body = log.note ? [`  > ${log.note.replace(/\n/g, "\n  > ")}`] : [];
+        if (h >= 0) {
+          let last = h + 1;
+          for (let i = h + 1; i < lines.length; i++) {
+            if (/^##\s/.test(lines[i])) break;
+            if (/^\s*[-*+]\s+/.test(lines[i])) last = i + 1;
+          }
+          lines.splice(last, 0, line, ...body);
+        } else {
+          lines.push("", `## ${dateISO}`, "", line, ...body);
+        }
+        ok = true;
+        return lines.join("\n");
+      });
+      return ok;
+    }
+    // 跨月：从原文件删掉，再到目标月的文件里追加
+    await this.deleteLog(log);
+    await this.ensureFolder(this.settings.logsFolder);
+    const path = normalizePath(`${this.settings.logsFolder}/${month}.md`);
+    let target = this.asFile(this.app.vault.getAbstractFileByPath(path));
+    if (!target) {
+      await this.createSafe(path, `# 记录 ${month}\n\n## ${dateISO}\n\n${line}\n`);
+      return true;
+    }
+    await this.app.vault.process(target, (data) => {
+      const lines = data.split(/\r?\n/);
+      const h = lines.findIndex((l) => new RegExp(`^##\\s+${dateISO}\\s*$`).test(l));
+      const body = log.note ? [`  > ${log.note.replace(/\n/g, "\n  > ")}`] : [];
+      if (h >= 0) {
+        let last = h + 1;
+        for (let i = h + 1; i < lines.length; i++) {
+          if (/^##\s/.test(lines[i])) break;
+          if (/^\s*[-*+]\s+/.test(lines[i])) last = i + 1;
+        }
+        lines.splice(last, 0, line, ...body);
+      } else {
+        lines.push("", `## ${dateISO}`, "", line, ...body);
+      }
       return lines.join("\n");
     });
     return true;
