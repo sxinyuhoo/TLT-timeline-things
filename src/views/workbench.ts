@@ -13,7 +13,7 @@ import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaf
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
 import { setSvgMarkup, miniMarkdown } from "./dom";
-import { newProjectFlow } from "../actions";
+import { newProjectFlow, newMilestoneFlow } from "../actions";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
 
@@ -1747,6 +1747,19 @@ export class WorkbenchView extends ItemView {
    * 月视图：6×7 格，每格最多 4 行（前 3 条 + 「+N 个」）。
    * 格子里只做"看一眼密度 + 点开详情"，不给拖拽（macOS 也是切到日/周再动）。
    */
+  /** 新建里程碑：当前选了项目就直接起名；没选就先问是哪个项目 */
+  private async newMilestone(): Promise<void> {
+    const proj = this.proj;
+    if (!proj) { await newMilestoneFlow(this.app, this.store, () => this.render()); return; }
+    new PromptModal(this.app, T("新建里程碑"), T("里程碑名（项目文件里的 ## 小节）"), async (name) => {
+      const ok = await this.store.addMilestone(proj, name);
+      if (!ok) { new Notice(T("没加成：名字空了，或者这个里程碑已经在了")); return; }
+      await this.store.load();
+      await this.render();
+      new Notice(T("已在 {p} 加了里程碑：{n}", { p: proj, n: name }));
+    }).open();
+  }
+
   private paneCalMonth(): HTMLElement {
     const p = el("div", "tlt-pane");
     const start = this.store.settings.weekStart === 0 ? 0 : 1;
@@ -1898,6 +1911,11 @@ export class WorkbenchView extends ItemView {
     head.append(el("span", "", T("{a} 个里程碑 · {b} 开展中 · {c} 已完成", { a: ms.length, b: active.length, c: finished.length })));
     head.appendChild(el("span", "tlt-spacer"));
     head.appendChild(this.sortControl("milestone"));
+    // 新建里程碑：跟人员页的「＋ 添加成员」一个样，不用再跑去命令面板
+    const addMs = el("button", "tlt-btn", T("＋ 新建里程碑"));
+    addMs.dataset.newms = "1";
+    addMs.onclick = () => { void this.newMilestone(); };
+    head.appendChild(addMs);
     p.appendChild(head);
     this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";

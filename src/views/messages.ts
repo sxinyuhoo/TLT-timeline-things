@@ -699,7 +699,7 @@ export class MessagesView extends ItemView {
 
         const act = el("div", "tlt-d-act");
         if (f.personal) {
-          s.appendChild(el("div", "tlt-d-body", T("新消息默认进这里，只有自己看。点开某条草稿可以「发布为消息源」。")));
+          s.appendChild(el("div", "tlt-d-body", T("新消息默认进这里，只有自己看。要把整份源发出去，用上面的「发布消息源…」。")));
           const n = el("button", "tlt-btn pri", T("新建消息到这个源"));
           n.onclick = () => new ComposeModal(this.app, this.store, () => this.refresh(), f.id).open();
           act.appendChild(n);

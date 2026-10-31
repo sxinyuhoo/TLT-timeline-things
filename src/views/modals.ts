@@ -1,8 +1,7 @@
 import { App, Modal, Notice, TFile } from "obsidian";
-import type TLTPlugin from "../main";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, workloadBreakdown, ideaFilterTags, errMsg, toggleMdCheckbox } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, workloadBreakdown, ideaFilterTags, toggleMdCheckbox } from "../data";
 import { miniMarkdown } from "./dom";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -1816,16 +1815,19 @@ export class MsgModal extends TltModal {
         }, async (yes) => {
           if (!yes) return;
           // 不管删成功没成功（甚至报错），详情框都要自己关掉——留着一条已经不存在的消息没有意义
+          // 先关窗、再删、最后弹通知：删除要落盘 + 可能还要推服务端，让它慢慢跑，
+          // 别让人对着一个已经确定要消失的详情框等好几秒。
+          this.close();
+          void this.onChange();
           try {
             const r = await this.store.deleteMessage(m.feed, m);
-            if (!r.ok) { new Notice(T("没找到这条消息，文件可能刚被改过")); return; }
-            new Notice(r.pushed ? T("已删除，并已推送到发布服务") : T("已删除（下次推送时同步）"), 3000);
+            if (!r.ok) new Notice(T("没找到这条消息，文件可能刚被改过"));
+            else new Notice(r.pushed ? T("已删除，并已推送到发布服务") : T("已删除（下次推送时同步）"), 3000);
           } catch (e) {
             console.error("TLT: 删除消息失败", e);
             new Notice(T("删除没成功，看看控制台里的报错"));
           } finally {
-            this.close();
-            void this.onChange();
+            void this.onChange();          // 删完再刷一次，拿到真实状态
           }
         }).open();
       };
@@ -1846,15 +1848,6 @@ export class MsgModal extends TltModal {
         new Notice(m.state === "ended" ? T("已恢复发布，结束时间已去掉") : T("已结束，已记下结束发布时间"));
       })(); };
       foot.appendChild(stateBtn);
-    }
-    if (feed?.personal) {
-      const pub = el("button", "tlt-btn", T("发布为消息源…"));
-      pub.title = T("把这条消息单独发布成一个别人能订阅的源");
-      pub.onclick = () => {
-        this.close();
-        if (feed) new PublishPersonalModal(this.app, this.store, feed, m, () => { void this.onChange(); }).open();
-      };
-      foot.appendChild(pub);
     }
     const toTask = el("button", "tlt-btn pri", T("转为任务…"));
     toTask.onclick = () => {
@@ -1891,72 +1884,7 @@ export class MsgModal extends TltModal {
   onClose() { this.contentEl.empty(); }
 }
 
-export class PublishPersonalModal extends TltModal {
-  store: Store;
-  plugin?: TLTPlugin;
-  from: Feed;
-  msg: Msg;
-  onDone: () => void | Promise<void>;
-  constructor(app: App, store: Store, from: Feed, msg: Msg, onDone: () => void | Promise<void>, plugin?: TLTPlugin) {
-    super(app); this.store = store; this.from = from; this.msg = msg; this.onDone = onDone; this.plugin = plugin;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.addClass("tlt-modal");
-    contentEl.appendChild(el("div", "tlt-m-title", T("发布为消息源")));
-    contentEl.appendChild(el("div", "tlt-m-meta", T("把「{t}」放进一个新源，别人订阅这个源就能收到。", { t: this.msg.title })));
 
-    const idIn = el("input", "tlt-input wide");
-    idIn.placeholder = T("源 ID（英文/数字最稳，作为 ?ID=）");
-    idIn.value = "my-feed";
-    contentEl.appendChild(idIn);
-
-    const nameIn = el("input", "tlt-input wide");
-    nameIn.placeholder = T("源名称（显示用）");
-    nameIn.value = T("我的新源");
-    contentEl.appendChild(nameIn);
-    contentEl.appendChild(el("div", "tlt-hint", T("ID 就是订阅地址里的 ?id=，建好后别改。")));
-
-    const foot = el("div", "tlt-m-foot");
-    const cancel = el("button", "tlt-btn", T("取消"));
-    cancel.onclick = () => this.close();
-    const ok = el("button", "tlt-btn pri", T("创建并放入"));
-    ok.onclick = () => { void (async () => {
-      const id = idIn.value.trim();
-      const name = nameIn.value.trim() || id;
-      if (!id) { new Notice(T("先写源 ID")); return; }
-      // 服务不通就不报"已发布"：先确认发布服务在线
-      const hub = this.plugin?.hubState().publish || "";
-      if (this.plugin) {
-        if (!hub) { new Notice(T("还没填发布服务地址（设置 → 消息服务）")); return; }
-        if (!(await this.plugin.pingHub("publish"))) return;
-      }
-      const r = await this.store.createFeed(id, name);
-      if (!r.ok) { new Notice(T("同名源已存在，换个 ID")); return; }
-      await this.store.addMessage(id, {
-        title: this.msg.title, date: this.msg.date, kind: this.msg.kind, place: this.msg.place, body: this.msg.body,
-      });
-      await this.store.setMsgState(this.from.id, this.msg, "ended");
-      let pushed = 0;
-      let pushErr = "";
-      if (this.plugin && hub) {
-        await this.store.load();
-        const feed = this.store.feeds.find((f) => f.id === id);
-        try {
-          if (feed) pushed = (await this.store.publishFeed(feed, hub, id)).count ?? 0;
-        } catch (e) { pushErr = errMsg(e); }
-      }
-      this.close(); void this.onDone();
-      new Notice(pushErr
-        ? T("源已建好，但推送失败：{msg}（可在右栏「手动推送」重试）", { msg: pushErr })
-        : T("已发布并推送「{name}」· {n} 条", { name, n: pushed }), 8000);
-    })(); };
-    foot.append(cancel, ok);
-    contentEl.appendChild(foot);
-    window.setTimeout(() => idIn.focus(), 50);
-  }
-  onClose() { this.contentEl.empty(); }
-}
 
 
 /** 标签库：改名 / 删除 */

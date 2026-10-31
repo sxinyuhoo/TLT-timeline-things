@@ -2644,29 +2644,34 @@ await t("周视图：块写标题+起止时间，点列头进那天的日视图"
 await t("周视图：跨天拖动＝改排期日（完成的连带改完成日），上下拖＝改时间", async () => {
   document.body.empty();
   Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
-  const next = day2(D, 1);
+  // 用"本周周三"当锚点：周一是每周第一天，往右拖一列一定有下一天（不然周日/周一会被边界夹住）
+  const dow = new Date(D + "T00:00:00").getDay();          // 0=周日
+  const backToWed = dow === 0 ? -4 : 3 - dow;               // 回到本周周三
+  const WED = day2(D, backToWed), next = day2(WED, 1);
   files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n`
-    + `- [ ] 拖到明天的活 📅 ${D} [st:: 09:00] [en:: 10:00] [created:: ${D}]\n`
-    + `- [x] 完成的活 📅 ${D} [st:: 14:00] [en:: 15:00] [done:: ${D}] [created:: ${D}]\n`;
+    + `- [ ] 拖到明天的活 📅 ${WED} [st:: 09:00] [en:: 10:00] [created:: ${WED}]\n`
+    + `- [x] 完成的活 📅 ${WED} [st:: 14:00] [en:: 15:00] [done:: ${WED}] [created:: ${WED}]\n`;
   await store.load();
   const view = mount(WorkbenchView);
   await view.onOpen();
   view.tab = "today";
   view.calView = "w";
-  view.viewDate = D;
+  view.viewDate = WED;
   await view.render();
   const drag = async (title, dx, dy) => {
     const blk = [...document.querySelectorAll(".tlt-wblk")].find((b) => (b.textContent || "").includes(title));
     assert.ok(blk, `没找到块：${title}`);
-    blk.dispatchEvent(new dom.window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, clientY: 200 }));
-    window.dispatchEvent(new dom.window.PointerEvent("pointermove", { bubbles: true, clientX: 100 + dx, clientY: 200 + dy }));
-    window.dispatchEvent(new dom.window.PointerEvent("pointerup", { bubbles: true, clientX: 100 + dx, clientY: 200 + dy }));
-    await new Promise((r) => window.setTimeout(r, 200));
+    const PE = dom.window.PointerEvent || dom.window.MouseEvent;
+    const mk = (type, x, y) => new PE(type, { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y });
+    blk.dispatchEvent(mk("pointerdown", 100, 200));
+    window.dispatchEvent(mk("pointermove", 100 + dx, 200 + dy));
+    window.dispatchEvent(mk("pointerup", 100 + dx, 200 + dy));
+    await new Promise((r) => window.setTimeout(r, 250));
   };
   // 往右拖一列（120px 兜底列宽）→ 排期日变成明天
   await drag("拖到明天的活", 120, 0);
   let text = files["TLT/tasks/示例项目.md"];
-  assert.match(text, new RegExp(`- \\[ \\] 拖到明天的活 📅 ${D}[^\\n]*\\[plan:: ${next}\\]`), `排期日该挪到明天、截止日不动：\n${text}`);
+  assert.match(text, new RegExp(`- \\[ \\] 拖到明天的活 📅 ${WED}[^\\n]*\\[plan:: ${next}\\]`), `排期日该挪到隔天、截止日不动：${JSON.stringify(text)}`);
   // 完成的活：排期日和完成日一起挪
   await drag("完成的活", 120, 0);
   text = files["TLT/tasks/示例项目.md"];
@@ -2775,7 +2780,10 @@ await t("消息详情：删除在最左，删完详情框自动关掉", async ()
 
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
-  assert.ok(/\.tlt-mgrid\s*{[^}]*grid-auto-rows:\s*minmax\(108px/.test(css), "行高要给「3 条 + +N」留够地方");
+  // 现在的契约：列能缩（minmax(0,1fr)）、行跟内容长（auto），格子有 min-height 兜底
+  assert.ok(/\.tlt-mgrid\s*{[^}]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/.test(css), "列必须能缩，否则窄窗口整张表横向溢出");
+  assert.ok(/\.tlt-mgrid\s*{[^}]*grid-auto-rows:\s*auto/.test(css), "行高要跟内容长，不能钉死");
+  assert.ok(/\.tlt-mcell\s*{[^}]*min-height:\s*108px/.test(css), "格子要给「3 条 + +N」留够高度");
   assert.ok(/\.tlt-mrow,\s*\.tlt-mmore\s*{\s*flex:\s*none/.test(css), "行不许被压扁");
   document.body.empty();
   Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
@@ -2796,6 +2804,33 @@ await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () 
   assert.ok(list.scrollHeight <= list.clientHeight + 1, `列表内容被裁了：${list.scrollHeight} > ${list.clientHeight}`);
   assert.equal([...list.children].length, 4, `3 条 + +N = 4 行：${list.children.length}`);
 });
+await t("里程碑视图：「＋ 新建里程碑」按钮在页头，点了能起名", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 一条 📅 ${D}\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "ms";
+  view.proj = "示例项目";
+  await view.render();
+  const btn = view.contentEl.querySelector("[data-newms]");
+  assert.ok(btn, "里程碑页头要有新建按钮");
+  assert.match(btn.textContent, /新建里程碑/, `按钮文案：${btn.textContent}`);
+  btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  const dlg = document.querySelector(".tlt-host, .modal");
+  assert.ok(dlg, "点了该弹起名框");
+  const input = dlg.querySelector("input");
+  assert.ok(input, "要有名字输入框");
+  input.value = "二期";
+  const ok = [...dlg.querySelectorAll("button")].find((b) => /确定|保存|创建|OK/.test(b.textContent));
+  assert.ok(ok, `起名框要有确认按钮：${[...dlg.querySelectorAll("button")].map((b) => b.textContent).join("|")}`);
+  ok.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 250));
+  assert.match(files["TLT/tasks/示例项目.md"], /## 二期/, `里程碑该写进项目文件：\n${files["TLT/tasks/示例项目.md"]}`);
+});
+
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {
   document.body.empty();
   plugin.activeProject = null;
@@ -3365,7 +3400,7 @@ await t("消息中心：点消息开弹框（不改筛选）", async () => {
   assert.equal(document.querySelectorAll(".tlt-card").length, before, "时间线被重置");
 });
 
-await t("个人消息：弹框里有「发布为消息源」", async () => {
+await t("个人消息：弹框里不再有「发布为消息源」（单条消息不发布成源了）", async () => {
   document.body.empty();
   const mv = mount(MessagesView);
   await mv.onOpen();
@@ -3379,7 +3414,7 @@ await t("个人消息：弹框里有「发布为消息源」", async () => {
   assert.ok(btns.some((t) => t.includes("转为任务")), "没有转为任务");
   // 动作已展平：不再有「⋯」菜单，发布入口就在按钮行里
   assert.ok(!document.querySelector(".tlt-modal .tlt-more"), "不该再有多菜单");
-  assert.ok(btns.some((x) => x.includes("发布为消息源")), `按钮行里应有发布为消息源，实际：${btns.join(" / ")}`);
+  assert.ok(!btns.some((x) => x.includes("发布为消息源")), `单条消息不再能发布成源：${btns.join(" / ")}`);
   assert.ok(btns.some((x) => x.includes("结束这条")), "按钮行里应有结束这条");
   assert.ok(btns.some((x) => x.includes("编辑")), "按钮行里应有编辑");
 });

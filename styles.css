@@ -1797,10 +1797,13 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 /* ---- 月视图：6×7 格，最多 4 行 ---- */
 .tlt-mhead { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 0 2px 4px; }
 .tlt-mhd { font-size: 9px; color: var(--tlt-ink5); text-align: center; }
-/* 一行最多 4 行内容（3 条 + 「+N 个」），行高按它给够，不然最后一行会被裁掉 */
-.tlt-mgrid { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(108px, auto); gap: 4px; }
+/* 一行最多 4 行内容（3 条 + 「+N 个」）。
+   两个关键：① 列用 minmax(0, 1fr)——不然列不会缩，窄窗口里整张表横向溢出（看着像"内容偏移"）；
+            ② 行高用 auto + 格子 min-height——行跟着内容长，不许把最后一行裁掉 */
+.tlt-mgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: auto; gap: 4px; align-content: start; }
 .tlt-mcell { border: 1px solid var(--tlt-line); border-radius: 9px; background: var(--tlt-bg2);
-  padding: 4px 5px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; overflow: hidden; }
+  padding: 4px 5px; display: flex; flex-direction: column; gap: 2px; cursor: pointer;
+  min-width: 0; min-height: 108px; }
 .tlt-mcell:hover { border-color: var(--tlt-line2); }
 .tlt-mcell.out { opacity: .45; }
 .tlt-mcell.today { border-color: rgba(91, 108, 255, .5); background: rgba(91, 108, 255, .06); }
@@ -1811,7 +1814,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-mdc { font-size: 8px; color: var(--tlt-ink5); }
 .tlt-mlist { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow: hidden; }
 .tlt-mrow, .tlt-mmore { flex: none; }        /* 行不跟着压缩，宁可整体换行高 */
-.tlt-mrow { display: flex; gap: 4px; align-items: baseline; font-size: 9.5px; padding: 1px 4px 1px 5px;
+.tlt-mrow { display: flex; gap: 4px; align-items: baseline; font-size: 9.5px; padding: 1px 4px 1px 5px; min-width: 0;
   border-radius: 5px; border-left: 2.5px solid var(--hue, #5B6CFF);
   background: color-mix(in srgb, var(--hue, #5B6CFF) 13%, transparent); overflow: hidden; }
 .tlt-mrow.log { border-left-style: dashed; background: color-mix(in srgb, var(--hue, #7C8BA1) 9%, transparent); }
