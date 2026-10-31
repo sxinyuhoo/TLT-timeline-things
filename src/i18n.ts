@@ -97,6 +97,7 @@ export const EN: Record<string, string> = {
   "按创建时间": "By created",
   "按截止时间": "By due",
   "反向排列": "Reverse",
+  "删除没成功，看看控制台里的报错": "Delete failed — check the console for the error",
   "周日": "Sunday",
   "周一": "Monday",
   "日历的周 / 月 / 年视图以此为准（默认周一）。": "Used by the calendar's week / month / year views (Monday by default).",

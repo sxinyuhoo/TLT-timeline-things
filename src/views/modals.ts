@@ -1801,12 +1801,8 @@ export class MsgModal extends TltModal {
     if (m.state === "ended") left.appendChild(el("span", "tlt-srcbadge off", T("已结束")));
     foot.appendChild(left);
 
-    // 动作全部平铺，不再藏进「⋯」：编辑 / 结束(恢复) / 发布为消息源 / 转为任务
+    // 顺序：**删除放最左**（破坏性动作离常用动作远一点，避免误点）→ 编辑 / 结束 / 发布 / 转为任务 / 关闭放右边
     if (writable) {
-      const edit = el("button", "tlt-btn", T("编辑"));
-      edit.onclick = () => { this.editing = true; this.onOpen(); };
-      foot.appendChild(edit);
-
       // 删消息：只有自己拥有的源能删（订阅来的删了也会被下一轮同步拉回来）
       const del = el("button", "tlt-btn danger", T("删除这条消息"));
       del.onclick = () => {
@@ -1819,13 +1815,26 @@ export class MsgModal extends TltModal {
           danger: true,
         }, async (yes) => {
           if (!yes) return;
-          const r = await this.store.deleteMessage(m.feed, m);
-          this.close(); void this.onChange();
-          if (!r.ok) { new Notice(T("没找到这条消息，文件可能刚被改过")); return; }
-          new Notice(r.pushed ? T("已删除，并已推送到发布服务") : T("已删除（下次推送时同步）"), 3000);
+          // 不管删成功没成功（甚至报错），详情框都要自己关掉——留着一条已经不存在的消息没有意义
+          try {
+            const r = await this.store.deleteMessage(m.feed, m);
+            if (!r.ok) { new Notice(T("没找到这条消息，文件可能刚被改过")); return; }
+            new Notice(r.pushed ? T("已删除，并已推送到发布服务") : T("已删除（下次推送时同步）"), 3000);
+          } catch (e) {
+            console.error("TLT: 删除消息失败", e);
+            new Notice(T("删除没成功，看看控制台里的报错"));
+          } finally {
+            this.close();
+            void this.onChange();
+          }
         }).open();
       };
       foot.appendChild(del);
+      foot.appendChild(el("span", "tlt-spacer"));
+
+      const edit = el("button", "tlt-btn", T("编辑"));
+      edit.onclick = () => { this.editing = true; this.onOpen(); };
+      foot.appendChild(edit);
 
       const stateBtn = el("button", "tlt-btn", m.state === "ended" ? T("恢复发布") : T("结束这条"));
       stateBtn.title = m.state === "ended"

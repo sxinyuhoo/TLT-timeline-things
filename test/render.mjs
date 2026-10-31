@@ -2527,20 +2527,23 @@ await t("排进时间表：只写排期日和时段，绝不改截止日；块�
   view.viewDate = D;
   await view.render();
   const task = store.tasks.find((x) => x.title === "交期在后头的活");
+  const target = day(1);                       // 排到明天：今天的空档跟"现在几点"有关，测试要稳
+  view.viewDate = target;
+  await view.render();
   await view.scheduleTask(task);
   await new Promise((r) => window.setTimeout(r, 150));
 
   const text = files["TLT/tasks/示例项目.md"];
   assert.match(text, new RegExp(`📅 ${later}`), `截止日一个字都不能动：\n${text}`);
-  assert.match(text, /\[plan:: \d{4}-\d{2}-\d{2}\]/, `要写下排期日：\n${text}`);
+  assert.match(text, new RegExp(`\\[plan:: ${target}\\]`), `要写下排期日（${target}）：\n${text}`);
   assert.match(text, /\[st:: \d{2}:\d{2}\]/, "要写开始时间");
   assert.match(text, /\[en:: \d{2}:\d{2}\]/, "要写结束时间");
 
-  // 排完：块出现在"今天"（排期日），不是截止日那天
+  // 排完：块出现在"排期日"，不是截止日那天
   await store.load();
   await view.render();
   const here = [...document.querySelectorAll(".tlt-blk.plan")].find((b) => (b.textContent || "").includes("交期在后头的活"));
-  assert.ok(here, "块该排在今天（排期日）");
+  assert.ok(here, "块该排在排期日那天");
   view.viewDate = later;
   await view.render();
   const there = [...document.querySelectorAll(".tlt-blk.plan")].find((b) => (b.textContent || "").includes("交期在后头的活"));
@@ -2736,6 +2739,8 @@ await t("点空白创建日程：默认半小时", async () => {
   view.viewDate = D;
   await view.render();
   const task = store.tasks.find((x) => x.title === "排一下");
+  view.viewDate = day2(D, 1);                   // 排到明天，跟"现在几点"解耦
+  await view.render();
   await view.scheduleTask(task);
   await new Promise((r) => window.setTimeout(r, 150));
   const line = files["TLT/tasks/示例项目.md"].split("\n").find((l) => l.includes("排一下"));
@@ -2745,6 +2750,52 @@ await t("点空白创建日程：默认半小时", async () => {
   assert.equal(mins(en) - mins(st), 30, `默认该是半小时：${line}`);
 });
 
+await t("消息详情：删除在最左，删完详情框自动关掉", async () => {
+  document.body.empty();
+  files["TLT/feeds/我的源.md"] = `---\ntitle: 我的源\nowner: me\nmine: true\n---\n\n# 我的源\n\n- ${D} 要删的那条\n- ${D} 留着的那条\n`;
+  await store.load();
+  const msg = store.feeds.flatMap((f) => f.items).find((m) => m.title === "要删的那条");
+  const modal = new MsgModal(leaf.app ?? plugin.app, store, msg, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 120));
+  const labels = [...modal.contentEl.querySelectorAll(".tlt-m-foot button")].map((b) => b.textContent.trim());
+  assert.equal(labels[0], "删除这条消息", `删除该在最左边：${labels.join(" | ")}`);
+  assert.equal(labels[labels.length - 1], "关闭", `关闭该收尾：${labels.join(" | ")}`);
+  assert.ok(labels.indexOf("编辑") > 0 && labels.indexOf("编辑") < labels.indexOf("关闭"), `编辑该在右边一组：${labels.join(" | ")}`);
+  // 点删除 → 确认 → 详情框要自己关掉
+  modal.contentEl.querySelector(".tlt-m-foot button").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 120));
+  const confirm = [...document.querySelectorAll("button")].find((b) => /^(确认|删除)$/.test(b.textContent.trim()));
+  assert.ok(confirm, `该弹确认框：${[...document.querySelectorAll("button")].map((b) => b.textContent.trim()).join("|")}`);
+  confirm.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 250));
+  assert.ok(!(files["TLT/feeds/我的源.md"] || "").includes("要删的那条"), "文件里该删掉了");
+  assert.ok(!modal.containerEl?.isConnected, "详情框应该自己关掉（不该还要手动点关闭）");
+});
+
+await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-mgrid\s*{[^}]*grid-auto-rows:\s*minmax\(108px/.test(css), "行高要给「3 条 + +N」留够地方");
+  assert.ok(/\.tlt-mrow,\s*\.tlt-mmore\s*{\s*flex:\s*none/.test(css), "行不许被压扁");
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  const lines = [1, 2, 3, 4, 5].map((n) => `- [ ] 第${n}件事 📅 ${D} [st:: 0${n}:00] [en:: 0${n}:30] [created:: ${D}]`).join("\n");
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n${lines}\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.calView = "m";
+  view.viewDate = D;
+  await view.render();
+  const cell = [...document.querySelectorAll(".tlt-mcell")].find((c) => c.dataset.day === D);
+  const list = cell.querySelector(".tlt-mlist");
+  const more = cell.querySelector(".tlt-mmore");
+  assert.ok(more, "该有 +N 行");
+  // 内容没被裁：列表内容高 ≤ 列表可视高
+  assert.ok(list.scrollHeight <= list.clientHeight + 1, `列表内容被裁了：${list.scrollHeight} > ${list.clientHeight}`);
+  assert.equal([...list.children].length, 4, `3 条 + +N = 4 行：${list.children.length}`);
+});
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {
   document.body.empty();
   plugin.activeProject = null;
