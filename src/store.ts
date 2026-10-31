@@ -218,6 +218,7 @@ export class Store {
 
     // 任务：一个项目一个文件，H2 = 里程碑，缩进 checklist = 步骤
     this.projectDescs = {};
+    this.projectSections = new Map();
     this.projectPins = {};
     for (const file of this.filesIn(this.settings.tasksFolder)) {
       const text = await this.app.vault.cachedRead(file);
@@ -227,11 +228,12 @@ export class Store {
       this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]);
       this.projectPins[project] = pfm["pin"] === true || pfm["pin"] === "true";
       let milestone: string | undefined;
+      const sections: string[] = [];
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const h = /^##\s+(.+?)\s*$/.exec(line);
-        if (h) { milestone = h[1].trim(); continue; }
+        if (h) { milestone = h[1].trim(); sections.push(milestone); continue; }
         if (/^#\s/.test(line)) { milestone = undefined; continue; }
         const t = parseTaskLine(line, { file: file.path, line: i, project, milestone });
         if (!t) continue;
@@ -247,6 +249,7 @@ export class Store {
         this.tasks.push(t);
         i = j - 1;
       }
+      if (sections.length) this.projectSections.set(project, sections);
     }
 
     // 人员：team/*.md 的 frontmatter
@@ -459,6 +462,8 @@ export class Store {
     return this.projectDescs[name] || "";
   }
   private projectDescs: Record<string, string> = {};
+  /** 每个项目文件里的 ## 小节名（含还没有任务的空小节）：新建里程碑后要立刻看得见 */
+  private projectSections = new Map<string, string[]>();
   private projectPins: Record<string, boolean> = {};
 
   /** 项目是否置顶（项目文件 frontmatter 的 pin: true） */
@@ -1960,6 +1965,11 @@ export class Store {
   projects(): string[] { return Array.from(new Set(this.tasks.map((t) => t.project))).sort(); }
   milestones(project?: string): { name: string; project: string; tasks: Task[] }[] {
     const map = new Map<string, Task[]>();
+    // 项目文件里写了 ## 小节就算数——哪怕还没往里放任务（不然"新建里程碑"完看不见它）
+    for (const [proj, names] of this.projectSections) {
+      if (project && proj !== project) continue;
+      for (const n of names) map.set(`${proj}::${n}`, []);
+    }
     for (const t of this.tasks) {
       if (project && t.project !== project) continue;
       if (!t.milestone) continue;

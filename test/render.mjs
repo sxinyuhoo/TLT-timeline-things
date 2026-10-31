@@ -2778,6 +2778,94 @@ await t("消息详情：删除在最左，删完详情框自动关掉", async ()
   assert.ok(!modal.containerEl?.isConnected, "详情框应该自己关掉（不该还要手动点关闭）");
 });
 
+await t("月视图：点格子空白＝就地建日程；点日期数字＝还是去那天", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 一条 📅 ${D} [st:: 09:00] [en:: 10:00]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "m"; view.viewDate = D;
+  await view.render();
+  const cell = [...view.contentEl.querySelectorAll(".tlt-mcell")].find((c) => c.dataset.day === D);
+  // 空白（格子本体）→ 建日程
+  cell.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  const dlg = [...document.querySelectorAll(".tlt-host")].find((h) => h.textContent.includes("记一条"));
+  assert.ok(dlg, `点空白该弹出建日程：${document.body.textContent.slice(0, 120)}`);
+  assert.match(dlg.textContent, new RegExp(D), `建日程默认就是这天：${dlg.textContent.slice(0, 80)}`);
+  dlg.remove();
+  // 日期数字 → 进日视图
+  view.calView = "m";
+  await view.render();
+  const cell2 = [...view.contentEl.querySelectorAll(".tlt-mcell")].find((c) => c.dataset.day === D);
+  cell2.querySelector(".tlt-mdnum").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  assert.equal(view.calView, "d", "点日期数字该进日视图");
+  assert.equal(view.viewDate, D, "停在那天");
+});
+
+await t("周视图：点列空白＝按点的高度建日程（30 分钟），点列头＝去那天", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 一条 📅 ${D} [st:: 09:00] [en:: 10:00]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "w"; view.viewDate = D;
+  await view.render();
+  const col = [...view.contentEl.querySelectorAll(".tlt-wcol")].find((c) => c.dataset.day === D);
+  col.dispatchEvent(new MouseEvent("click", { bubbles: true, clientY: 0 }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  const dlg = [...document.querySelectorAll(".tlt-host")].find((h) => h.textContent.includes("记一条"));
+  assert.ok(dlg, `点列空白该弹出建日程：${document.body.textContent.slice(0, 120)}`);
+  dlg.remove();
+  view.calView = "w";
+  await view.render();
+  const head = [...view.contentEl.querySelectorAll(".tlt-wd")].find((c) => c.dataset.day === D);
+  head.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  assert.equal(view.calView, "d", "点列头该进日视图");
+});
+
+await t("Esc：焦点在搜索框里也必须吃掉，不能让它去切 Obsidian 标签页", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  const input = view.contentEl.querySelector('input[data-search="1"]');
+  assert.ok(input, "视图里该有搜索框");
+  const prevActive = app.workspace.getActiveViewOfType;
+  app.workspace.getActiveViewOfType = () => view;      // 桩件默认返回 null，这里得让它认得"我就是当前视图"
+  input.focus();
+  const ev = new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+  window.dispatchEvent(ev);
+  await new Promise((r) => window.setTimeout(r, 80));
+  assert.ok(ev.defaultPrevented, "Esc 必须被吃掉（不然后台会切标签页）");
+  assert.notEqual(document.activeElement, input, "顺带把焦点从输入框里让出来");
+  app.workspace.getActiveViewOfType = prevActive;
+});
+
+await t("周视图：点一下块（没拖动）不写文件、也不报「已改到…」", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  const before = `- [ ] 点一下试试 📅 ${D} [st:: 09:00] [en:: 10:00] [created:: ${D}]`;
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n${before}\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "w"; view.viewDate = D;
+  await view.render();
+  const blk = [...view.contentEl.querySelectorAll(".tlt-wblk")].find((b) => b.textContent.includes("点一下试试"));
+  assert.ok(blk, "该有周块");
+  const PE = dom.window.PointerEvent || dom.window.MouseEvent;
+  const mk = (type, x, y) => new PE(type, { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y });
+  blk.dispatchEvent(mk("pointerdown", 100, 200));
+  window.dispatchEvent(mk("pointerup", 100, 200));
+  await new Promise((r) => window.setTimeout(r, 250));
+  assert.ok(files["TLT/tasks/示例项目.md"].includes(before), `点一下不该改文件：\n${files["TLT/tasks/示例项目.md"]}`);
+});
+
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // 现在的契约：列能缩（minmax(0,1fr)）、行跟内容长（auto），格子有 min-height 兜底
@@ -2829,6 +2917,8 @@ await t("里程碑视图：「＋ 新建里程碑」按钮在页头，点了能�
   ok.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 250));
   assert.match(files["TLT/tasks/示例项目.md"], /## 二期/, `里程碑该写进项目文件：\n${files["TLT/tasks/示例项目.md"]}`);
+  // 空小节也要立刻出现在视图里（以前只列"有任务的小节"，新建完看不见）
+  assert.match(view.contentEl.textContent, /二期/, `新建完里程碑该马上出现在视图里`);
 });
 
 await t("概览面板：读数与 store 对得上，且跟着当前项目过滤", async () => {

@@ -177,7 +177,16 @@ export class WorkbenchView extends ItemView {
     if (document.querySelector(".modal-container")) return;
     const ae = document.activeElement as HTMLElement | null;
     if (ae && this.contentEl.contains(ae) &&
-      (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+      (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) {
+      // 焦点在本视图的输入框里：Esc = 清掉搜索词并让出焦点（绝不把 Esc 让给 Obsidian 去切标签页）
+      if (ae.instanceOf(HTMLInputElement) && ae.dataset.search === "1") {   // 就是上面那条搜索框
+        if (this.q) { this.q = ""; ae.value = ""; ae.blur(); void this.render(); }
+        else ae.blur();
+      } else ae.blur();
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }
     this.contentEl.querySelectorAll<HTMLElement>(".tlt-pickpop:not(.tlt-hidden)")
       .forEach((pop) => pop.addClass("tlt-hidden"));
     ev.preventDefault();
@@ -772,7 +781,7 @@ export class WorkbenchView extends ItemView {
     const mini = el("div", "tlt-mini");
     days.forEach((k) => {
       const n = load(k);
-      const c = el("span", "tlt-mcell" + (k === todayISO() ? " today" : ""));
+      const c = el("span", "tlt-mini-cell" + (k === todayISO() ? " today" : ""));
       c.dataset.day = k;
       const i = el("i");
       i.style.height = `${n ? 6 + Math.round((n / max) * 22) : 3}px`;
@@ -1623,7 +1632,8 @@ export class WorkbenchView extends ItemView {
     days.forEach((k) => {
       const d = D(k);
       const c = el("div", "tlt-wd" + (k === todayISO() ? " today" : ""));
-      c.dataset.day = k;                       // 点列头＝切到那天（沿用日视图的日期点击逻辑）
+      c.dataset.day = k;                       // 列头＝去那天；列身空白＝在这天这个时间点建日程
+      c.dataset.goday = "1";
       c.append(el("span", "tlt-wdw", weekday(d.getDay())), el("span", "tlt-wdn", String(d.getDate())));
       head.appendChild(c);
     });
@@ -1694,7 +1704,7 @@ export class WorkbenchView extends ItemView {
       ev.preventDefault();
       const dy = ev.clientY - y0;
       const dx = ev.clientX - x0;
-      if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;      // 动过就不当点击了
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;      // 动过就不当点击了
       const snap = (m: number) => Math.round(m / 15) * 15;
       curA = Math.max(DAY_FROM, Math.min(DAY_TO - 15, snap(a0 + (dy / HOUR_css()) * 60)));
       blk.style.top = `${((curA - DAY_FROM) / 60) * HOUR_css()}px`;
@@ -1702,7 +1712,13 @@ export class WorkbenchView extends ItemView {
       shiftDay = target === day ? 0 : (D(target).getTime() - D(day).getTime()) / 86400000;
       blk.classList.toggle("shifting", shiftDay !== 0);
     };
-    const onUp = () => {
+    const onUp = (ev: PointerEvent) => {
+      if (mode && !moved) {                       // 没拖动过＝一次普通点击：让它去开详情，不要写文件、也别报"已改到…"
+        mode = null; blk.removeClass("dragging");
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        return;
+      }
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       if (!mode) return;
@@ -1718,11 +1734,11 @@ export class WorkbenchView extends ItemView {
             if (x.item.done) await this.store.setDoneAt({ ...x.item, plan: target }, target);
           }
           if (curA !== a0 || shiftDay) { await this.store.setField(x.item, "st", st); await this.store.setField(x.item, "en", en); }
-          new Notice(shiftDay ? T("已挪到 {d} {a}–{b}", { d: addDays(day, shiftDay), a: st, b: en }) : T("已改到 {a}–{b}", { a: st, b: en }), 2500);
+          if (shiftDay || curA !== a0) new Notice(shiftDay ? T("已挪到 {d} {a}–{b}", { d: addDays(day, shiftDay), a: st, b: en }) : T("已改到 {a}–{b}", { a: st, b: en }), 2500);
         } else {
           if (shiftDay) await this.store.moveLogToDate(x.item, addDays(day, shiftDay));
           await this.store.setLogTime(x.item, st, en);
-          new Notice(shiftDay ? T("记录已挪到 {d}", { d: addDays(day, shiftDay) }) : T("已改到 {a}–{b}", { a: st, b: en }), 2500);
+          if (shiftDay || curA !== a0) new Notice(shiftDay ? T("记录已挪到 {d}", { d: addDays(day, shiftDay) }) : T("已改到 {a}–{b}", { a: st, b: en }), 2500);
         }
         await this.refresh();
       })();
@@ -1779,6 +1795,7 @@ export class WorkbenchView extends ItemView {
         + (k === this.viewDate ? " sel" : ""));
       cell.dataset.day = k;
       const num = el("div", "tlt-mdnum");
+      num.dataset.goday = "1";              // 只有点日期数字才是"去那天"，格子里的空白留给"建日程"
       num.append(el("span", "", String(d.getDate())));
       const blocks = this.blocksOn(k);
       if (blocks.length) num.appendChild(el("span", "tlt-mdc", T("{n} 条", { n: blocks.length })));
@@ -2101,6 +2118,16 @@ export class WorkbenchView extends ItemView {
   }
 
   /** 空白处点击 → 按坐标算时间 */
+  /** 周视图里点某个高度＝那天几点（15 分钟一档） */
+  private timeAtY(clientY: number): string | undefined {
+    const inner = this.contentEl.querySelector<HTMLElement>(".tlt-winner");
+    if (!inner) return undefined;
+    const top = inner.getBoundingClientRect().top;
+    const raw = ((clientY - top) / HOUR_css()) * 60;
+    const mins = Math.max(DAY_FROM, Math.min(DAY_TO - 30, Math.round(raw / 15) * 15));
+    return minToHHMM(mins);
+  }
+
   private async onClick(ev: MouseEvent) {
     const t = ev.target as HTMLElement;
     // 只认视图内部的命中：closest() 会一路走到 body，
@@ -2116,6 +2143,14 @@ export class WorkbenchView extends ItemView {
     const day = pick("[data-day]");
     if (day && !pick("[data-slotgrid]")) {
       const k = day.dataset.day ?? "";
+      const wkCol = pick(".tlt-wcol[data-day]");
+      const mCell = pick(".tlt-mcell[data-day]");
+      // 点格子里的空白＝就地建一条日程（周视图还能按点的高度给时间）；点日期数字/列头才去那天
+      if (!pick("[data-goday]") && (wkCol || mCell)) {
+        const startAt = wkCol ? this.timeAtY(ev.clientY) : undefined;
+        new QuickLogModal(this.app, this.store, k, () => { void this.refresh(); }, startAt).open();
+        return;
+      }
       // 周/月/年视图里点某天＝进那天的日视图（macOS 的手感）；日视图里就是切日子
       if (this.calView !== "d") this.calView = "d";
       this.viewDate = k;

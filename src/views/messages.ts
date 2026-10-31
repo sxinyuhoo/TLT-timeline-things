@@ -31,7 +31,12 @@ export class MessagesView extends ItemView {
     if (document.querySelector(".modal-container")) return;
     const ae = document.activeElement as HTMLElement | null;
     if (ae && this.contentEl.contains(ae) &&
-      (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+      (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) {
+      ae.blur();                       // 焦点在输入框里也把 Esc 吃掉，不然 Obsidian 会拿它切标签页
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }
     this.contentEl.querySelectorAll<HTMLElement>(".tlt-pickpop:not(.tlt-hidden)")
       .forEach((pop) => pop.addClass("tlt-hidden"));
     ev.preventDefault();
