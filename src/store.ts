@@ -219,6 +219,7 @@ export class Store {
     // 任务：一个项目一个文件，H2 = 里程碑，缩进 checklist = 步骤
     this.projectDescs = {};
     this.projectSections = new Map();
+    this.msMeta = new Map();
     this.projectPins = {};
     for (const file of this.filesIn(this.settings.tasksFolder)) {
       const text = await this.app.vault.cachedRead(file);
@@ -235,6 +236,17 @@ export class Store {
         const h = /^##\s+(.+?)\s*$/.exec(line);
         if (h) { milestone = h[1].trim(); sections.push(milestone); continue; }
         if (/^#\s/.test(line)) { milestone = undefined; continue; }
+        // 里程碑自己的状态行（不是任务）：`[ms:: 🌕] [ms-done:: 2026-11-01]`
+        if (milestone && /\[ms::|\[ms-done::/.test(line)) {
+          const k = `${project}::${milestone}`;
+          const prev = this.msMeta.get(k) || {};
+          const st = /\[ms::\s*([^\]]*)\]/.exec(line);
+          if (st) prev.done = /🌕|done|完成/i.test(st[1]);
+          const da = /\[ms-done::\s*([^\]]*)\]/.exec(line);
+          if (da && da[1].trim()) prev.doneAt = da[1].trim();
+          this.msMeta.set(k, prev);
+          continue;
+        }
         const t = parseTaskLine(line, { file: file.path, line: i, project, milestone });
         if (!t) continue;
         // 步骤：紧随其后的缩进 checklist
@@ -339,7 +351,7 @@ export class Store {
     const seen: Record<string, boolean> = {};
     for (const m of this.milestones()) {
       const key = `${m.project}::${m.name}`;
-      const done = m.tasks.length > 0 && m.tasks.every((t) => t.done);
+      const done = this.milestoneDone(m);
       seen[key] = done;
       if (done && this.msDone[key] === false) {
         await this.appendEvent({ kind: "ms.done", project: m.project, milestone: m.name });
@@ -464,6 +476,8 @@ export class Store {
   private projectDescs: Record<string, string> = {};
   /** 每个项目文件里的 ## 小节名（含还没有任务的空小节）：新建里程碑后要立刻看得见 */
   private projectSections = new Map<string, string[]>();
+  /** 里程碑的显式状态（写在 ## 小节里的 `[ms:: 🌕] [ms-done:: 日期]` 那行），键＝`项目::里程碑` */
+  private msMeta = new Map<string, { done?: boolean; doneAt?: string }>();
   private projectPins: Record<string, boolean> = {};
 
   /** 项目是否置顶（项目文件 frontmatter 的 pin: true） */
@@ -1963,7 +1977,7 @@ export class Store {
 
   allTasks() { return [...this.tasks, ...this.logs]; }
   projects(): string[] { return Array.from(new Set(this.tasks.map((t) => t.project))).sort(); }
-  milestones(project?: string): { name: string; project: string; tasks: Task[] }[] {
+  milestones(project?: string): { name: string; project: string; tasks: Task[]; meta?: { done?: boolean; doneAt?: string } }[] {
     const map = new Map<string, Task[]>();
     // 项目文件里写了 ## 小节就算数——哪怕还没往里放任务（不然"新建里程碑"完看不见它）
     for (const [proj, names] of this.projectSections) {
@@ -1978,8 +1992,46 @@ export class Store {
     }
     return Array.from(map.entries()).map(([k, tasks]) => {
       const [p, n] = k.split("::");
-      return { name: n, project: p, tasks };
+      return { name: n, project: p, tasks, meta: this.msMeta.get(k) };
     });
+  }
+
+  /** 里程碑算不算已完成：写了显式状态就听显式的，没写才退回"任务全勾完" */
+  milestoneDone(m: { tasks: Task[]; meta?: { done?: boolean } }): boolean {
+    if (m.meta && typeof m.meta.done === "boolean") return m.meta.done;
+    return m.tasks.length > 0 && m.tasks.every((t) => t.done);
+  }
+
+  /** 显式标完成 / 退回进行中：写（或清）小节里那行 `[ms::] [ms-done::]` */
+  async setMilestoneDone(project: string, name: string, done: boolean): Promise<boolean> {
+    const file = await this.fileByPath(`${this.settings.tasksFolder}/${project}.md`);
+    if (!file) return false;
+    const today = todayISO();
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const head = lines.findIndex((l) => new RegExp(`^##\\s+${esc}\\s*$`).test(l));
+      if (head < 0) return data;
+      // 小节范围：下一个 ## 之前
+      let end = lines.length;
+      for (let i = head + 1; i < lines.length; i++) if (/^##\s/.test(lines[i])) { end = i; break; }
+      const metaIdx = lines.findIndex((l, i) => i > head && i < end && /\[ms::|\[ms-done::/.test(l));
+      if (done) {
+        const line = `[ms:: 🌕] [ms-done:: ${today}]`;
+        if (metaIdx >= 0) {
+          const keep = lines[metaIdx].replace(/\[ms::\s*[^\]]*\]/g, "").replace(/\[ms-done::\s*[^\]]*\]/g, "").trim();
+          lines[metaIdx] = keep ? `${keep} ${line}` : line;
+        } else {
+          lines.splice(head + 1, 0, line);
+        }
+      } else if (metaIdx >= 0) {
+        const keep = lines[metaIdx].replace(/\[ms::\s*[^\]]*\]/g, "").replace(/\[ms-done::\s*[^\]]*\]/g, "").trim();
+        if (keep) lines[metaIdx] = keep; else lines.splice(metaIdx, 1);
+      }
+      return lines.join("\n");
+    });
+    await this.appendEvent({ kind: done ? "ms.done" : "ms.reopen", project, milestone: name });
+    return true;
   }
   monthTasks(ref = new Date()) {
     const { start, end } = monthBounds(ref);

@@ -1790,9 +1790,9 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-wblk.log { border-left-style: dashed; background: color-mix(in srgb, var(--hue, #7C8BA1) 9%, transparent); }
 /* 周块下缘的把手：拖它只改结束时间（悬停才显形，别喧宾夺主） */
 .tlt-wgrip { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; }
-.tlt-wgrip::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 18px; height: 2px;
-  margin-left: -9px; border-radius: 1px; background: currentColor; opacity: 0; transition: opacity .12s; }
-.tlt-wblk:hover .tlt-wgrip::after { opacity: .45; }
+.tlt-wgrip::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 22px; height: 2px;
+  margin-left: -11px; border-radius: 1px; background: var(--tlt-ink3); opacity: .34; transition: opacity .12s; }
+.tlt-wblk:hover .tlt-wgrip::after { opacity: .7; }
 .tlt-wblk.done { opacity: .55; }
 .tlt-wblk.done .tlt-wbt { text-decoration: line-through; }
 .tlt-wblk.dragging { opacity: .85; z-index: 6; box-shadow: 0 6px 18px rgba(0,0,0,.28); cursor: grabbing; }
@@ -1809,18 +1809,18 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-mgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: auto; gap: 4px; align-content: start; }
 .tlt-mcell { border: 1px solid var(--tlt-line); border-radius: 9px; background: var(--tlt-bg2);
   padding: 4px 5px; display: flex; flex-direction: column; gap: 2px; cursor: pointer;
-  min-width: 0; min-height: 120px; overflow: hidden; }
+  min-width: 0; min-height: 98px; overflow: hidden; }
 .tlt-mcell:hover { border-color: var(--tlt-line2); }
-.tlt-mcell.out { opacity: .45; }
+.tlt-mcell.out { opacity: .68; }        /* 非本月的日期：淡一点但要看得清 */
 .tlt-mcell.today { border-color: rgba(91, 108, 255, .5); background: rgba(91, 108, 255, .06); }
 .tlt-mcell.sel { border-color: rgba(91, 108, 255, .38); }
-.tlt-mdnum { display: flex; align-items: baseline; gap: 5px; font-size: 11px; color: var(--tlt-ink2);
+.tlt-mdnum { display: flex; align-items: baseline; gap: 5px; font-size: 11.5px; color: var(--tlt-ink2);
   font-variant-numeric: tabular-nums; }
 .tlt-mcell.today .tlt-mdnum span:first-child { color: var(--tlt-acc-ink); font-weight: 600; }
 .tlt-mdc { font-size: 8px; color: var(--tlt-ink5); }
 .tlt-mlist { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow: hidden; }
 .tlt-mrow, .tlt-mmore { flex: none; }        /* 行不跟着压缩，宁可整体换行高 */
-.tlt-mrow { display: flex; gap: 4px; align-items: baseline; font-size: 10px; min-height: 17px; padding: 2px 4px 2px 5px; min-width: 0;
+.tlt-mrow { display: flex; gap: 4px; align-items: baseline; font-size: 10.5px; min-height: 20px; padding: 3px 4px 3px 5px; min-width: 0;
   border-radius: 5px; border-left: 2.5px solid var(--hue, #5B6CFF);
   background: color-mix(in srgb, var(--hue, #5B6CFF) 13%, transparent); overflow: hidden; }
 .tlt-mrow.log { border-left-style: dashed; background: color-mix(in srgb, var(--hue, #7C8BA1) 9%, transparent); }
@@ -1828,7 +1828,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-mrow.done .tlt-mrn { text-decoration: line-through; }
 .tlt-mrt { flex: none; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; font-size: 8.5px; }
 .tlt-mrn { flex: 1; min-width: 0; color: var(--tlt-ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tlt-mmore { font-size: 9.5px; color: var(--tlt-ink4); min-height: 15px; padding: 1px 0 0 5px; cursor: pointer; }
+.tlt-mmore { font-size: 10px; color: var(--tlt-ink3); min-height: 16px; padding: 2px 0 0 5px; cursor: pointer; }
 .tlt-mmore:hover { color: var(--tlt-acc-ink); }
 
 /* ---- 年视图：热力图（蓝色系四档） ---- */
@@ -1837,13 +1837,13 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-ylg .tlt-ycell { width: 11px; height: 11px; aspect-ratio: auto; }
 /* ---- 年视图：一整条热力图（列＝周、行＝星期） ---- */
 .tlt-yheat-scroll { overflow-x: auto; padding-bottom: 4px; }
-.tlt-yheat { display: flex; flex-direction: column; gap: 3px; width: 100%; }   /* 跟日历栏同宽，不再顽固左对齐 */
-.tlt-yhrow { display: flex; gap: 3px; align-items: center; }
-.tlt-yhrow .tlt-ycell { flex: 1 1 0; min-width: 9px; }   /* 列均分宽度：铺满整行 */
+.tlt-yheat { display: flex; flex-direction: column; gap: 2px; width: 100%; }   /* 跟日历栏同宽，不再顽固左对齐 */
+.tlt-yhrow { display: flex; gap: 2px; align-items: center; }
+.tlt-yhrow .tlt-ycell { flex: 1 1 0; min-width: 3px; }   /* 列均分宽度：铺满整行 */
 .tlt-yhgut { flex: none; width: 18px; font-size: 8px; color: var(--tlt-ink5); text-align: right; padding-right: 3px; }
 .tlt-yhm .tlt-yhgut { visibility: hidden; }
-.tlt-yhmtxt { flex: none; width: 12px; font-size: 8.5px; color: var(--tlt-ink4); white-space: nowrap; overflow: visible; }
-.tlt-yheat .tlt-ycell { width: 12px; height: 12px; flex: none; border-radius: 3px; cursor: pointer; }
+.tlt-yhmtxt { flex: 1 1 0; min-width: 0; font-size: 8.5px; color: var(--tlt-ink4); white-space: nowrap; overflow: visible; }   /* 月份标签也按列均分，不然 53 个 12px 的占位会把整行撑宽 */
+.tlt-yheat .tlt-ycell { flex: 1 1 0; min-width: 3px; height: 13px; border-radius: 3px; cursor: pointer; }
 .tlt-yheat .tlt-ycell:hover { outline: 1px solid var(--tlt-ink4); }
 .tlt-ymonth { border: 1px solid var(--tlt-line); border-radius: 10px; padding: 6px 7px 7px; background: var(--tlt-bg2); }
 .tlt-ymonth.cur { border-color: rgba(91, 108, 255, .45); background: rgba(91, 108, 255, .05); }
@@ -1852,7 +1852,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-ymt i { margin-left: auto; font-style: normal; font-size: 8.5px; color: var(--tlt-ink5); }
 .tlt-ygrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1.5px; }
 .tlt-yhd { font-size: 7.5px; color: var(--tlt-ink5); text-align: center; font-style: normal; }
-.tlt-ycell { display: block; aspect-ratio: 1; border-radius: 3px; background: var(--tlt-line4); cursor: pointer; }
+.tlt-ycell { display: block; border-radius: 3px; background: var(--tlt-line4); cursor: pointer; }   /* 不再锁 1:1：宽度交给 flex 均分、高度定死，窄窗才不会被撑出横向滚动 */
 .tlt-ycell.in { background: var(--tlt-line3); }
 .tlt-ycell.l0 { background: var(--tlt-line4); }
 .tlt-ycell.l1 { background: rgba(91, 108, 255, .28); }

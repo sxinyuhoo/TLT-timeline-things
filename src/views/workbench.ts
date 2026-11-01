@@ -1926,7 +1926,11 @@ export class WorkbenchView extends ItemView {
         if (!box) return 0;
         const mid = `${year}-${String(D(this.viewDate).getMonth() + 1).padStart(2, "0")}-15`;
         const cur = box.querySelector<HTMLElement>(`.tlt-ycell[data-day="${mid}"]`);
-        if (!cur || box.scrollWidth <= box.clientWidth + 4) return 0;      // 放得下就不动
+        // 判断"放不放得下"要看**格子那一行**：月份标签的文字是溢出显示的，
+        // 算进 scrollWidth 会让这里误判成"放不下"，于是明明对齐着还被滚走。
+        const row = box.querySelector<HTMLElement>(".tlt-yhrow:not(.tlt-yhm)");
+        const need = row ? row.scrollWidth : box.scrollWidth;
+        if (!cur || need <= box.clientWidth + 4) return 0;                 // 放得下就不动
         const r = cur.getBoundingClientRect(), b = box.getBoundingClientRect();
         const delta = (r.left + r.width / 2) - (b.left + b.width / 2);
         if (Math.abs(delta) < 2) return 0;
@@ -1945,7 +1949,7 @@ export class WorkbenchView extends ItemView {
     const p = el("div", "tlt-pane");
     const ms = this.store.milestones(this.proj || undefined)
       .filter((m) => !this.q || m.name.includes(this.q) || (m.project || "").includes(this.q) || m.tasks.some((t) => t.title.includes(this.q)));
-    const isDone = (m: { tasks: Task[] }) => m.tasks.length > 0 && m.tasks.every((t) => t.done);
+    const isDone = (m: { tasks: Task[]; meta?: { done?: boolean } }) => this.store.milestoneDone(m);
     const active = ms.filter((m) => !isDone(m));
     const finished = ms.filter(isDone);
 
@@ -1965,7 +1969,7 @@ export class WorkbenchView extends ItemView {
     if (!ms.length) p.appendChild(el("div", "tlt-empty", T("任务文件里用「## 里程碑名」分节，这里就会出现里程碑。")));
 
     // 开展中的放上面，已完成的收在下面
-    const paintGroup = (group: string, list: { name: string; project: string; tasks: Task[] }[]) => {
+    const paintGroup = (group: string, list: { name: string; project: string; tasks: Task[]; meta?: { done?: boolean; doneAt?: string } }[]) => {
       if (!list.length) return;
       const gh = el("div", "tlt-ms-group");
       gh.append(el("span", "", group), el("span", "tlt-mgc", String(list.length)));
@@ -1985,7 +1989,23 @@ export class WorkbenchView extends ItemView {
         const edit = el("button", "tlt-ms-edit", "✎");
         edit.title = T("重命名里程碑");
         edit.onclick = (ev) => { ev.stopPropagation(); this.promptRenameMilestone(m); };
-        h.append(dot, nameEl, el("span", "tlt-ms-p", m.project), edit);
+        // 状态是显式事实：写了 [ms::] 就听它的，没写才是"任务全勾完"的派生建议
+        const doneNow = isDone(m);
+        const fromDerived = doneNow && !(m.meta && typeof m.meta.done === "boolean");
+        const toggler = el("button", "tlt-ms-edit tlt-ms-toggle", doneNow ? "↺" : "✓");
+        if (fromDerived) toggler.addClass("auto");     // 现在是"任务都勾完了"的派生结论，可以手动钉成显式
+        toggler.dataset.msdone = `${m.project}::${m.name}`;
+        toggler.title = doneNow ? T("标记为进行中") : T("标为已完成");
+        toggler.onclick = (ev) => {
+          ev.stopPropagation();
+          void (async () => {
+            await this.store.setMilestoneDone(m.project, m.name, !doneNow);
+            await this.store.load();
+            await this.render();
+            new Notice(doneNow ? T("已退回进行中：{n}", { n: m.name }) : T("已标为完成：{n}", { n: m.name }), 2500);
+          })();
+        };
+        h.append(dot, nameEl, el("span", "tlt-ms-p", m.project), toggler, edit);
         const bar = el("span", "tlt-pbar small");
         const fill = el("i"); fill.style.width = pct + "%";
         bar.appendChild(fill);
@@ -1993,6 +2013,9 @@ export class WorkbenchView extends ItemView {
         card.appendChild(h);
         if (this.expanded.has(m.name)) {
           const body = el("div", "tlt-ms-b");
+          if (m.meta?.done && m.tasks.some((t) => !t.done)) {
+            body.appendChild(el("div", "tlt-ms-warn", T("这条是手动标的完成，里面还有 {n} 条任务没勾完", { n: m.tasks.filter((t) => !t.done).length })));
+          }
           this.sortTasks(m.tasks).forEach((t) => body.appendChild(this.taskRow(t)));
           card.appendChild(body);
         }

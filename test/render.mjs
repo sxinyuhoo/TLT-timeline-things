@@ -2899,14 +2899,62 @@ await t("样式：年视图铺满宽度、选中日不再整列蒙底色", async
   assert.ok(/"tlt-wcol" \+ \(k === todayISO\(\) \? " today" : ""\)/.test(wts), "周列只挂 today，不再挂 sel");
 });
 
+await t("里程碑状态：显式 [ms::] 优先；没写才是「任务全勾完」的派生（B 方案）", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 没做完的活 📅 ${D}\n\n## 二期\n`;
+  await store.load();
+  const ms = () => store.milestones("示例项目");
+  const one = () => ms().find((m) => m.name === "一期");
+  // 派生：有任务没勾完 → 不算完成
+  assert.equal(store.milestoneDone(one()), false, "任务没勾完，派生不算完成");
+  // 显式标完成：即便任务没勾完也算完成（并记下完成日）
+  await store.setMilestoneDone("示例项目", "一期", true);
+  await store.load();
+  const text = files["TLT/tasks/示例项目.md"];
+  assert.match(text, /\[ms:: 🌕\]/, `该写进文件：${JSON.stringify(text)}`);
+  assert.match(text, new RegExp(`\\[ms-done:: ${D}\\]`), `该记完成日：${JSON.stringify(text)}`);
+  assert.equal(store.milestoneDone(one()), true, "显式完成优先");
+  // 空里程碑：只有显式才可能完成
+  const two = () => ms().find((m) => m.name === "二期");
+  assert.equal(store.milestoneDone(two()), false, "空里程碑派生不算完成");
+  await store.setMilestoneDone("示例项目", "二期", true);
+  await store.load();
+  assert.equal(store.milestoneDone(two()), true, "空里程碑可以手动标完成");
+  // 退回进行中：清掉字段，回到派生
+  await store.setMilestoneDone("示例项目", "一期", false);
+  await store.load();
+  const after = files["TLT/tasks/示例项目.md"];
+  assert.ok(!/\[ms-done::/.test(after.split("## 二期")[0]), `退回后不该留着完成日：${JSON.stringify(after)}`);
+  assert.equal(store.milestoneDone(one()), false, "退回后回到派生：任务没勾完＝进行中");
+  // 视图里的按钮 + 不一致提醒
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "ms"; view.proj = "示例项目";
+  await store.setMilestoneDone("示例项目", "一期", true);
+  await store.load();
+  await view.render();
+  const btn = view.contentEl.querySelector('[data-msdone="示例项目::一期"]');
+  assert.ok(btn, "卡片上要有标完成/退回的按钮");
+  view.expanded.add("一期");
+  await view.render();
+  assert.match(view.contentEl.textContent, /手动标的完成/, "显式完成但任务没勾完，要给一句提醒（不自动改）");
+  btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 300));
+  await store.load();
+  assert.equal(store.milestoneDone(ms().find((m) => m.name === "一期")), false, "点一下就退回进行中");
+});
+
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // 现在的契约：列能缩（minmax(0,1fr)）、行跟内容长（auto），格子有 min-height 兜底
   assert.ok(/\.tlt-mgrid\s*{[^}]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/.test(css), "列必须能缩，否则窄窗口整张表横向溢出");
   assert.ok(/\.tlt-mgrid\s*{[^}]*grid-auto-rows:\s*auto/.test(css), "行高要跟内容长，不能钉死");
-  assert.ok(/\.tlt-mcell\s*{[^}]*min-height:\s*120px/.test(css), "格子要给「4 条 + +N」留够高度");
-  assert.ok(/\.tlt-mrow\s*{[^}]*min-height:\s*17px/.test(css), "行的行高要够（字大一点、别挤）");
-  assert.ok(/\.tlt-mrow\s*{[^}]*font-size:\s*10px/.test(css), "月视图日程字号 10px");
+  // 密度契约：行更高、字更大，但格子更矮（留白少一点，行数够就行时格子自己会长）
+  assert.ok(/\.tlt-mcell\s*{[^}]*min-height:\s*98px/.test(css), "格子的基础高度要收一点（留白别太多）");
+  assert.ok(/\.tlt-mrow\s*{[^}]*min-height:\s*20px/.test(css), "行的行高再大一点");
+  assert.ok(/\.tlt-mrow\s*{[^}]*font-size:\s*10\.5px/.test(css), "月视图日程字号 10.5px");
+  assert.ok(/\.tlt-mcell\.out\s*{[^}]*opacity:\s*\.68/.test(css), "非本月的日期别淡到看不清");
   assert.ok(/\.tlt-mrow,\s*\.tlt-mmore\s*{\s*flex:\s*none/.test(css), "行不许被压扁");
   document.body.empty();
   Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
