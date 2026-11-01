@@ -447,9 +447,13 @@ body.tlt-light {
 }
 .tlt-ms.open { background: var(--tlt-surface2); border-color: rgba(91, 108, 255, .28); }
 .tlt-ms-h { display: flex; align-items: center; gap: 9px; padding: 10px 11px; cursor: pointer; }
+/* 进度条在每张卡里等长：不跟着名字长短变，轨道也给够对比度（不然只看见蓝色那段，长短不一） */
+.tlt-ms-h .tlt-pbar { flex: none; width: 72px; height: 4px; background: color-mix(in srgb, var(--tlt-ink) 14%, transparent); }
+.tlt-ms-h .tlt-ms-toggle { visibility: visible; }
 .tlt-ms-n { font-size: 11.5px; color: var(--tlt-ink); }
 .tlt-ms-p { font-size: 8.5px; color: var(--tlt-ink5); }
-.tlt-ms-c { font-size: 8.5px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; }
+.tlt-ms-c { font-size: 8.5px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums;
+  min-width: 38px; text-align: right; }        /* 计数等宽：进度条在每张卡里左右对齐 */
 .tlt-ms-b { padding: 0 8px 8px; }
 
 /* ================= 消息栏 ================= */

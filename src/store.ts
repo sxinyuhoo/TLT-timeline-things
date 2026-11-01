@@ -589,6 +589,48 @@ export class Store {
     return true;
   }
 
+  /**
+   * 删除里程碑：只删 `## 小节` 这一行和它的状态行，
+   * **里面的任务不删**——搬出小节、挪到文件里第一个 `##` 之前（＝"不归里程碑"）。
+   */
+  async deleteMilestone(project: string, name: string): Promise<boolean> {
+    const file = await this.fileByPath(`${this.settings.tasksFolder}/${project}.md`);
+    if (!file) return false;
+    let touched = false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const head = lines.findIndex((l) => new RegExp(`^##\\s+${esc}\\s*$`).test(l));
+      if (head < 0) return data;
+      let end = lines.length;
+      for (let i = head + 1; i < lines.length; i++) if (/^##\s/.test(lines[i])) { end = i; break; }
+      // 小节里除状态行以外的内容（任务 + 子项 + 说明），保留原顺序、去掉首尾空行
+      const keep = lines.slice(head + 1, end).filter((l) => !/\[ms::|\[ms-done::/.test(l));
+      while (keep.length && keep[0].trim() === "") keep.shift();
+      while (keep.length && keep[keep.length - 1].trim() === "") keep.pop();
+      // 剩下：原文去掉这一节（并把它留下的连续空行收成一个）
+      const rest = [...lines.slice(0, head), ...lines.slice(end)];
+      const out: string[] = [];
+      for (const l of rest) {
+        if (l.trim() === "" && out.length && out[out.length - 1].trim() === "") continue;
+        out.push(l);
+      }
+      if (keep.length) {
+        // 落点：第一个 ## 之前；没有 ## 就接在末尾
+        let at = out.findIndex((l) => /^##\s/.test(l));
+        if (at < 0) at = out.length;
+        while (at > 0 && out[at - 1].trim() === "") at--;        // 贴到上一段之后，不留双空行
+        out.splice(at, 0, ...keep, "");
+        if (out[at + keep.length + 1] !== undefined && out[at + keep.length + 1].trim() === "") out.splice(at + keep.length + 1, 1);
+      }
+      touched = true;
+      return out.join("\n");
+    });
+    if (!touched) return false;
+    await this.appendEvent({ kind: "ms.deleted", project, milestone: name });
+    return true;
+  }
+
   /* ---------------- 写 ---------------- */
 
   private asFile(f: TAbstractFile | null | undefined): TFile | null {

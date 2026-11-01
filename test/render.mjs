@@ -2963,6 +2963,60 @@ await t("里程碑状态：只看显式标记（任务全勾完不再自动完�
   assert.match(files["TLT/tasks/示例项目.md"], /\[ms:: 🌙\]/, `退回要留显式的 🌙：${JSON.stringify(files["TLT/tasks/示例项目.md"])}`);
 });
 
+await t("里程碑详情：改名 + 删除（删除不动里面的任务，只让它们变成「不归里程碑」）", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 甲 📅 ${D}\n- [ ] 乙 📅 ${D}\n\n## 二期\n\n- [ ] 丙 📅 ${D}\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "ms"; view.proj = "示例项目";
+  await view.render();
+  // 打开里程碑详情（卡片上的 ✎）
+  const card = [...view.contentEl.querySelectorAll(".tlt-ms")].find((c) => c.dataset.ms === "一期");
+  assert.ok(card, "该有一期的卡片");
+  card.querySelector(".tlt-ms-edit:not(.tlt-ms-toggle)").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  let dlg = [...document.querySelectorAll(".tlt-host")].find((h) => h.querySelector("[data-msdel]"));
+  assert.ok(dlg, "该弹出里程碑详情");
+  const input = dlg.querySelector("input");
+  assert.equal(input.value, "一期", "详情里名字预填当前里程碑名");
+  // 改名
+  input.value = "一期（改）";
+  [...dlg.querySelectorAll("button")].find((b) => b.textContent.includes("保存"))
+    .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 300));
+  await store.load();
+  assert.match(files["TLT/tasks/示例项目.md"], /## 一期（改）/, `改名该落到文件：${JSON.stringify(files["TLT/tasks/示例项目.md"])}`);
+  // 删除：确认框 → 小节没了、两条任务还在、变成不归里程碑
+  await view.render();
+  const card2 = [...view.contentEl.querySelectorAll(".tlt-ms")].find((c) => c.dataset.ms === "一期（改）");
+  card2.querySelector(".tlt-ms-edit:not(.tlt-ms-toggle)").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  dlg = [...document.querySelectorAll(".tlt-host")].find((h) => h.querySelector("[data-msdel]"));
+  const delBtn = dlg.querySelector("[data-msdel]");
+  assert.ok(delBtn.classList.contains("danger"), "删除按钮要用危险样式");
+  delBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 150));
+  const confirm = [...document.querySelectorAll(".tlt-host")].find((h) => h.textContent.includes("不归里程碑"));
+  assert.ok(confirm, "删除要先问一句，并说清任务不会被删");
+  [...confirm.querySelectorAll("button")].find((b) => b.textContent.includes("删除"))
+    .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 350));
+  await store.load();
+  const text = files["TLT/tasks/示例项目.md"];
+  assert.ok(!/## 一期（改）/.test(text), `小节该没了：${JSON.stringify(text)}`);
+  assert.match(text, /- \[ \] 甲/, "甲还在");
+  assert.match(text, /- \[ \] 乙/, "乙还在");
+  assert.ok(/## 二期/.test(text), "别的小节不许动");
+  const orphan = store.tasks.filter((t) => t.title === "甲" || t.title === "乙");
+  assert.equal(orphan.length, 2, "两条任务都还在库里");
+  assert.ok(orphan.every((t) => !t.milestone), `它们该是"不归里程碑"：${orphan.map((t) => t.milestone).join(", ")}`);
+  const ms = store.milestones("示例项目").map((m) => m.name);
+  assert.ok(!ms.includes("一期（改）"), `里程碑列表里不该还有它：${ms.join(", ")}`);
+  assert.ok(ms.includes("二期"), `别的里程碑还在：${ms.join(", ")}`);
+});
+
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // 现在的契约：列能缩（minmax(0,1fr)）、行跟内容长（auto），格子有 min-height 兜底

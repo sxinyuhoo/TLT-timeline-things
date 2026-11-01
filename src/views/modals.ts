@@ -1345,6 +1345,83 @@ export class TaskPeekModal extends TltModal {
 
 /* ================= 里程碑：只读弹窗 ================= */
 
+/** 里程碑详情：改名字 + 删除（删除只删这一节，里面的任务变成"不归里程碑"，绝不连坐） */
+export class MilestoneModal extends TltModal {
+  store: Store;
+  info: { name: string; project: string; tasks: Task[] };
+  onRenamed: (name: string) => void;
+  onChanged: () => void;
+  onDeleted: () => void;
+  constructor(app: App, store: Store, info: {
+    name: string; project: string; tasks: Task[];
+    onRenamed?: (name: string) => void; onChanged?: () => void; onDeleted?: () => void;
+  }) {
+    super(app);
+    this.store = store;
+    this.info = info;
+    this.onRenamed = info.onRenamed || (() => {});
+    this.onChanged = info.onChanged || (() => {});
+    this.onDeleted = info.onDeleted || (() => {});
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    const m = this.info;
+    const done = m.tasks.filter((t) => t.done).length;
+    contentEl.appendChild(el("div", "tlt-m-title", T("里程碑")));
+    contentEl.appendChild(el("div", "tlt-m-meta",
+      T("{p} · {a}/{b} 条任务完成", { p: m.project, a: done, b: m.tasks.length })));
+
+    const lab = el("div", "tlt-m-field");
+    lab.appendChild(el("div", "tlt-m-label", T("名称（项目文件里的 ## 小节）")));
+    const name = el("input", "tlt-input");
+    name.value = m.name;
+    lab.appendChild(name);
+    contentEl.appendChild(lab);
+
+    const foot = el("div", "tlt-m-foot");
+    // 删除在最左——和任务详情、消息详情的排法一致
+    const del = el("button", "tlt-btn danger", T("删除里程碑"));
+    del.dataset.msdel = `${m.project}::${m.name}`;
+    del.onclick = () => {
+      new ConfirmModal(this.app, {
+        title: T("删除里程碑：{n}", { n: m.name }),
+        body: T("只删「{n}」这一节；里面的 {c} 条任务一个都不会删，\n它们会变成「不归里程碑」（留在同一个项目文件里）。", { n: m.name, c: m.tasks.length }),
+        ok: T("删除里程碑"),
+      }, async (yes) => {
+        if (!yes) return;
+        const ok = await this.store.deleteMilestone(m.project, m.name);
+        this.close();
+        if (!ok) { new Notice(T("没删成：没找到这个里程碑所在的小节")); return; }
+        await this.store.load();
+        this.onDeleted();
+        new Notice(T("已删除里程碑，{c} 条任务已变成「不归里程碑」", { c: m.tasks.length }), 3500);
+      }).open();
+    };
+    const save = el("button", "tlt-btn", T("保存"));
+    save.onclick = () => { void (async () => {
+      const next = name.value.trim();
+      if (!next) { new Notice(T("名字不能是空的")); return; }
+      if (next === m.name) { this.close(); return; }
+      const ok = await this.store.renameMilestone(m.project, m.name, next);
+      if (!ok) { new Notice(T("没改成：同名已存在，或原来的小节已不在")); return; }
+      await this.store.load();
+      this.close();
+      this.onRenamed(next);
+      this.onChanged();
+      new Notice(T("已重命名为：{n}", { n: next }), 3000);
+    })(); };
+    const close = el("button", "tlt-btn", T("关闭"));
+    close.onclick = () => this.close();
+    foot.append(del, save, close);
+    contentEl.appendChild(foot);
+    window.setTimeout(() => name.focus(), 40);
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
 export class MilestonePeekModal extends TltModal {
   store: Store;
   milestone: { name: string; project: string; tasks: Task[] };

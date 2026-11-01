@@ -9,7 +9,7 @@ import {
   hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox,
 } from "../data";
 import type { StaffDim } from "../data";
-import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
+import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
 import { setSvgMarkup, miniMarkdown } from "./dom";
@@ -1217,7 +1217,7 @@ export class WorkbenchView extends ItemView {
   /** 里程碑菜单：重命名 / 打开详情 / 展开收起 */
   private milestoneMenu(anchor: HTMLElement, m: { name: string; project: string; tasks: Task[] }, at?: { x: number; y: number }) {
     popMenu(anchor, [
-      { label: T("重命名里程碑"), onClick: () => this.promptRenameMilestone(m) },
+      { label: T("编辑里程碑…"), onClick: () => this.promptRenameMilestone(m) },
       { label: T("打开详情"), onClick: () => new MilestonePeekModal(this.app, this.store, m, () => {
         this.tab = "ms"; this.proj = m.project; void this.render();
       }).open() },
@@ -1228,15 +1228,14 @@ export class WorkbenchView extends ItemView {
     ], "right", at);
   }
 
-  private promptRenameMilestone(m: { name: string; project: string }) {
-    new PromptModal(this.app, T("重命名里程碑"), T("里程碑名（项目文件里的 ## 小节）"), async (name) => {
-      const ok = await this.store.renameMilestone(m.project, m.name, name);
-      if (!ok) { new Notice(T("没改成：名字空了、同名已存在，或原来的小节已不在")); return; }
-      if (this.expanded.delete(m.name) ) this.expanded.add(name);
-      await this.store.load();
-      await this.render();
-      new Notice(T("已重命名为：{n}", { n: name }), 3000);
-    }, m.name).open();
+  /** 里程碑详情：改名 + 删除（删除不动里面的任务，只把它们变成"不归里程碑"） */
+  private promptRenameMilestone(m: { name: string; project: string; tasks?: Task[] }) {
+    new MilestoneModal(this.app, this.store, {
+      name: m.name, project: m.project, tasks: m.tasks || [],
+      onRenamed: (name) => { if (this.expanded.delete(m.name)) this.expanded.add(name); },
+      onChanged: () => { void this.render(); },
+      onDeleted: () => { this.expanded.delete(m.name); void this.render(); },
+    }).open();
   }
 
   /** 面板跳转入口：切页签 / 维度（可选） */
@@ -1976,7 +1975,7 @@ export class WorkbenchView extends ItemView {
       p.appendChild(gh);
       list.forEach((m) => {
         const done = m.tasks.filter((t) => t.done).length;
-        const pct = Math.round((done / m.tasks.length) * 100);
+        const pct = m.tasks.length ? Math.round((done / m.tasks.length) * 100) : 0;   // 0/0 不是满格
         const card = el("div", "tlt-ms" + (this.expanded.has(m.name) ? " open" : ""));
         card.dataset.ms = m.name;
         card.addEventListener("contextmenu", (ev) => {
@@ -1987,7 +1986,7 @@ export class WorkbenchView extends ItemView {
         const dot = el("span", "tlt-dot"); dot.addClass("k-ms");
         const nameEl = el("span", "tlt-ms-n", m.name);
         const edit = el("button", "tlt-ms-edit", "✎");
-        edit.title = T("重命名里程碑");
+        edit.title = T("编辑里程碑");
         edit.onclick = (ev) => { ev.stopPropagation(); this.promptRenameMilestone(m); };
         // 状态是显式事实：写了 [ms::] 就听它的，没写才是"任务全勾完"的派生建议
         const doneNow = isDone(m);
@@ -2012,7 +2011,7 @@ export class WorkbenchView extends ItemView {
             }
           })();
         };
-        h.append(dot, nameEl, el("span", "tlt-ms-p", m.project), toggler, edit);
+        h.append(dot, nameEl, el("span", "tlt-ms-p", m.project));
         const bar = el("span", "tlt-pbar small");
         const fill = el("i"); fill.style.width = pct + "%";
         bar.appendChild(fill);
@@ -2026,7 +2025,7 @@ export class WorkbenchView extends ItemView {
           warn.title = T("手动标的完成，里面还有 {n} 条任务没勾完", { n: leftover });
           h.appendChild(warn);
         }
-        h.append(el("span", "tlt-spacer"), bar, el("span", "tlt-ms-c", `${done}/${m.tasks.length}`));
+        h.append(el("span", "tlt-spacer"), bar, el("span", "tlt-ms-c", `${done}/${m.tasks.length}`), toggler, edit);
         card.appendChild(h);
         if (this.expanded.has(m.name)) {
           const body = el("div", "tlt-ms-b");
