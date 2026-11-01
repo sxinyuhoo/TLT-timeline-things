@@ -2002,7 +2002,11 @@ export class Store {
     return m.tasks.length > 0 && m.tasks.every((t) => t.done);
   }
 
-  /** 显式标完成 / 退回进行中：写（或清）小节里那行 `[ms::] [ms-done::]` */
+  /**
+   * 显式标完成 / 退回进行中。两个方向都落成**显式字段**：
+   *  完成   → `[ms:: 🌕] [ms-done:: 日期]`
+   *  进行中 → `[ms:: 🌙]`（只有 🌙 才盖得住"任务全勾完"这个派生结论）
+   */
   async setMilestoneDone(project: string, name: string, done: boolean): Promise<boolean> {
     const file = await this.fileByPath(`${this.settings.tasksFolder}/${project}.md`);
     if (!file) return false;
@@ -2024,9 +2028,11 @@ export class Store {
         } else {
           lines.splice(head + 1, 0, line);
         }
-      } else if (metaIdx >= 0) {
-        const keep = lines[metaIdx].replace(/\[ms::\s*[^\]]*\]/g, "").replace(/\[ms-done::\s*[^\]]*\]/g, "").trim();
-        if (keep) lines[metaIdx] = keep; else lines.splice(metaIdx, 1);
+      } else {
+        // 退回进行中：一定要留下显式的 🌙——否则"任务都勾完了"这个派生结论还会把状态顶回已完成
+        const keep = metaIdx >= 0 ? lines[metaIdx].replace(/\[ms::\s*[^\]]*\]/g, "").replace(/\[ms-done::\s*[^\]]*\]/g, "").trim() : "";
+        const line = keep ? `${keep} [ms:: 🌙]` : "[ms:: 🌙]";
+        if (metaIdx >= 0) lines[metaIdx] = line; else lines.splice(head + 1, 0, line);
       }
       return lines.join("\n");
     });

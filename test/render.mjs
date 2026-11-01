@@ -2943,6 +2943,17 @@ await t("里程碑状态：显式 [ms::] 优先；没写才是「任务全勾完
   await new Promise((r) => window.setTimeout(r, 300));
   await store.load();
   assert.equal(store.milestoneDone(ms().find((m) => m.name === "一期")), false, "点一下就退回进行中");
+  // 回归：派生出来的"已完成"（任务全勾完、没写任何字段）也得能退回进行中——
+  // 不写一行显式的 [ms:: 🌙]，"任务全勾完"这个派生结论会立刻把状态顶回已完成
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 三期\n\n- [x] 全做完了 📅 ${D} [done:: ${D}]\n`;
+  await store.load();
+  const three = () => store.milestones("示例项目").find((m) => m.name === "三期");
+  assert.equal(store.milestoneDone(three()), true, "任务全勾完＝派生已完成");
+  await store.setMilestoneDone("示例项目", "三期", false);
+  await store.load();
+  assert.equal(store.milestoneDone(three()), false, "派生的完成也要能退回进行中");
+  assert.match(files["TLT/tasks/示例项目.md"], /\[ms:: 🌙\]/, `退回要留显式的 🌙：${JSON.stringify(files["TLT/tasks/示例项目.md"])}`);
 });
 
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {

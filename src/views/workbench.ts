@@ -1999,16 +1999,29 @@ export class WorkbenchView extends ItemView {
         toggler.onclick = (ev) => {
           ev.stopPropagation();
           void (async () => {
-            await this.store.setMilestoneDone(m.project, m.name, !doneNow);
+            const openCnt = m.tasks.filter((t) => !t.done).length;
+            const ok = await this.store.setMilestoneDone(m.project, m.name, !doneNow);
+            if (!ok) { new Notice(T("没改成功：没找到这个里程碑所在的小节")); return; }
             await this.store.load();
             await this.render();
-            new Notice(doneNow ? T("已退回进行中：{n}", { n: m.name }) : T("已标为完成：{n}", { n: m.name }), 2500);
+            if (!doneNow && openCnt) {
+              // 标完成但里面还有没勾的：提醒一句，但不替用户改任务
+              new Notice(T("已标为完成：{n}（里面还有 {m} 条任务没勾完，只是提醒，不改它们）", { n: m.name, m: openCnt }), 5000);
+            } else {
+              new Notice(doneNow ? T("已退回进行中：{n}", { n: m.name }) : T("已标为完成：{n}", { n: m.name }), 2500);
+            }
           })();
         };
         h.append(dot, nameEl, el("span", "tlt-ms-p", m.project), toggler, edit);
         const bar = el("span", "tlt-pbar small");
         const fill = el("i"); fill.style.width = pct + "%";
         bar.appendChild(fill);
+        const leftover = m.meta?.done ? m.tasks.filter((t) => !t.done).length : 0;
+        if (leftover) {
+          const warn = el("span", "tlt-ms-warnmark", "⚠");
+          warn.title = T("手动标的完成，里面还有 {n} 条任务没勾完", { n: leftover });
+          h.appendChild(warn);
+        }
         h.append(el("span", "tlt-spacer"), bar, el("span", "tlt-ms-c", `${done}/${m.tasks.length}`));
         card.appendChild(h);
         if (this.expanded.has(m.name)) {

@@ -97,6 +97,8 @@ export const EN: Record<string, string> = {
   "按创建时间": "By created",
   "按截止时间": "By due",
   "反向排列": "Reverse",
+  "已标为完成：{n}（里面还有 {m} 条任务没勾完，只是提醒，不改它们）": "Marked as done: {n} ({m} task(s) inside are still unchecked — a reminder only, nothing changed for them)",
+  "没改成功：没找到这个里程碑所在的小节": "Nothing changed: could not find the section for this milestone",
   "这条是手动标的完成，里面还有 {n} 条任务没勾完": "This was marked done by hand, but {n} task(s) inside are still unchecked",
   "已标为完成：{n}": "Marked as done: {n}",
   "已退回进行中：{n}": "Back to in progress: {n}",
