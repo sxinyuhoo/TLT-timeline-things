@@ -107,7 +107,7 @@ export const EN: Record<string, string> = {
   "删除里程碑：{n}": "Delete milestone: {n}",
   "删除里程碑": "Delete milestone",
   "{p} · {a}/{b} 条任务完成": "{p} · {a}/{b} tasks done",
-  "任务都勾完了 · 点 ✓ 标完成": "All tasks are checked · press ✓ to mark it done",
+  "可标完成": "Ready to mark done",
   "已标为完成：{n}（里面还有 {m} 条任务没勾完，只是提醒，不改它们）": "Marked as done: {n} ({m} task(s) inside are still unchecked — a reminder only, nothing changed for them)",
   "没改成功：没找到这个里程碑所在的小节": "Nothing changed: could not find the section for this milestone",
   "这条是手动标的完成，里面还有 {n} 条任务没勾完": "This was marked done by hand, but {n} task(s) inside are still unchecked",

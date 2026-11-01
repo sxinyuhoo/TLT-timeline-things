@@ -2016,7 +2016,7 @@ export class WorkbenchView extends ItemView {
         const fill = el("i"); fill.style.width = pct + "%";
         bar.appendChild(fill);
         if (allDone) {
-          const nudge = el("span", "tlt-ms-nudge", T("任务都勾完了 · 点 ✓ 标完成"));
+          const nudge = el("span", "tlt-ms-nudge", T("可标完成"));
           h.appendChild(nudge);
         }
         const leftover = m.meta?.done ? m.tasks.filter((t) => !t.done).length : 0;
