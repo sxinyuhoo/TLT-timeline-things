@@ -3017,6 +3017,17 @@ await t("里程碑详情：改名 + 删除（删除不动里面的任务，只�
   assert.ok(ms.includes("二期"), `别的里程碑还在：${ms.join(", ")}`);
 });
 
+await t("进度环：弧的旋转原点必须＝圆心（等于 viewBox 中心，不是早先 14×14 小环的 7,7）", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  const rule = /\.tlt-sr-fg\s*{([^}]*)}/.exec(css);
+  assert.ok(rule, "该有 .tlt-sr-fg 规则");
+  assert.ok(/transform-origin:\s*13px\s+13px/.test(rule[1]), `旋转原点要在圆心 13,13：${rule[1].replace(/\s+/g, " ").slice(0, 120)}`);
+  assert.ok(/transform:\s*rotate\(-90deg\)/.test(rule[1]), "弧要从 12 点方向起画");
+  // 代码里的圆心常量也得是 13（CX）——两边对不上的时候，弧整段会被顶偏
+  const src = (await import("node:fs")).readFileSync("src/views/workbench.ts", "utf8");
+  assert.ok(/const R = 10\.2, C = 2 \* Math\.PI \* R, CX = 13;/.test(src), "环的圆心常量该是 CX = 13");
+});
+
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // 现在的契约：列能缩（minmax(0,1fr)）、行跟内容长（auto），格子有 min-height 兜底

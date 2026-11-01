@@ -1494,7 +1494,11 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-stepring { flex: none; display: inline-flex; align-items: center; cursor: pointer; margin-left: 2px; }
 .tlt-stepring:hover { filter: brightness(1.12); }
 .tlt-sr-bg { fill: none; stroke: var(--tlt-line3); stroke-width: 2; }
-.tlt-sr-fg { fill: none; stroke: var(--tlt-acc); stroke-width: 2; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 7px 7px; transition: stroke-dashoffset .2s ease; }
+/* 旋转原点必须＝圆心（viewBox 26×26 的中心是 13,13，不是 7,7）：
+   原来写的 7px 7px 是早先 14×14 小环的圆心，改大环时忘了跟着改——
+   结果每画一段弧，它就绕着 (7,7) 转 -90°，整段弧被顶到圆环上方偏 12px。 */
+.tlt-sr-fg { fill: none; stroke: var(--tlt-acc); stroke-width: 2; stroke-linecap: round;
+  transform: rotate(-90deg); transform-origin: 13px 13px; transform-box: view-box; transition: stroke-dashoffset .2s ease; }
 .tlt-stepring.ready .tlt-sr-fg { stroke: #D9A05F; }
 .tlt-stepring.all .tlt-sr-fg { stroke: #4FB59A; }
 
