@@ -341,23 +341,7 @@ export class Store {
     this.feeds = uniqBy(this.feeds, (f) => f.file);       // 一个源一个文件
     this.staff = uniqBy(this.staff, (s) => s.file);
 
-    await this.detectMilestoneEvents();
     this.loaded = true;
-  }
-
-  /** 里程碑完成状态快照（key: 项目::里程碑）——只在"这一轮刚变成完成"时记事件 */
-  private msDone: Record<string, boolean> = {};
-  private async detectMilestoneEvents() {
-    const seen: Record<string, boolean> = {};
-    for (const m of this.milestones()) {
-      const key = `${m.project}::${m.name}`;
-      const done = this.milestoneDone(m);
-      seen[key] = done;
-      if (done && this.msDone[key] === false) {
-        await this.appendEvent({ kind: "ms.done", project: m.project, milestone: m.name });
-      }
-    }
-    this.msDone = seen;
   }
 
   /* ---------------- 快捷命令用的读写 ---------------- */
@@ -1996,9 +1980,16 @@ export class Store {
     });
   }
 
-  /** 里程碑算不算已完成：写了显式状态就听显式的，没写才退回"任务全勾完" */
-  milestoneDone(m: { tasks: Task[]; meta?: { done?: boolean } }): boolean {
-    if (m.meta && typeof m.meta.done === "boolean") return m.meta.done;
+  /**
+   * 里程碑算不算已完成：**只看显式标记**（`[ms:: 🌕]` / 卡片上的 ✓）。
+   * 任务全勾完不再自动等于完成——里程碑是"交付节点"，勾任务只是"我这边干完了"。
+   */
+  milestoneDone(m: { meta?: { done?: boolean } }): boolean {
+    return m.meta?.done === true;
+  }
+
+  /** 任务都勾完了、但还没标完成：前端拿这个来提醒一句 */
+  milestoneTasksAllDone(m: { tasks: Task[] }): boolean {
     return m.tasks.length > 0 && m.tasks.every((t) => t.done);
   }
 

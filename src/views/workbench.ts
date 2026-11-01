@@ -1991,9 +1991,9 @@ export class WorkbenchView extends ItemView {
         edit.onclick = (ev) => { ev.stopPropagation(); this.promptRenameMilestone(m); };
         // 状态是显式事实：写了 [ms::] 就听它的，没写才是"任务全勾完"的派生建议
         const doneNow = isDone(m);
-        const fromDerived = doneNow && !(m.meta && typeof m.meta.done === "boolean");
+        const allDone = !doneNow && this.store.milestoneTasksAllDone(m);
         const toggler = el("button", "tlt-ms-edit tlt-ms-toggle", doneNow ? "↺" : "✓");
-        if (fromDerived) toggler.addClass("auto");     // 现在是"任务都勾完了"的派生结论，可以手动钉成显式
+        if (allDone) toggler.addClass("auto");         // 任务都勾完了，提醒一下"可以标完成"
         toggler.dataset.msdone = `${m.project}::${m.name}`;
         toggler.title = doneNow ? T("标记为进行中") : T("标为已完成");
         toggler.onclick = (ev) => {
@@ -2016,6 +2016,10 @@ export class WorkbenchView extends ItemView {
         const bar = el("span", "tlt-pbar small");
         const fill = el("i"); fill.style.width = pct + "%";
         bar.appendChild(fill);
+        if (allDone) {
+          const nudge = el("span", "tlt-ms-nudge", T("任务都勾完了 · 点 ✓ 标完成"));
+          h.appendChild(nudge);
+        }
         const leftover = m.meta?.done ? m.tasks.filter((t) => !t.done).length : 0;
         if (leftover) {
           const warn = el("span", "tlt-ms-warnmark", "⚠");

@@ -15,7 +15,7 @@ People find this plugin by many names — **tasks, timeline, schedule, task mana
 | Task management / Tasks / To-do / Task manager | One `- [ ]` line inside a project note; tick to finish. Grouped as **overdue / to do / done / unscheduled**, with a range switch **today / this week / this month / this quarter / all**, filterable by tag |
 | Timeline | Opens on *today*: what happened at what hour, what's still due. Entries pile up per day into a monthly file |
 | Schedule / Calendar / Planner | A day laid out as time blocks and planned blocks; click empty space to slot a task into that day |
-| Project / Milestone | One project = one markdown file, each `##` section is a milestone; milestone view splits *active* vs *done* |
+| Project / Milestone | One project = one markdown file, each `##` section is a milestone; milestone view splits *active* vs *done*. **A milestone is marked done by hand** (the `✓` on its card) — checking off all its tasks only shows a hint, because a milestone is a delivery point, not a task list |
 | Gantt | **No gantt bars.** Milestone view shows the schedule and the star chart spreads tasks by due date — enough to answer "which weeks are packed" |
 | Kanban / Board | **No drag-and-drop board.** Tasks are grouped by state (the state *is* the column); drag-to-reorder isn't there yet |
 | Workload / Capacity / Effort | Tasks carry person-day estimates; the team view computes each person's load (open person-days ÷ capacity) |

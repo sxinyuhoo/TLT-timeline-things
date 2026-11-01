@@ -2899,15 +2899,19 @@ await t("样式：年视图铺满宽度、选中日不再整列蒙底色", async
   assert.ok(/"tlt-wcol" \+ \(k === todayISO\(\) \? " today" : ""\)/.test(wts), "周列只挂 today，不再挂 sel");
 });
 
-await t("里程碑状态：显式 [ms::] 优先；没写才是「任务全勾完」的派生（B 方案）", async () => {
+await t("里程碑状态：只看显式标记（任务全勾完不再自动完成）", async () => {
   document.body.empty();
   Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
   files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 没做完的活 📅 ${D}\n\n## 二期\n`;
   await store.load();
   const ms = () => store.milestones("示例项目");
   const one = () => ms().find((m) => m.name === "一期");
-  // 派生：有任务没勾完 → 不算完成
-  assert.equal(store.milestoneDone(one()), false, "任务没勾完，派生不算完成");
+  // 没标就是没完成——哪怕任务全勾完也不再自动算完成
+  assert.equal(store.milestoneDone(one()), false, "没显式标记＝没完成");
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [x] 全勾完了 📅 ${D} [done:: ${D}]\n\n## 二期\n`;
+  await store.load();
+  assert.equal(store.milestoneDone(one()), false, "任务全勾完也不再自动算完成");
+  assert.equal(store.milestoneTasksAllDone(one()), true, "但要知道'任务都勾完了'，好提醒用户标一下");
   // 显式标完成：即便任务没勾完也算完成（并记下完成日）
   await store.setMilestoneDone("示例项目", "一期", true);
   await store.load();
@@ -2917,7 +2921,7 @@ await t("里程碑状态：显式 [ms::] 优先；没写才是「任务全勾完
   assert.equal(store.milestoneDone(one()), true, "显式完成优先");
   // 空里程碑：只有显式才可能完成
   const two = () => ms().find((m) => m.name === "二期");
-  assert.equal(store.milestoneDone(two()), false, "空里程碑派生不算完成");
+  assert.equal(store.milestoneDone(two()), false, "空里程碑一样：没标就没完成");
   await store.setMilestoneDone("示例项目", "二期", true);
   await store.load();
   assert.equal(store.milestoneDone(two()), true, "空里程碑可以手动标完成");
@@ -2926,11 +2930,14 @@ await t("里程碑状态：显式 [ms::] 优先；没写才是「任务全勾完
   await store.load();
   const after = files["TLT/tasks/示例项目.md"];
   assert.ok(!/\[ms-done::/.test(after.split("## 二期")[0]), `退回后不该留着完成日：${JSON.stringify(after)}`);
-  assert.equal(store.milestoneDone(one()), false, "退回后回到派生：任务没勾完＝进行中");
+  assert.equal(store.milestoneDone(one()), false, "退回后就是进行中");
   // 视图里的按钮 + 不一致提醒
   const view = mount(WorkbenchView);
   await view.onOpen();
   view.tab = "ms"; view.proj = "示例项目";
+  // 让"一期"里有条没勾的任务，好验"标完成但有没勾的 → 只提醒"
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 还没做完的活 📅 ${D}\n\n## 二期\n`;
+  await store.load();
   await store.setMilestoneDone("示例项目", "一期", true);
   await store.load();
   await view.render();
@@ -2943,16 +2950,16 @@ await t("里程碑状态：显式 [ms::] 优先；没写才是「任务全勾完
   await new Promise((r) => window.setTimeout(r, 300));
   await store.load();
   assert.equal(store.milestoneDone(ms().find((m) => m.name === "一期")), false, "点一下就退回进行中");
-  // 回归：派生出来的"已完成"（任务全勾完、没写任何字段）也得能退回进行中——
-  // 不写一行显式的 [ms:: 🌙]，"任务全勾完"这个派生结论会立刻把状态顶回已完成
+  // 回归：任务全勾完的里程碑，手动退回进行中之后也必须保持"进行中"
+  // （以前退回什么都不写，"任务全勾完"会立刻把状态顶回去）
   Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
   files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 三期\n\n- [x] 全做完了 📅 ${D} [done:: ${D}]\n`;
   await store.load();
   const three = () => store.milestones("示例项目").find((m) => m.name === "三期");
-  assert.equal(store.milestoneDone(three()), true, "任务全勾完＝派生已完成");
+  assert.equal(store.milestoneDone(three()), false, "任务全勾完也只是提醒，不算完成");
   await store.setMilestoneDone("示例项目", "三期", false);
   await store.load();
-  assert.equal(store.milestoneDone(three()), false, "派生的完成也要能退回进行中");
+  assert.equal(store.milestoneDone(three()), false, "退回后仍是进行中");
   assert.match(files["TLT/tasks/示例项目.md"], /\[ms:: 🌙\]/, `退回要留显式的 🌙：${JSON.stringify(files["TLT/tasks/示例项目.md"])}`);
 });
 

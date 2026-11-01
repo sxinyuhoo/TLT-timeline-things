@@ -553,17 +553,26 @@ await t("事件流：建项目 / 建任务 / 完成 / 重开各留一行", async
   assert.equal(dup.length, 1, `同一条事件不该写两遍：\n${txt}`);
 });
 
-await t("里程碑：刚做完那一刻才记 ms.done（不伪造历史）", async () => {
+await t("里程碑：只有显式标记才记 ms.done（任务勾完不再自动算完成）", async () => {
   const { store } = await NEW();
   fps.files["TLT/tasks/德尔塔.md"] = `---\ntlt: project\nstatus: active\n---\n# 德尔塔\n\n## 一期\n\n- [ ] 收尾 [pri:: 1]\n`;
-  await store.load();                                   // 第一次读盘＝基线
+  await store.load();
   assert.ok(!evKey(), `第一次读盘不该凭空写事件，实际：${evKey()}`);
   const tk = store.tasks.find((x) => x.title === "收尾");
-  await store.toggleTask(tk);
-  await store.load();                                   // 这一轮才观察到"刚变成完成"
+  await store.toggleTask(tk);                            // 任务勾完了
+  await store.load();
+  // 勾任务本身会记一条 task.done，这里只要求"没有 ms.done"
+  const ev0 = evKey();
+  assert.ok(!ev0 || !fps.files[ev0].includes("ms.done"), `任务全勾完不该自动记 ms.done：${ev0 ? fps.files[ev0] : "(无事件文件)"}`);
+  const ms = store.milestones("德尔塔").find((m) => m.name === "一期");
+  assert.equal(store.milestoneDone(ms), false, "没显式标记＝没完成");
+  assert.equal(store.milestoneTasksAllDone(ms), true, "但要知道任务都勾完了");
+  await store.setMilestoneDone("德尔塔", "一期", true);  // 手动标完成 → 这时候才记事件
   const key = evKey();
   assert.ok(key, "应写出事件文件");
   assert.ok(fps.files[key].includes("ms.done"), `应记一次 ms.done：\n${fps.files[key]}`);
+  await store.setMilestoneDone("德尔塔", "一期", false); // 退回 → 记 ms.reopen
+  assert.ok(fps.files[key].includes("ms.reopen"), `退回要记 ms.reopen：\n${fps.files[key]}`);
 });
 
 /* ---------------- 项目信息：改名 + 描述（0.9.2） ---------------- */
