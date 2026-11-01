@@ -1374,7 +1374,7 @@ export class MilestoneModal extends TltModal {
       T("{p} · {a}/{b} 条任务完成", { p: m.project, a: done, b: m.tasks.length })));
 
     const lab = el("div", "tlt-m-field");
-    lab.appendChild(el("div", "tlt-m-label", T("名称（项目文件里的 ## 小节）")));
+    lab.appendChild(el("div", "tlt-m-label", T("名称")));
     const name = el("input", "tlt-input");
     name.value = m.name;
     lab.appendChild(name);

@@ -1391,7 +1391,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-sw.arch { background: var(--tlt-ink5) !important; }
 
 /* ---- 里程碑卡：悬停出现的改名按钮 ---- */
-.tlt-ms-nudge { font-size: 10.5px; color: var(--tlt-acc-ink); opacity: .85; margin-left: 6px; }
+.tlt-ms-nudge { font-size: 10.5px; color: var(--tlt-ink2); margin-left: 6px; }   /* 灰色、不加透明度：这句是操作提示，得看得清 */
 .tlt-ms-warnmark { color: #E8A33D; font-size: 11px; margin-left: 4px; cursor: help; }
 .tlt-ms-warn { font-size: 11px; color: #E8A33D; padding: 4px 8px 6px; }
 .tlt-ms-edit {
@@ -1401,7 +1401,6 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   color: var(--tlt-ink5); font-size: 10px; line-height: 1;
   opacity: 0; transition: opacity .12s ease;
 }
-.tlt-ms:hover .tlt-ms-nudge { font-size: 10.5px; color: var(--tlt-acc-ink); opacity: .85; margin-left: 6px; }
 .tlt-ms-warnmark { color: #E8A33D; font-size: 11px; margin-left: 4px; cursor: help; }
 .tlt-ms-warn { font-size: 11px; color: #E8A33D; padding: 4px 8px 6px; }
 .tlt-ms-edit { opacity: 1; }
@@ -1469,7 +1468,6 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 :is(.tlt-root, .tlt-modal) .tlt-dnav,
 :is(.tlt-root, .tlt-modal) .tlt-fold-btn,
 :is(.tlt-root, .tlt-modal) .tlt-pmore,
-:is(.tlt-root, .tlt-modal) .tlt-ms-nudge { font-size: 10.5px; color: var(--tlt-acc-ink); opacity: .85; margin-left: 6px; }
 .tlt-ms-warnmark { color: #E8A33D; font-size: 11px; margin-left: 4px; cursor: help; }
 .tlt-ms-warn { font-size: 11px; color: #E8A33D; padding: 4px 8px 6px; }
 .tlt-ms-edit { color: var(--tlt-ink5); }

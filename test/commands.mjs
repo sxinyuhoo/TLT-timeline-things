@@ -733,7 +733,17 @@ await t("manifest 合规：名字标点、描述结尾（目录会按这两条�
 });
 
 await t("README（中英）：有关键词对照表，且覆盖 tasks/timeline/schedule", async () => {
-  for (const f of ["README.md", "README.en.md"]) {
+  // README.md 是英文（GitHub/目录默认展示的那份），中文在 README.zh.md
+  // 注意：英文版里会**故意**出现中文（标签页名、命令名这类界面文案要中英并列），所以只校验"开头是英文 + 切换链接指向中文版"
+  const mainReadme = readFileSync(join(root, "README.md"), "utf8");
+  const firstLines = mainReadme.split("\n")
+    .filter((l) => l.trim() && !l.includes("README."))     // 语言切换那行不算
+    .slice(0, 2).join("\n");
+  assert.ok(!/[\u4e00-\u9fa5]/.test(firstLines), `默认 README 的开头应为英文：${firstLines}`);
+  assert.ok(/\[中文\]\(README\.zh\.md\)/.test(mainReadme), "英文 README 里要有指向中文版的链接");
+  const zhReadme = readFileSync(join(root, "README.zh.md"), "utf8");
+  assert.ok(/\[English\]\(README\.md\)/.test(zhReadme), "中文 README 里要有指向英文版的链接");
+  for (const f of ["README.md", "README.zh.md"]) {
     const s = readFileSync(join(root, f), "utf8").toLowerCase();
     for (const kw of ["tasks", "timeline", "schedule", "calendar", "milestone"]) {
       assert.ok(s.includes(kw), `${f} 里没提到「${kw}」`);

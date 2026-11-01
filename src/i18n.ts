@@ -106,7 +106,6 @@ export const EN: Record<string, string> = {
   "只删「{n}」这一节；里面的 {c} 条任务一个都不会删，\n它们会变成「不归里程碑」（留在同一个项目文件里）。": "Only the “{n}” section is removed; none of its {c} task(s) are deleted —\nthey become “no milestone” (kept in the same project file).",
   "删除里程碑：{n}": "Delete milestone: {n}",
   "删除里程碑": "Delete milestone",
-  "名称（项目文件里的 ## 小节）": "Name (a ## section in the project file)",
   "{p} · {a}/{b} 条任务完成": "{p} · {a}/{b} tasks done",
   "任务都勾完了 · 点 ✓ 标完成": "All tasks are checked · press ✓ to mark it done",
   "已标为完成：{n}（里面还有 {m} 条任务没勾完，只是提醒，不改它们）": "Marked as done: {n} ({m} task(s) inside are still unchecked — a reminder only, nothing changed for them)",
