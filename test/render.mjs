@@ -328,9 +328,11 @@ await t("任务视图：工作/个人 标签筛选", async () => {
   await view.render();
   const btns = [...document.querySelectorAll("[data-tag]")];
   const labels = btns.map((b) => b.textContent);
-  assert.ok(labels.includes("全部") && labels.includes("工作") && labels.includes("个人"), `标签筛选：${labels}`);
+  // chip 上现在带条数（如「工作 4」），只要求前缀对得上
+  assert.ok(labels.some((x) => x.startsWith("全部")) && labels.some((x) => x.startsWith("工作")) && labels.some((x) => x.startsWith("个人")), `标签筛选：${labels}`);
+  assert.ok(labels.some((x) => /^工作 \d+$/.test(x)), `工作 chip 该带条数：${labels}`);
   const all = document.querySelectorAll(".tlt-task").length;
-  btns.find((b) => b.textContent === "个人").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  btns.find((b) => b.textContent.startsWith("个人")).dispatchEvent(new MouseEvent("click", { bubbles: true }));
   const only = document.querySelectorAll(".tlt-task").length;
   assert.ok(only > 0 && only < all, `个人筛选后 ${only}/${all}`);
   assert.ok(document.body.textContent.includes("示例任务：画图"), "个人任务没出现");
@@ -852,13 +854,15 @@ await t("点星图上的任务：只读详情 + 打开任务", async () => {
   assert.ok((box.value || "").length > 0, "详情弹窗里标题是空的");
 });
 
-await t("切到本月：四组 + 任务行", async () => {
+await t("切到本月：五组 + 任务行", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
   await view.onOpen();
   view.tab = "month";
   await view.render();
-  assert.equal(document.querySelectorAll(".tlt-mgrp").length, 4);
+  assert.equal(document.querySelectorAll(".tlt-mgrp").length, 5);
+  const names = [...document.querySelectorAll(".tlt-mgh")].map((h) => h.textContent);
+  assert.ok(names.some((x) => x.includes("未分配里程碑")), `该有「未分配里程碑」这一组：${names.join(" / ")}`);
   assert.ok(document.querySelectorAll(".tlt-task").length >= 3);
 });
 
@@ -2883,8 +2887,8 @@ await t("周视图：拖块的下缘＝只改结束时间（开始时间不动�
   const PE = dom.window.PointerEvent || dom.window.MouseEvent;
   const mk = (type, x, y) => new PE(type, { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y });
   grip.dispatchEvent(mk("pointerdown", 100, 230));
-  window.dispatchEvent(mk("pointermove", 100, 260));      // 往下 30px＝+1 小时
-  window.dispatchEvent(mk("pointerup", 100, 260));
+  window.dispatchEvent(mk("pointermove", 100, 278));      // 周视图 48px＝1 小时 → 往下 48px＝+1 小时
+  window.dispatchEvent(mk("pointerup", 100, 278));
   await new Promise((r) => window.setTimeout(r, 300));
   const text = files["TLT/tasks/示例项目.md"];
   assert.match(text, /\[st:: 09:00\]/, `开始时间不该动：${text}`);
@@ -3052,12 +3056,36 @@ await t("周视图点空白的时间换算：像素高度要加上 7:00 起点",
   view.tab = "today"; view.calView = "w"; view.viewDate = D;
   await view.render();
   // jsdom 里 inner 的 rect 全是 0，于是 clientY 就是"距表格顶部的像素"：
-  // 30px = 1 小时（表格从 7:00 开始）→ 300px 该是 7:00 + 10h = 17:00
+  // 48px = 1 小时（表格从 7:00 开始）→ 300px = 6h15m → 13:15 → 向下取 13:00
   const inner = view.contentEl.querySelector(".tlt-winner");
   assert.ok(inner, "周视图要有 .tlt-winner");
-  assert.equal(view.timeAtY(300), "17:00", `300px 应是 17:00，实际 ${view.timeAtY(300)}`);
-  assert.equal(view.timeAtY(30), "08:00", `30px 应是 08:00，实际 ${view.timeAtY(30)}`);
+  assert.equal(view.timeAtY(300), "13:00", `300px 应是 13:00，实际 ${view.timeAtY(300)}`);
+  assert.equal(view.timeAtY(48), "08:00", `48px 应是 08:00，实际 ${view.timeAtY(48)}`);
   assert.equal(view.timeAtY(0), "07:00", `顶部该夹到 07:00，实际 ${view.timeAtY(0)}`);
+});
+
+await t("概览→工作台联动：未指派/紧急/未排期 真的筛，不是只换页签", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n`
+    + `- [ ] 有人有期 📅 ${D} [owner:: [[张三]]] [created:: ${D}]\n`
+    + `- [ ] 没人有期 📅 ${D} [created:: ${D}]\n`
+    + `- [ ] 没人没期 [created:: ${D}]\n`
+    + `- [ ] 火烧眉毛 📅 ${D} [pri:: 3] [owner:: [[张三]]] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const titles = () => [...view.contentEl.querySelectorAll(".tlt-task-t")].map((e) => e.textContent.trim());
+  await view.focusOn({ tab: "month", dim: "all", quick: "noowner" });
+  assert.deepEqual(titles().sort(), ["没人有期", "没人没期"].sort(), `未指派筛选：${titles()}`);
+  assert.ok(view.contentEl.querySelector("[data-qclear2]"), "要有「筛选中」小条，能点掉");
+  view.contentEl.querySelector("[data-qclear2]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  assert.equal(titles().length, 4, `点掉筛选该回到全部：${titles()}`);
+  await view.focusOn({ tab: "month", dim: "all", quick: "urgent" });
+  assert.deepEqual(titles(), ["火烧眉毛"], `紧急筛选：${titles()}`);
+  await view.focusOn({ tab: "month", dim: "all", quick: "nodue" });
+  assert.deepEqual(titles(), ["没人没期"], `未排期筛选：${titles()}`);
 });
 
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
@@ -3534,7 +3562,7 @@ await t("点页签一次只切一次（监听不重复）", async () => {
   btn.click();
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(document.querySelectorAll(".tlt-tab.on").length, 1);
-  assert.equal(document.querySelectorAll(".tlt-mgrp").length, 4);
+  assert.equal(document.querySelectorAll(".tlt-mgrp").length, 5);   // 逾期 / 要做 / 已完成 / 未分配里程碑 / 待排期
 });
 
 /* ---------- 6) 消息中心：聚焦 / 取消 / 右侧面板 ---------- */

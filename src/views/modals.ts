@@ -1367,6 +1367,7 @@ export class MilestoneModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
+    this.modalEl?.addClass("tlt-wide");        // 里程碑名可以很长，别让它挤在一行里看不全
     const m = this.info;
     const done = m.tasks.filter((t) => t.done).length;
     contentEl.appendChild(el("div", "tlt-m-title", T("里程碑")));

@@ -1192,6 +1192,9 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 }
 .modal.tlt-host .modal-close-button { color: var(--tlt-ink4); }
 .modal.tlt-host .modal-content { padding: 20px 22px 16px; }
+/* 里程碑详情这种"名字可能很长"的弹窗：宽一点，输入框铺满 */
+.modal.tlt-host.tlt-wide { width: min(560px, 92vw); }
+.tlt-wide .tlt-m-field .tlt-input { width: 100%; }
 .tlt-modal { background: var(--tlt-bg2); border-radius: 0; }
 
 /* 详情：正文不再装进灰盒子 */
@@ -1801,7 +1804,8 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-wblk { position: absolute; left: 2px; right: 2px; border-radius: 6px; overflow: hidden; cursor: grab;
   background: color-mix(in srgb, var(--hue, #5B6CFF) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--hue, #5B6CFF) 36%, transparent);
-  border-left: 3px solid var(--hue, #5B6CFF); padding: 2px 5px 2px 6px; display: flex; flex-direction: column; gap: 1px; }
+  border-left: 3px solid var(--hue, #5B6CFF); padding: 3px 6px 3px 7px; display: flex; flex-direction: column; gap: 2px;
+  line-height: 1.35; }
 .tlt-wblk.log { border-left-style: dashed; background: color-mix(in srgb, var(--hue, #7C8BA1) 9%, transparent); }
 /* 周块下缘的把手：拖它只改结束时间（悬停才显形，别喧宾夺主） */
 .tlt-wgrip { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; }
@@ -1812,8 +1816,8 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-wblk.done .tlt-wbt { text-decoration: line-through; }
 .tlt-wblk.dragging { opacity: .85; z-index: 6; box-shadow: 0 6px 18px rgba(0,0,0,.28); cursor: grabbing; }
 .tlt-wblk.shifting { outline: 1px dashed var(--tlt-acc); }
-.tlt-wbt { font-size: 10px; color: var(--tlt-ink); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tlt-wbm { font-size: 8.5px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; }
+.tlt-wbt { font-size: 10.5px; color: var(--tlt-ink); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlt-wbm { font-size: 9px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; margin-top: 1px; }
 
 /* ---- 月视图：6×7 格，最多 4 行 ---- */
 .tlt-mhead { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 0 2px 4px; }
@@ -1878,3 +1882,11 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 body.theme-light .tlt-ycell.l1, body.tlt-light .tlt-ycell.l1 { background: rgba(75, 90, 224, .3); }
 body.theme-light .tlt-ycell.l2, body.tlt-light .tlt-ycell.l2 { background: rgba(75, 90, 224, .55); }
 body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(75, 90, 224, .85); }
+
+/* 概览面板：能带到工作台筛选的卡片，悬停时给一点点反馈 */
+.tlt-pn-card[data-pnfiltered] { cursor: pointer; }
+.tlt-pn-card[data-pnfiltered]:hover { background: var(--tlt-surface2); }
+/* 工作台顶部"筛选中"的小条 */
+.tlt-qs-filter { font: inherit; font-size: 10.5px; color: var(--tlt-acc-ink); background: rgba(91,108,255,.10);
+  border: 1px solid rgba(91,108,255,.30); border-radius: 999px; padding: 2px 9px; cursor: pointer; }
+.tlt-qs-filter:hover { background: rgba(91,108,255,.18); }

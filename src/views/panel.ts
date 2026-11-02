@@ -86,10 +86,10 @@ export class OverviewPanelView extends ItemView {
     /* ---- 一、读数 ---- */
     const grid = el("div", "tlt-pn-grid");
     grid.append(
-      this.numCard(T("逾期"), String(late.length), late.length ? "late" : "", { goto: { tab: "month", dim: "all" } }),
+      this.numCard(T("逾期"), String(late.length), late.length ? "late" : "", { goto: { tab: "month", dim: "all", quick: "late" } }),
       this.numCard(T("本月到期"), String(monthDue.length), "", { goto: { tab: "month", dim: "m" } }),
-      this.numCard(T("未指派"), String(noOwner.length), noOwner.length ? "warn" : "", { goto: { tab: "month", dim: "all" } }),
-      this.numCard(T("未排期"), String(noDue.length), "", { goto: { tab: "month", dim: "all" } }),
+      this.numCard(T("未指派"), String(noOwner.length), noOwner.length ? "warn" : "", { goto: { tab: "month", dim: "all", quick: "noowner" } }),
+      this.numCard(T("未排期"), String(noDue.length), "", { goto: { tab: "month", dim: "all", quick: "nodue" } }),
     );
     body.appendChild(grid);
 
@@ -122,9 +122,9 @@ export class OverviewPanelView extends ItemView {
     const noData = load.filter((r) => !r.hasEst).length;
     const grid2 = el("div", "tlt-pn-grid three");
     grid2.append(
-      this.numCard(T("紧急"), String(urgent.length), urgent.length ? "late" : "", { goto: { tab: "month", dim: "all" } }),
-      this.numCard(T("饱和人员"), String(busy.length), busy.length ? "warn" : "", { goto: { tab: "staff", dim: "all" } }),
-      this.numCard(T("空闲人员"), String(idle.length), "", { goto: { tab: "staff", dim: "all" } }),
+      this.numCard(T("紧急"), String(urgent.length), urgent.length ? "late" : "", { goto: { tab: "month", dim: "all", quick: "urgent" } }),
+      this.numCard(T("饱和人员"), String(busy.length), busy.length ? "warn" : "", { goto: { tab: "staff", dim: "all", staffOnly: "busy" } }),
+      this.numCard(T("空闲人员"), String(idle.length), "", { goto: { tab: "staff", dim: "all", staffOnly: "idle" } }),
     );
     body.appendChild(grid2);
     if (noData) body.appendChild(el("div", "tlt-pn-note", T("另有 {n} 人有任务但没填工作量：进不了饱和度统计", { n: noData })));
@@ -143,6 +143,8 @@ export class OverviewPanelView extends ItemView {
         void this.jump({
           tab: num.dataset.pngotoTab || "month",
           dim: num.dataset.pngotoDim || "all",
+          quick: num.dataset.pngotoQuick || null,
+          staffOnly: num.dataset.pngotoStaff || null,
         });
       }
     });
@@ -152,10 +154,14 @@ export class OverviewPanelView extends ItemView {
     body.scrollTop = keep;
   }
 
-  private numCard(label: string, value: string, mod: string, opts: { goto: { tab: string; dim: string } }): HTMLElement {
+  private numCard(label: string, value: string, mod: string,
+                  opts: { goto: { tab: string; dim: string; quick?: string; staffOnly?: string } }): HTMLElement {
     const c = el("div", "tlt-pn-card" + (mod ? " " + mod : ""));
     c.dataset.pngotoTab = opts.goto.tab;
     c.dataset.pngotoDim = opts.goto.dim;
+    if (opts.goto.quick) c.dataset.pngotoQuick = opts.goto.quick;
+    if (opts.goto.staffOnly) c.dataset.pngotoStaff = opts.goto.staffOnly;
+    if (opts.goto.quick || opts.goto.staffOnly) c.dataset.pngotoFiltered = "1";
     c.append(el("span", "tlt-pn-val", value), el("span", "tlt-pn-lab", label));
     return c;
   }
@@ -176,10 +182,10 @@ export class OverviewPanelView extends ItemView {
       .sort((a, b) => b.pct - a.pct);
   }
 
-  private async jump(opts: { tab: string; dim?: string }) {
+  private async jump(opts: { tab: string; dim?: string; quick?: string | null; staffOnly?: string | null }) {
     await this.plugin.activateWorkbench();
     const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_WORKBENCH)[0];
-    const v = leaf?.view as unknown as { focusOn?: (o: { tab?: string; dim?: string }) => void | Promise<void> } | undefined;
+    const v = leaf?.view as unknown as { focusOn?: (o: { tab?: string; dim?: string; quick?: string | null; staffOnly?: string | null }) => void | Promise<void> } | undefined;
     try { await v?.focusOn?.(opts); } catch (e) { console.error("TLT: 面板跳转失败", e); }
   }
 }

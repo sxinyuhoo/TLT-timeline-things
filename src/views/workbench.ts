@@ -55,7 +55,7 @@ const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
 /** 时间轴左边留给刻度、右边留边距（与 styles.css 里 .tlt-blk 的 left/right 保持一致） */
 const GUTTER = 52, RIGHT_PAD = 8;
 /** 周视图里一小时占多少像素（比日视图压得紧） */
-const HOUR_css = () => 30;
+const HOUR_css = () => 48;
 
 /**
  * 一个任务的日程块挂在哪一天：排期日 → 完成日（已完成）→ 截止日。
@@ -155,6 +155,10 @@ export class WorkbenchView extends ItemView {
   private taskTag: string | null = null;
   /** 人员视图的时间窗口：本月 / 下个月 / 全部 */
   private staffDim: StaffDim = "m";
+  /** 概览面板点进来的快捷筛选（任务侧）：late 逾期 / noowner 未指派 / nodue 未排期 / urgent 紧急 */
+  quick: "late" | "noowner" | "nodue" | "urgent" | null = null;
+  /** 概览面板点进来的快捷筛选（人员侧）：busy 饱和 / idle 空闲 */
+  staffOnly: "busy" | "idle" | null = null;
   private starZoom = 1;
   private scrollToMin: number | null = null;
   private ideaTags: Set<string> = new Set();
@@ -702,7 +706,7 @@ export class WorkbenchView extends ItemView {
       uns.forEach((t) => {
         const c = el("span", "tlt-chipq");
         c.dataset.sched = t.id;
-        c.title = T("点一下排进这天的时间表");
+        c.title = `${t.title}\n${T("点一下排进这天的时间表")}`;   // 悬停先给任务名（提示别抢位）
         c.textContent = `${t.title}${t.wl ? " · " + t.wl + "%" : ""}`;
         chips.appendChild(c);
       });
@@ -979,13 +983,20 @@ export class WorkbenchView extends ItemView {
     const label = { d: T("今天"), run: T("开展中"), w: T("本周"), m: T("本月"), q: T("本季度"), all: T("全部") }[this.taskDim];
     head.append(el("span", "", this.taskDim === "run"
       ? T("{l} · {a} 逾期 / {b} 有截止 / {c} 没截止", { l: label, a: m.late.length, b: m.todo.length, c: m.pending.length })
-      : T("{l} · {a} 逾期 / {b} 要做 / {c} 已完成 / {d} 待排期", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.pending.length })));
+      : T("{l} · {a} 逾期 / {b} 要做 / {c} 已完成 / {d} 未分配里程碑 / {e} 待排期", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.orphans.length, e: m.pending.length })));
     head.appendChild(el("span", "tlt-spacer"));
     const tags = Array.from(new Set(["工作", "个人", ...this.store.tasks.flatMap((t) => t.tags || [])]));
+    // 每个 chip 带上条数：库里 96% 的任务都算「工作」时，光看列表会以为筛选没生效，数字能说明白
+    const inScope = this.store.tasks.filter((t) => t.kind === "task" && (!this.proj || t.project === this.proj));
+    const countOf = (v: string | null) => !v ? inScope.length
+      : v === "工作" || v === "个人" ? inScope.filter((t) => t.scope === v).length
+      : inScope.filter((t) => (t.tags || []).includes(v)).length;
     const tf = el("div", "tlt-seg tlt-tag-seg");
     [{ v: null, t: T("全部") }, ...tags.map((t) => ({ v: t, t: t === "工作" ? T("工作") : t === "个人" ? T("个人") : t }))].forEach(({ v: tv, t }) => {
-      const b = el("button", "tlt-seg-b" + (this.taskTag === tv ? " on" : ""), t);
+      const b = el("button", "tlt-seg-b" + (this.taskTag === tv ? " on" : ""), `${t} ${countOf(tv)}`);
       b.dataset.tag = tv ?? "";
+      if (tv === "工作") b.title = T("没标 [scope:: 个人] 的都算工作——库里大部分任务都是这一类，所以筛完看着变化不大");
+      if (tv === "个人") b.title = T("只看标了 [scope:: 个人] 的任务");
       tf.appendChild(b);
     });
     head.appendChild(tf);
@@ -998,6 +1009,15 @@ export class WorkbenchView extends ItemView {
     head.appendChild(seg);
     head.appendChild(this.sortControl("task"));
     p.appendChild(head);
+    if (this.quick) {
+      const f = el("div", "tlt-pane-h");
+      const chip = el("button", "tlt-qs-filter",
+        T("筛选中：{n}", { n: { late: T("逾期"), noowner: T("未指派"), nodue: T("未排期"), urgent: T("紧急") }[this.quick] }) + "  ×");
+      chip.dataset.qclear2 = "1";
+      chip.title = T("点一下取消这个筛选");
+      f.appendChild(chip);
+      p.appendChild(f);
+    }
     this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
     if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
@@ -1009,6 +1029,7 @@ export class WorkbenchView extends ItemView {
       [T("{l}逾期", { l: label }), m.late, "#D98B5F"],
       [T("{l}要做", { l: label }), m.todo, "#5B6CFF"],
       [T("{l}已完成", { l: label }), m.done, "#4FB59A"],
+      [T("未分配里程碑"), m.orphans, "#E0A45E"],
       [T("待排期（未分配时间）"), m.pending, "#8B7CF6"],
     ];
     groups.forEach(([name, list, color]) => {
@@ -1033,7 +1054,13 @@ export class WorkbenchView extends ItemView {
       .filter((t) => !this.proj || t.project === this.proj)
       .filter((t) => !this.q || t.title.includes(this.q) || (t.project || "").includes(this.q) || (t.milestone || "").includes(this.q))
       .filter((t) => !this.taskTag ||
-        (this.taskTag === "工作" || this.taskTag === "个人" ? t.scope === this.taskTag : (t.tags || []).includes(this.taskTag)));
+        (this.taskTag === "工作" || this.taskTag === "个人" ? t.scope === this.taskTag : (t.tags || []).includes(this.taskTag)))
+      // 概览面板点进来的那一下：真的按那一类筛，别只是换个页签
+      .filter((t) => !this.quick
+        || (this.quick === "late" ? !t.done && !!t.due && t.due < todayISO()
+          : this.quick === "noowner" ? !t.done && !t.owners.length
+          : this.quick === "nodue" ? !t.done && !t.due
+          : !t.done && (t.pri || 1) >= 3));
     const dim = this.taskDim;
     const period = (dim === "all" || dim === "run" ? "all" : dim) as Period;
     const inDim = (d?: string) => (dim === "all" ? true : dim === "d" ? d === todayISO() : !!d && inPeriod(d, period));
@@ -1051,11 +1078,14 @@ export class WorkbenchView extends ItemView {
     // 「今天」：逾期的一律算今天的活儿；已完成的按"今天完成的"算
     const lateIn = (d: string) => (dim === "d" ? d < today : inDim(d));
     const doneIn = (t: Task) => (dim === "d" ? t.doneAt === today || t.due === today : inDim(t.due));
+    const noDue = all.filter((t) => !t.done && !t.due);
     return {
       late: all.filter((t) => !t.done && t.due && t.due < today && lateIn(t.due)),
       todo: all.filter((t) => !t.done && t.due && t.due >= today && inDim(t.due)),
       done: all.filter((t) => t.done && doneIn(t)),
-      pending: all.filter((t) => !t.done && !t.due),
+      // 没里程碑、也没排期：最容易掉地上的那一类，单独列一张清单（不和「待排期」重复）
+      orphans: noDue.filter((t) => !t.milestone),
+      pending: noDue.filter((t) => !!t.milestone),
     };
   }
 
@@ -1239,9 +1269,11 @@ export class WorkbenchView extends ItemView {
   }
 
   /** 面板跳转入口：切页签 / 维度（可选） */
-  async focusOn(opts: { tab?: string; dim?: string; proj?: string | null }) {
+  async focusOn(opts: { tab?: string; dim?: string; proj?: string | null; quick?: string | null; staffOnly?: string | null }) {
     if (opts.tab) this.tab = opts.tab;
     if (opts.dim) this.taskDim = opts.dim as TaskDim;
+    this.quick = (opts.quick || null) as typeof this.quick;
+    this.staffOnly = (opts.staffOnly || null) as typeof this.staffOnly;
     if (opts.proj !== undefined) {
       this.proj = opts.proj;
       this.plugin.setActiveProject(this.proj);        // 两边同步，但不再回调渲染（setActiveProject 只画面板）
@@ -1331,14 +1363,17 @@ export class WorkbenchView extends ItemView {
   private paneStaff(): HTMLElement {
     const p = el("div", "tlt-pane");
     const dim = this.staffDim;
-    const rows = this.store.staff.map((s) => ({
+    const allRows = this.store.staff.map((s) => ({
       s, sat: workloadBreakdown(this.store.tasks, s.name, dim, { capacity: s.capacity, days: s.days }),
     }));
-    const over = rows.filter((r) => r.sat.pct >= 100).length;
-    const idle = rows.filter((r) => r.sat.pct < 60).length;
-    const avg = rows.length ? Math.round(rows.reduce((a, r) => a + r.sat.pct, 0) / rows.length) : 0;
+    // 「饱和 / 空闲」只看算得出的人（和卡片上的 — 口径一致）
+    const rows = !this.staffOnly ? allRows
+      : allRows.filter((r) => r.sat.hasEst && (this.staffOnly === "busy" ? r.sat.pct >= 100 : r.sat.pct < 60));
+    const over = allRows.filter((r) => r.sat.pct >= 100).length;
+    const idle = allRows.filter((r) => r.sat.pct < 60).length;
+    const avg = allRows.length ? Math.round(allRows.reduce((a, r) => a + r.sat.pct, 0) / allRows.length) : 0;
     const head = el("div", "tlt-pane-h");
-    head.append(el("span", "", T("{n} 人 · 平均 {a}% · {o} 人超载 · {i} 人偏闲", { n: rows.length, a: avg, o: over, i: idle })));
+    head.append(el("span", "", T("{n} 人 · 平均 {a}% · {o} 人超载 · {i} 人偏闲", { n: allRows.length, a: avg, o: over, i: idle })));
     head.appendChild(el("span", "tlt-src", this.cfg.teamFolder));
     head.appendChild(el("span", "tlt-spacer"));
     const add = el("button", "tlt-btn", T("＋ 添加成员"));
@@ -1354,6 +1389,12 @@ export class WorkbenchView extends ItemView {
     });
     const segRow = el("div", "tlt-pane-h");
     segRow.appendChild(seg);
+    if (this.staffOnly) {
+      const chip = el("button", "tlt-qs-filter", T("筛选中：{n}", { n: this.staffOnly === "busy" ? T("饱和人员") : T("空闲人员") }) + "  ×");
+      chip.dataset.qclear3 = "1";
+      chip.title = T("点一下取消这个筛选");
+      segRow.appendChild(chip);
+    }
     p.appendChild(segRow);
     p.appendChild(el("div", "tlt-hint", T("档案来自 crew/<姓名>.md 的 frontmatter——岗位、产能、在岗天数都在文件里改；TLT 只读，任务侧只负责分配与统计。")));
     p.appendChild(el("div", "tlt-hint", dim === "all"
@@ -1622,7 +1663,7 @@ export class WorkbenchView extends ItemView {
     const p = el("div", "tlt-pane");
     const start = this.store.settings.weekStart === 0 ? 0 : 1;
     const days = weekDays(this.viewDate, start);
-    const HOUR = 30, GUTTER = 52;
+    const HOUR = HOUR_css(), GUTTER = 52;   // 周视图每小时的高度：跟着 HOUR_css 走，别再各写一份
 
     p.appendChild(this.rhythm());          // 节奏保持在上面：切视图它不动
     p.appendChild(this.calBar());          // 档位切换 + 导航，四个视图共用
@@ -1664,7 +1705,7 @@ export class WorkbenchView extends ItemView {
         blk.dataset.log = x.kind === "log" ? x.item.id : "";
         blk.dataset.day = k;
         blk.style.top = `${((x.a - DAY_FROM) / 60) * HOUR}px`;
-        blk.style.height = `${Math.max(20, ((x.b - x.a) / 60) * HOUR)}px`;
+        blk.style.height = `${Math.max(24, ((x.b - x.a) / 60) * HOUR)}px`;
         if (lanes > 1) {
           blk.style.left = `calc((100% - 3px) * ${(lane / lanes).toFixed(4)})`;
           blk.style.width = `calc((100% - 3px) / ${lanes} - 2px)`;
@@ -2300,6 +2341,8 @@ export class WorkbenchView extends ItemView {
 
 
     if (pick("[data-qclear]")) { this.q = ""; await this.render(); return; }
+    if (pick("[data-qclear2]")) { this.quick = null; await this.render(); return; }
+    if (pick("[data-qclear3]")) { this.staffOnly = null; await this.render(); return; }
     if (pick("[data-panelopen]")) { void this.plugin.togglePanel(); return; }
     if (pick("[data-newtask]")) { this.openNewTask(); return; }
 
