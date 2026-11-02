@@ -156,6 +156,7 @@ Drop a code block into a note and today's tasks render right there; ticking writ
 ```tlt-daily
 date: auto      # auto = date from the file name (so back-dated notes still work)
 overdue: true   # list overdue tasks in their own group
+wip: false      # add an "In progress" group (started, not yet due)
 tree: true      # expand sub-steps
 who: true       # show owners
 scope: all      # all | work | personal
@@ -163,6 +164,7 @@ scope: all      # all | work | personal
 ````
 
 Four groups: **Overdue / Due today / Planned for today / Done today**, each line carrying project · milestone · effort · owner.
+Add `wip: true` for a fifth group, **In progress** — started but not yet due, i.e. everything currently on your plate.
 No Tasks or Dataview plugin needed — it reads TLT's own data.
 
 “Done today” uses **the real completion date** (`[done:: date]`) and nothing else — no “file it by due date” guessing: a task due that day but ticked later shows up in the diary of the day it was actually ticked.

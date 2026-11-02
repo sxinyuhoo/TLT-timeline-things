@@ -66,6 +66,7 @@ function fixture() {
 - [x] 今天做完的活 📅 2026-10-29 [done:: 2026-10-29]
 - [ ] 过期没做的活 📅 2026-10-23 [pri:: 3]
 - [ ] 今天计划但无截止 🛫 2026-10-29
+- [ ] 在办的事 🛫 2026-10-26 📅 2026-11-06
 - [ ] 明天的事 📅 2026-10-30
 - [x] 昨天做完的活 📅 2026-10-28 [done:: 2026-10-28]
 
@@ -86,6 +87,7 @@ const fakePlugin = (store) => ({ store, dailyBlocks: new Set(), refreshDailyBloc
 await t("parseDailyOptions：默认值 + 显式覆盖", async () => {
   const d = parseDailyOptions("");
   assert.equal(d.date, "auto"); assert.equal(d.overdue, true); assert.equal(d.tree, true); assert.equal(d.scope, "all");
+  assert.equal(d.wip, false, "「进行中」默认关");
   const o = parseDailyOptions("date: 2026-10-01\noverdue: false\ntree: false\nwho: false\nscope: personal");
   assert.equal(o.date, "2026-10-01"); assert.equal(o.overdue, false); assert.equal(o.tree, false);
   assert.equal(o.who, false); assert.equal(o.scope, "personal");
@@ -281,6 +283,27 @@ await t("数据没就绪时给提示，而不是空白", async () => {
   document.body.appendChild(host);
   renderDaily({ store, dailyBlocks: new Set(), refreshDailyBlocks() {} }, host, "", "x.md");
   assert.ok(host.querySelector(".tlt-daily-warn"), "应显示「数据还没就绪」");
+});
+
+await t("进行中（wip: true）：已经开始、还没到期的单列一组；默认不显示", async () => {
+  fixture();
+  const { app, store } = await makeStore();
+  const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() {} };
+
+  const off = document.createElement("div"); document.body.appendChild(off);
+  renderDaily(plugin, off, "", "70-生活/diary/2026/20261029.md");
+  assert.ok(!off.textContent.includes("在办的事"), "默认不该把「进行中」列出来");
+  assert.ok(![...off.querySelectorAll(".tlt-daily-h")].some((h) => h.textContent.startsWith("进行中")), "默认不该有进行中分组");
+
+  const on = document.createElement("div"); document.body.appendChild(on);
+  renderDaily(plugin, on, "wip: true", "70-生活/diary/2026/20261029.md");
+  const heads = [...on.querySelectorAll(".tlt-daily-h")].map((h) => h.textContent);
+  assert.ok(heads.some((x) => x.startsWith("进行中") && x.includes("1")), `应有一组进行中 1 条：${heads.join(" / ")}`);
+  const row = [...on.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("在办的事"));
+  assert.ok(row && row.textContent.includes("截止 2026-11-06"), "进行中的条目要带截止日期");
+  // 已经逾期的、今天到期的、明天才开始的都不该混进「进行中」
+  assert.ok(!row.textContent.includes("过期没做的活"), "逾期不进进行中");
+  assert.ok(on.querySelectorAll(".tlt-daily-row").length > 1, "别的组照旧");
 });
 
 await t("空状态：这天什么都没有时给一句话，不留空白", async () => {

@@ -10,6 +10,7 @@ import { el, TaskModal } from "./modals";
  *   ```tlt-daily
  *   date: auto        # auto = 用文件名里的日期（补记历史日记也对），也可以写死 2026-10-29
  *   overdue: true     # 把过期未完成的单列一组
+ *   wip: false        # 再加一组「进行中」：已经开始（🛫 已到）但还没到期/没截止的
  *   tree: true        # 展开任务的子步骤，点子步骤也能勾
  *   who: true         # 显示负责人
  *   scope: all        # all | work | personal
@@ -21,13 +22,15 @@ export interface DailyOptions {
   /** "auto" = 按文件名里的日期；也可以写死 YYYY-MM-DD */
   date: string;
   overdue: boolean;
+  /** 再看一组「进行中」：🛫 已到、但还没到期（或没设截止）的未完成任务 */
+  wip: boolean;
   tree: boolean;
   who: boolean;
   scope: "all" | "work" | "personal";
 }
 
 export function parseDailyOptions(source: string): DailyOptions {
-  const o: DailyOptions = { date: "auto", overdue: true, tree: true, who: true, scope: "all" };
+  const o: DailyOptions = { date: "auto", overdue: true, wip: false, tree: true, who: true, scope: "all" };
   for (const raw of source.split("\n")) {
     const line = raw.trim();
     if (!line || line.startsWith("#") || line.startsWith("//")) continue;
@@ -37,6 +40,7 @@ export function parseDailyOptions(source: string): DailyOptions {
     const val = m[2].trim().replace(/^["']|["']$/g, "");
     if (key === "date") o.date = /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : "auto";
     else if (key === "overdue") o.overdue = val !== "false" && val !== "no";
+    else if (key === "wip" || key === "inprogress") o.wip = val !== "false" && val !== "no";
     else if (key === "tree") o.tree = val !== "false" && val !== "no";
     else if (key === "who") o.who = val !== "false" && val !== "no";
     else if (key === "scope") o.scope = val === "work" || val === "personal" ? val : "all";
@@ -59,6 +63,10 @@ function pick(tasks: Task[], o: DailyOptions, date: string) {
     o.scope === "all" || (o.scope === "personal" ? isPersonal(t) : !isPersonal(t));
   const pool = tasks.filter((t) => t.kind !== "log" && scopeOk(t));
   const overdue = pool.filter((t) => !t.done && t.due && t.due < date);
+  // 进行中：已经开始（🛫 ≤ 参考日）、还没做完、且没到期。
+  // 已经出现的两组不要重复列：📅=今天 的在「今日待做」，🛫=今天且没截止 的在「今天计划做」。
+  const wip = pool.filter((t) => !t.done && !!t.start && t.start <= date
+    && (t.due ? t.due > date : t.start < date));
   const planned = pool.filter((t) => !t.done && !t.due && t.start === date);
   const todo = pool.filter((t) => !t.done && t.due === date);
   // 「已完成」只看**真实的完成时间**（`[done:: 日期]`），不做任何"按截止日"的近似。
@@ -68,6 +76,7 @@ function pick(tasks: Task[], o: DailyOptions, date: string) {
     (a.due || "9999").localeCompare(b.due || "9999") || b.pri - a.pri || (b.est || 0) - (a.est || 0);
   return {
     overdue: overdue.sort(rank),
+    wip: wip.sort(rank),
     planned: planned.sort(rank),
     todo: todo.sort(rank),
     done: done.sort((a, b) => (a.doneAt || "").localeCompare(b.doneAt || "")),
@@ -165,9 +174,10 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
   if (o.overdue) section(T("逾期"), g.overdue, "late");
   section(T("今日待做"), g.todo, "todo");
   section(T("今天计划做"), g.planned, "todo");
+  if (o.wip) section(T("进行中"), g.wip, "todo");
   section(T("今日已完成"), g.done, "done");
 
-  if ((!o.overdue || !g.overdue.length) && !g.todo.length && !g.planned.length && !g.done.length) {
+  if ((!o.overdue || !g.overdue.length) && !g.todo.length && !g.planned.length && !g.done.length && !(o.wip && g.wip.length)) {
     box.appendChild(el("div", "tlt-daily-empty", T("这天没有待办，也没有完成的记录")));
   }
 }

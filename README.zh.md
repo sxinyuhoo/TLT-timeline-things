@@ -161,6 +161,7 @@ python3 services-py/tlt_service.py --port 8787 --data ./data --seed
 ```tlt-daily
 date: auto      # auto = 用文件名里的日期（补记历史日记也对）
 overdue: true   # 过期未完成的单列一组
+wip: false      # 再加一组「进行中」（已经开始、还没到期）
 tree: true      # 展开子步骤
 who: true       # 显示负责人
 scope: all      # all | work | personal
@@ -168,6 +169,7 @@ scope: all      # all | work | personal
 ````
 
 渲染成四组：**逾期 / 今日待做 / 今天计划做 / 今日已完成**，每条带「项目 · 里程碑 · 人天 · 负责人」。
+想看**手上所有在办的活**就加一行 `wip: true`，会多一组「进行中」（已经开始、还没到期的未完成任务）。
 点方块即勾选（写回项目文件里的 `[done:: 日期]`），条目当场在两组之间移动。
 不依赖 Tasks 或 Dataview 插件——它读的是 TLT 自己的数据。
 
