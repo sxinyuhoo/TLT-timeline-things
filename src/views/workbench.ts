@@ -51,7 +51,8 @@ function panelIcon(): SVGSVGElement {
   }
   return svg;
 }
-const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
+const DAY_FROM = 0, DAY_TO = 24 * 60, HOUR_PX = 62;          // 时间轴＝全天 00:00–24:00
+const DAY_END_WRITE = 23 * 60 + 59;                            // 写进文件的最大结束时间（"24:00" 不是合法的 time 值）
 /** 时间轴左边留给刻度、右边留边距（与 styles.css 里 .tlt-blk 的 left/right 保持一致） */
 const GUTTER = 52, RIGHT_PAD = 8;
 /** 周视图里一小时占多少像素（比日视图压得紧） */
@@ -627,7 +628,7 @@ export class WorkbenchView extends ItemView {
     grid.dataset.slotgrid = "1";
     const inner = el("div", "tlt-dayinner");
     inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR_PX}px`;
-    for (let mnt = DAY_FROM; mnt <= DAY_TO; mnt += 60) {
+    for (let mnt = DAY_FROM; mnt < DAY_TO; mnt += 60) {
       const h = el("div", "tlt-hour");
       h.style.top = `${((mnt - DAY_FROM) / 60) * HOUR_PX}px`;
       h.appendChild(el("span", "", minToHHMM(mnt)));
@@ -1596,14 +1597,14 @@ export class WorkbenchView extends ItemView {
       .filter((t) => t.st && dayOfBlock(t) === date)
       .map((t) => ({
         kind: "plan" as const, item: t, title: t.title,
-        a: hhmmToMin(t.st) || DAY_FROM, b: hhmmToMin(t.en) || (hhmmToMin(t.st) || DAY_FROM) + 30,
+        a: hhmmToMin(t.st) || 9 * 60, b: hhmmToMin(t.en) || (hhmmToMin(t.st) || 9 * 60) + 60,
         st: t.st, en: t.en, done: t.done,
       }));
     const recs: CalBlock[] = this.store.logs
       .filter((l) => l.due === date)
       .map((l) => ({
         kind: "log" as const, item: l, title: l.title,
-        a: hhmmToMin(l.st) || DAY_FROM, b: hhmmToMin(l.en) || (hhmmToMin(l.st) || DAY_FROM) + 30,
+        a: hhmmToMin(l.st) || 9 * 60, b: hhmmToMin(l.en) || (hhmmToMin(l.st) || 9 * 60) + 60,
         st: l.st, en: l.en, done: false,
       }));
     return [...plans, ...recs].sort((x, y) => x.a - y.a || x.b - y.b);
@@ -1704,7 +1705,7 @@ export class WorkbenchView extends ItemView {
     scroll.style.height = `${HOUR * hours + 8}px`;     // 先按完整时间轴给高，挂进 DOM 后再收进可用高度（内部滚）
     const inner = el("div", "tlt-winner");
     inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR}px`;
-    for (let mnt = DAY_FROM; mnt <= DAY_TO; mnt += 60) {
+    for (let mnt = DAY_FROM; mnt < DAY_TO; mnt += 60) {
       const h = el("div", "tlt-hour");
       h.style.top = `${((mnt - DAY_FROM) / 60) * HOUR}px`;
       h.appendChild(el("span", "", minToHHMM(mnt)));
@@ -1772,7 +1773,7 @@ export class WorkbenchView extends ItemView {
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;      // 动过就不当点击了
       const snap = (m: number) => Math.round(m / 15) * 15;
       if (mode === "resize") {                   // 拖下缘：只动结束时间
-        curB = Math.max(a0 + 15, Math.min(DAY_TO, snap(b0 + (dy / HOUR_css()) * 60)));
+        curB = Math.max(a0 + 15, Math.min(DAY_END_WRITE, snap(b0 + (dy / HOUR_css()) * 60)));
         blk.style.height = `${Math.max(16, ((curB - a0) / 60) * HOUR_css())}px`;
         return;
       }
@@ -2532,7 +2533,7 @@ export class WorkbenchView extends ItemView {
     const snap = (m: number) => Math.round(m / 5) * 5;
     const clamp = (a: number, b: number) => {
       const A = Math.max(DAY_FROM, Math.min(DAY_TO - 15, a));
-      const B = Math.max(A + 15, Math.min(DAY_TO, b));
+      const B = Math.max(A + 15, Math.min(DAY_END_WRITE, b));
       return { A, B };
     };
     const paint = (A: number, B: number) => {
@@ -2670,7 +2671,7 @@ export class WorkbenchView extends ItemView {
     }
     start = floorToHalfHour(start);
     if (start + 60 > DAY_TO) { new Notice(T("这天排满了，换一天试试")); return; }
-    const end = Math.min(DAY_TO, start + 60);         // 默认一小时，要细的自己拖
+    const end = Math.min(DAY_END_WRITE, start + 60);  // 默认一小时，要细的自己拖
     // 只排时间：截止日是"什么时候要交"，跟"哪天做"没有关系，一个字都不动
     await this.store.setField(t, "plan", day);
     await this.store.setField(t, "st", minToHHMM(start));

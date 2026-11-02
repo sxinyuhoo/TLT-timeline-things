@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>TLT · 时间线原型 v3（可交互）</title>
+<style>
+  :root{
+    --bg:#0E0E12; --panel:#13141A; --panel2:#171821; --line:#23252F; --line2:#2E303C;
+    --ink:#E9EAEF; --ink2:#C2C3CE; --ink3:#8A8E9C; --ink4:#6E7280; --ink5:#4E5160;
+    --acc:#5B6CFF; --acc2:#8B97FF; --hot:#D98B8B;
+    --p1:#5B6CFF; --p2:#27C1A3; --p3:#D9A441; --p4:#B57BFF;
+    --grid:#1B1D26;
+  }
+  body.light{
+    --bg:#F4F5F9; --panel:#FFFFFF; --panel2:#FAFBFE; --line:#E4E7EF; --line2:#D3D8E3;
+    --ink:#16181F; --ink2:#3F4553; --ink3:#6B7280; --ink4:#8A8E9C; --ink5:#B4B9C4;
+    --acc:#4B5AE0; --acc2:#7181F0; --hot:#C2554F;
+    --grid:#EDF0F6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:13px/1.5 -apple-system,"Helvetica Neue","PingFang SC","Hiragino Sans GB",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .app{width:1080px;margin:0 auto;padding:26px 0 40px}
+
+  /* ---------- 头部 ---------- */
+  header{display:flex;align-items:flex-end;gap:20px;padding:0 4px 14px}
+  .kicker{display:block;font-size:9.5px;letter-spacing:.16em;color:var(--ink4);margin-bottom:5px}
+  h1{margin:0;font-size:22px;font-weight:600;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+  h1 em{font-style:normal;font-size:12px;color:var(--ink4);margin-left:7px;font-weight:400}
+  .stats{display:flex;gap:16px;padding-bottom:3px}
+  .stat{font-size:11px;color:var(--ink4);font-variant-numeric:tabular-nums}
+  .stat b{display:block;font-size:15px;color:var(--ink2);font-weight:600;margin-top:1px}
+  .hsp{flex:1}
+  .tabs{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
+  .tab{border:0;background:none;color:var(--ink3);font:inherit;font-size:11.5px;padding:5px 11px;border-radius:6px;cursor:pointer}
+  .tab:hover{color:var(--ink2)}
+  .tab.on{background:var(--panel);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line2)}
+  .ico{border:1px solid var(--line);background:var(--panel2);color:var(--ink3);width:30px;height:30px;border-radius:8px;
+       cursor:pointer;font-size:12px;display:grid;place-items:center}
+  .ico:hover{color:var(--ink);border-color:var(--line2)}
+  .ico.wide{width:auto;padding:0 11px;font-size:11.5px}
+
+  /* ---------- 主区 ---------- */
+  main{display:grid;grid-template-columns:1fr 268px;gap:14px;align-items:start}
+  .stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px 10px;min-height:352px}
+  .side{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 12px;min-height:352px}
+  .side h3{margin:0 0 10px;font-size:11px;letter-spacing:.1em;color:var(--ink4);font-weight:500}
+
+  /* 图表通用 */
+  .axis{display:flex;margin-top:6px;color:var(--ink4);font-size:9.5px;font-variant-numeric:tabular-nums}
+  .axis span{flex:1}
+  .axis span:last-child{flex:none}
+  .hint{position:absolute;left:18px;top:14px;font-size:10.5px;color:var(--ink4);pointer-events:none}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+  .lg{display:flex;align-items:center;gap:6px;color:var(--ink3);font-size:10.5px}
+  .lg i{width:8px;height:8px;border-radius:2px}
+
+  /* 悬浮详情 */
+  .tip{position:fixed;z-index:50;pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .1s,transform .1s;
+       background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:7px 9px;max-width:280px}
+  .tip.on{opacity:1;transform:none}
+  .tip b{display:block;font-size:11.5px;color:var(--ink);font-weight:550;margin-bottom:2px}
+  .tip span{font-size:10px;color:var(--ink4);font-variant-numeric:tabular-nums}
+
+  /* 侧栏条目 */
+  .item{display:flex;gap:7px;padding:6px 4px;border-radius:7px;cursor:pointer}
+  .item:hover{background:var(--panel2)}
+  .item.on{background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line2)}
+  .item i{width:3px;border-radius:2px;flex:none;background:var(--c);margin:2px 0}
+  .item .t{font-size:11.5px;color:var(--ink2);line-height:1.35}
+  .item .m{font-size:9.5px;color:var(--ink4);font-variant-numeric:tabular-nums;margin-top:1px}
+  .empty{color:var(--ink4);font-size:11px;line-height:1.7}
+
+  /* 编辑器 */
+  .ed{display:flex;flex-direction:column;gap:8px}
+  .ed label{font-size:9.5px;color:var(--ink4);letter-spacing:.08em;display:block;margin-bottom:3px}
+  .ed input,.ed select{width:100%;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
+    border-radius:7px;padding:6px 8px;font:inherit;font-size:11.5px}
+  .ed input:focus,.ed select:focus{outline:none;border-color:var(--acc)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btns{display:flex;gap:7px;margin-top:3px}
+  .b{border:1px solid var(--line2);background:var(--panel2);color:var(--ink2);border-radius:7px;padding:5px 10px;
+     font:inherit;font-size:11px;cursor:pointer}
+  .b:hover{color:var(--ink)}
+  .b.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  .b.danger{color:var(--hot);border-color:var(--line2)}
+
+  /* 底部源码 */
+  footer{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 14px}
+  footer .cap{display:flex;gap:8px;align-items:baseline;margin-bottom:7px}
+  footer .cap b{font-size:11px;color:var(--ink2);font-weight:600}
+  footer .cap span{font-size:10.5px;color:var(--ink4)}
+  pre{margin:0;font:10.5px/1.7 ui-monospace,"SF Mono",Menlo,monospace;color:var(--ink3);white-space:pre-wrap}
+  pre .k{color:var(--acc2)}
+  pre .c{color:var(--ink5)}
+  pre .hit{background:rgba(91,108,255,.16);border-radius:3px}
+
+  /* 提示条 */
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);opacity:0;
+    background:var(--panel2);border:1px solid var(--line2);color:var(--ink2);font-size:11.5px;
+    padding:7px 13px;border-radius:9px;transition:.18s;pointer-events:none;z-index:60}
+  .toast.on{opacity:1;transform:translateX(-50%)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <span class="kicker">TLT · TIMELINE</span>
+      <h1>2026-11-02<em>周一</em></h1>
+    </div>
+    <div class="stats">
+      <span class="stat">记录<b id="s-log">—</b></span>
+      <span class="stat">完成<b id="s-done">—</b></span>
+      <span class="stat">在轴时长<b id="s-span">—</b></span>
+      <span class="stat">切换上下文<b id="s-switch">—</b></span>
+    </div>
+    <div class="hsp"></div>
+    <div class="tabs" id="modes">
+      <button class="tab on" data-mode="river">航道</button>
+      <button class="tab" data-mode="lanes">泳道</button>
+      <button class="tab" data-mode="dial">表盘</button>
+      <button class="tab" data-mode="week">周脉冲</button>
+    </div>
+    <button class="ico wide" id="play">▶ 回放</button>
+    <button class="ico" id="theme">☾</button>
+  </header>
+
+  <main>
+    <div class="stage" id="stage"></div>
+    <aside class="side" id="side"></aside>
+  </main>
+
+  <footer>
+    <div class="cap"><b>块里的源码</b><span>这块反转过来写回去 —— 你在图上改，这里实时变（这就是「即时编辑即时渲染」）</span></div>
+    <pre id="src"></pre>
+  </footer>
+</div>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= 数据（示意：来自真实的 11-02 记录 + 完成项） ================= */
+const PROJECTS = {
+  "交通核心算法研发": "var(--p1)",
+  "omniwise": "var(--p2)",
+  "技术预研": "var(--p3)",
+  "mvlab 运营管理": "var(--p4)",
+};
+const M = (h, m = 0) => h * 60 + m;
+let items = [
+  { id: "a", title: "晨会 · 对齐本周三件大事", s: M(9, 10), e: M(9, 40), proj: "mvlab 运营管理", kind: "log" },
+  { id: "b", title: "湖南算法核减项与项目组讨论", s: M(11, 30), e: M(12, 15), proj: "交通核心算法研发", kind: "log" },
+  { id: "c", title: "部门里程碑 & 任务梳理", s: M(13, 30), e: M(16, 0), proj: "mvlab 运营管理", kind: "log" },
+  { id: "d", title: "与南理工对齐验收口径", s: M(16, 10), e: M(16, 45), proj: "技术预研", kind: "log" },
+  { id: "e", title: "aula 视觉算法评审", s: M(17, 0), e: M(17, 30), proj: "omniwise", kind: "log" },
+  { id: "f", title: "一车一档 V2.0 需求评审", s: M(10, 12), e: M(10, 12), proj: "交通核心算法研发", kind: "done" },
+  { id: "g", title: "taisl_okc 图谱交付", s: M(13, 0), e: M(13, 0), proj: "omniwise", kind: "done" },
+  { id: "h", title: "路由模型技术路径调研", s: M(17, 20), e: M(17, 20), proj: "技术预研", kind: "done" },
+  { id: "i", title: "SOP 流程定义", s: M(20, 15), e: M(20, 15), proj: "mvlab 运营管理", kind: "done" },
+];
+
+/* ================= 状态 ================= */
+const DAY = { from: M(6), to: M(24) };
+let view = { ...DAY };
+let mode = "river";
+let sel = null;
+let hover = null;
+let playing = false;
+let playAt = M(8, 30);
+let brush = null;
+
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
+const dur = (m) => m >= 60 ? `${(m / 60).toFixed(m % 60 ? 1 : 0)}h` : `${m}m`;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pct = (m) => ((m - view.from) / (view.to - view.from)) * 100;
+
+/* ================= 统计 ================= */
+function stats() {
+  const logs = items.filter((i) => i.kind === "log");
+  const done = items.filter((i) => i.kind === "done");
+  const span = logs.reduce((n, i) => n + (i.e - i.s), 0);
+  const seq = [...items].sort((a, b) => a.s - b.s);
+  let sw = 0;
+  for (let i = 1; i < seq.length; i++) if (seq[i].proj !== seq[i - 1].proj) sw++;
+  return { logs, done, span, sw };
+}
+function paintStats() {
+  const { logs, done, span, sw } = stats();
+  $("#s-log").textContent = logs.length;
+  $("#s-done").textContent = done.length;
+  $("#s-span").textContent = dur(span);
+  $("#s-switch").textContent = sw + " 次";
+}
+
+/* ================= 悬浮与选中 ================= */
+const tip = $("#tip");
+function showTip(e, html) {
+  tip.innerHTML = html;
+  tip.classList.add("on");
+  const pad = 12;
+  const r = tip.getBoundingClientRect();
+  tip.style.left = clamp(e.clientX + 14, pad, innerWidth - r.width - pad) + "px";
+  tip.style.top = clamp(e.clientY - r.height - 10, pad, innerHeight - r.height - pad) + "px";
+}
+function hideTip() { tip.classList.remove("on"); }
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 1600);
+}
+
+/* ================= 侧栏 ================= */
+function renderSide() {
+  const side = $("#side"); side.innerHTML = "";
+  const it = items.find((x) => x.id === sel);
+  if (!it) {
+    side.appendChild(el("h3", "", "当天条目"));
+    const box = el("div", "empty", "点图上的条、点或节点来编辑；也可以在上面拖一条改时间。");
+    side.appendChild(box);
+    const list = el("div");
+    [...items].sort((a, b) => a.s - b.s).forEach((x) => list.appendChild(itemRow(x)));
+    side.appendChild(list);
+    return;
+  }
+  side.appendChild(el("h3", "", it.kind === "log" ? "编辑记录" : "完成的活（只有时间点）"));
+  const ed = el("div", "ed");
+
+  const f1 = el("div");
+  f1.appendChild(el("label", "", "标题"));
+  const t = el("input"); t.value = it.title; t.id = "ed-title";
+  f1.appendChild(t); ed.appendChild(f1);
+
+  const f2 = el("div", "row2");
+  const c1 = el("div"); c1.appendChild(el("label", "", it.kind === "log" ? "开始" : "时刻"));
+  const st = el("input"); st.type = "time"; st.value = fmt(it.s); st.id = "ed-s"; c1.appendChild(st);
+  const c2 = el("div"); c2.appendChild(el("label", "", "结束"));
+  const en = el("input"); en.type = "time"; en.value = fmt(it.e); en.id = "ed-e";
+  if (it.kind === "done") en.disabled = true;
+  c2.appendChild(en);
+  f2.append(c1, c2); ed.appendChild(f2);
+
+  const f3 = el("div"); f3.appendChild(el("label", "", "项目"));
+  const pj = el("select");
+  Object.keys(PROJECTS).forEach((p) => { const o = el("option", "", p); o.value = p; pj.appendChild(o); });
+  pj.value = it.proj; pj.id = "ed-p"; f3.appendChild(pj); ed.appendChild(f3);
+
+  const btns = el("div", "btns");
+  const ok = el("button", "b pri", "保存"); ok.id = "ed-ok";
+  const cc = el("button", "b", "取消"); cc.id = "ed-cancel";
+  const del = el("button", "b danger", "删除"); del.id = "ed-del";
+  btns.append(ok, cc, del); ed.appendChild(btns);
+  side.appendChild(ed);
+
+  ok.onclick = () => {
+    it.title = t.value.trim() || it.title;
+    it.proj = pj.value;
+    const s2 = toMin(st.value), e2 = it.kind === "done" ? s2 : toMin(en.value);
+    it.s = s2; it.e = Math.max(s2, e2);
+    sel = null; render(); toast("已写回块里的源码");
+  };
+  cc.onclick = () => { sel = null; render(); };
+  del.onclick = () => { items = items.filter((x) => x.id !== it.id); sel = null; render(); toast("已删除这一条"); };
+  [t, st, en, pj].forEach((n) => (n.onkeydown = (e) => { if (e.key === "Enter") ok.click(); }));
+  side.appendChild(el("div", "empty", "改完按「保存」——数据会写回这个代码块自己的正文。"));
+}
+function toMin(v) { const [h, m] = v.split(":").map(Number); return h * 60 + m; }
+function itemRow(x) {
+  const r = el("div", "item" + (sel === x.id ? " on" : ""));
+  const bar = el("i"); bar.style.setProperty("--c", PROJECTS[x.proj]);
+  const b = el("div");
+  b.appendChild(el("div", "t", x.title));
+  b.appendChild(el("div", "m", (x.kind === "log" ? `${fmt(x.s)}–${fmt(x.e)} · ${dur(x.e - x.s)}` : `${fmt(x.s)} 完成`) + " · " + x.proj));
+  r.append(bar, b);
+  r.onclick = () => { sel = x.id; render(); };
+  return r;
+}
+
+/* ================= 1) 航道 ================= */
+function renderRiver(stage) {
+  const W = stage.clientWidth - 36, H = 250, base = H - 42, top = 26;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.style.display = "block";
+
+  const N = 120; // 5 分钟一格
+  const step = (view.to - view.from) / N;
+  let bars = "";
+  let conc = [];
+  for (let k = 0; k <= N; k++) {
+    const t = view.from + k * step;
+    const n = items.filter((i) => i.kind === "log" && i.s <= t && t < i.e).length;
+    conc.push(n);
+  }
+  const maxConc = Math.max(2, ...conc);
+  const X = (m) => ((m - view.from) / (view.to - view.from)) * W;
+  const Y = (n) => base - (n / maxConc) * (base - top) * 0.86;
+
+  // 面积（河床）
+  let d = `M 0 ${base}`;
+  conc.forEach((n, k) => { d += ` L ${((k / N) * W).toFixed(1)} ${Y(n).toFixed(1)}`; });
+  d += ` L ${W} ${base} Z`;
+  bars += `<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="var(--acc)" stop-opacity=".26"/>
+    <stop offset="100%" stop-color="var(--acc)" stop-opacity=".03"/></linearGradient></defs>`;
+  bars += `<path d="${d}" fill="url(#g1)"/>`;
+  // 曲线描边
+  let line = "";
+  conc.forEach((n, k) => { line += `${k ? "L" : "M"} ${((k / N) * W).toFixed(1)} ${Y(n).toFixed(1)} `; });
+  bars += `<path d="${line}" fill="none" stroke="var(--acc)" stroke-width="1.4" stroke-opacity=".65"/>`;
+
+  // 小时网格
+  for (let h = Math.ceil(view.from / 60); h * 60 <= view.to; h++) {
+    const x = X(h * 60);
+    bars += `<line x1="${x}" y1="14" x2="${x}" y2="${base}" stroke="var(--grid)" stroke-width="1"/>`;
+    if (h % 3 === 0) bars += `<text x="${x + 4}" y="${base + 15}" fill="var(--ink4)" font-size="9.5">${String(h).padStart(2, "0")}:00</text>`;
+  }
+  // 基线
+  bars += `<line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="var(--line2)" stroke-width="1"/>`;
+
+  // 空档标注
+  const logs = items.filter((i) => i.kind === "log").sort((a, b) => a.s - b.s);
+  for (let i = 1; i < logs.length; i++) {
+    const gap = logs[i].s - logs[i - 1].e;
+    if (gap >= 60) {
+      const x0 = X(logs[i - 1].e), x1 = X(logs[i].s);
+      bars += `<line x1="${x0 + 6}" y1="${base - 7}" x2="${x1 - 6}" y2="${base - 7}" stroke="var(--line2)" stroke-width="1" stroke-dasharray="2 4"/>`;
+      bars += `<text x="${(x0 + x1) / 2}" y="${base - 13}" fill="var(--ink4)" font-size="9" text-anchor="middle">空档 ${dur(gap)}</text>`;
+    }
+  }
+
+  // 记录条（贴在基线上）
+  logs.forEach((i) => {
+    const x = X(i.s), w = Math.max(3, X(i.e) - x);
+    const on = hover === i.id || sel === i.id;
+    const dim = (hover && hover !== i.id) || (sel && sel !== i.id);
+    bars += `<rect class="hit" data-id="${i.id}" x="${x}" y="${base - 22}" width="${w}" height="9" rx="4.5"
+      fill="${PROJECTS[i.proj]}" opacity="${dim ? 0.28 : on ? 1 : 0.82}" style="cursor:ew-resize"/>`;
+    if (w > 34) bars += `<text x="${x + 6}" y="${base - 27}" fill="${PROJECTS[i.proj]}" font-size="9.5" opacity="${dim ? .35 : .95}">${dur(i.e - i.s)}</text>`;
+    // 起点/终点小竖
+    bars += `<line x1="${x}" y1="${base - 26}" x2="${x}" y2="${base - 9}" stroke="${PROJECTS[i.proj]}" stroke-width="1" opacity=".45"/>`;
+  });
+
+  // 完成点（浮在河床上方，按时刻）
+  items.filter((i) => i.kind === "done").forEach((i) => {
+    const x = X(i.s), y = 22;
+    const dim = (hover && hover !== i.id) || (sel && sel !== i.id);
+    bars += `<line x1="${x}" y1="${y + 5}" x2="${x}" y2="${base - 30}" stroke="${PROJECTS[i.proj]}" stroke-width="1" stroke-dasharray="1 3" opacity="${dim ? .2 : .4}"/>`;
+    bars += `<circle class="hit" data-id="${i.id}" cx="${x}" cy="${y}" r="4.5" fill="${PROJECTS[i.proj]}" opacity="${dim ? .3 : 1}" style="cursor:pointer"/>`;
+    bars += `<circle cx="${x}" cy="${y}" r="8" fill="none" stroke="${PROJECTS[i.proj]}" stroke-width="1" opacity="${dim ? .12 : .3}"/>`;
+  });
+
+  // 刷选
+  if (brush) {
+    const x0 = X(Math.min(brush.a, brush.b)), x1 = X(Math.max(brush.a, brush.b));
+    bars += `<rect x="${x0}" y="10" width="${x1 - x0}" height="${base - 10}" fill="var(--acc)" opacity=".08"/>`;
+    bars += `<line x1="${x0}" y1="10" x2="${x0}" y2="${base}" stroke="var(--acc)" stroke-opacity=".5"/>`;
+    bars += `<line x1="${x1}" y1="10" x2="${x1}" y2="${base}" stroke="var(--acc)" stroke-opacity=".5"/>`;
+  }
+  // 播放游标
+  if (playing) {
+    const x = X(playAt);
+    bars += `<line x1="${x}" y1="8" x2="${x}" y2="${base}" stroke="var(--acc2)" stroke-width="1.3"/>`;
+    bars += `<circle cx="${x}" cy="8" r="3" fill="var(--acc2)"/>`;
+  }
+
+  svg.innerHTML = bars;
+  stage.appendChild(svg);
+
+  const cap = el("div", "axis");
+  cap.innerHTML = `<span>${fmt(view.from)}</span><span></span><span>${fmt(view.to)}</span>`;
+  stage.appendChild(cap);
+
+  const legend = el("div", "legend");
+  Object.entries(PROJECTS).forEach(([p, c]) => {
+    const l = el("span", "lg"); const i = el("i"); i.style.background = c;
+    l.append(i, el("span", "", p)); legend.appendChild(l);
+  });
+  const lg2 = el("span", "lg", "○ 上方的点 = 完成的时刻");
+  legend.appendChild(lg2);
+  stage.appendChild(legend);
+
+  // 交互
+  svg.addEventListener("pointermove", (e) => {
+    const t = svg.createSVGPoint(); t.x = e.clientX; t.y = e.clientY;
+    const p = t.matrixTransform(svg.getScreenCTM().inverse());
+    const target = e.target.closest(".hit");
+    if (target) {
+      const it = items.find((x) => x.id === target.dataset.id);
+      if (it && hover !== it.id) { hover = it.id; render(); }
+      if (it) showTip(e, it.kind === "log"
+        ? `<b>${esc(it.title)}</b><span>${fmt(it.s)}–${fmt(it.e)} · ${dur(it.e - it.s)} · ${esc(it.proj)}</span>`
+        : `<b>${esc(it.title)}</b><span>${fmt(it.s)} 完成 · ${esc(it.proj)}</span>`);
+    } else {
+      if (hover) { hover = null; render(); }
+      hideTip();
+    }
+  });
+  svg.addEventListener("pointerleave", () => { hover = null; hideTip(); render(); });
+  svg.addEventListener("click", (e) => {
+    const t = e.target.closest(".hit");
+    if (t) { sel = t.dataset.id; render(); }
+  });
+}
+
+/* ================= 2) 泳道 ================= */
+function renderLanes(stage) {
+  const logs = items.filter((i) => i.kind === "log");
+  const done = items.filter((i) => i.kind === "done");
+  const projs = [...new Set(items.map((i) => i.proj))];
+  const box = el("div");
+  box.style.position = "relative";
+  const rowH = 44;
+  box.style.height = (projs.length * rowH + 30) + "px";
+
+  // 时间网格
+  const grid = el("div");
+  grid.style.cssText = "position:absolute;inset:0;pointer-events:none";
+  for (let h = Math.ceil(view.from / 60); h * 60 <= view.to; h++) {
+    const x = (((h * 60) - view.from) / (view.to - view.from)) * 100;
+    const g = el("i"); g.style.cssText = `position:absolute;left:${x}%;top:0;bottom:20px;width:1px;background:var(--grid)`;
+    grid.appendChild(g);
+  }
+  box.appendChild(grid);
+
+  projs.forEach((p, idx) => {
+    const row = el("div");
+    row.style.cssText = `position:absolute;left:0;right:0;top:${idx * rowH}px;height:${rowH}px;border-top:1px solid var(--line)`;
+    if (hover && items.find((x) => x.id === hover)?.proj === p) row.style.background = "rgba(91,108,255,.05)";
+    const lab = el("div", "", p);
+    lab.style.cssText = "position:absolute;left:0;top:8px;font-size:10.5px;color:var(--ink4)";
+    row.appendChild(lab);
+
+    logs.filter((i) => i.proj === p).forEach((i) => {
+      const x = (((i.s - view.from) / (view.to - view.from)) * 100);
+      const w = ((i.e - i.s) / (view.to - view.from)) * 100;
+      const b = el("div");
+      const dim = (hover && hover !== i.id) || (sel && sel !== i.id);
+      b.style.cssText = `position:absolute;left:${x}%;width:${Math.max(w, .4)}%;top:24px;height:9px;border-radius:5px;
+        background:${PROJECTS[p]};opacity:${dim ? .25 : .9};cursor:pointer`;
+      b.dataset.id = i.id;
+      b.title = `${i.title} · ${fmt(i.s)}–${fmt(i.e)}`;
+      if (w > 6) {
+        const t = el("div", "", i.title);
+        t.style.cssText = `position:absolute;left:${x}%;top:36px;font-size:9.5px;color:var(--ink3);white-space:nowrap;max-width:${w + 8}%;overflow:hidden;text-overflow:ellipsis`;
+        row.appendChild(t);
+      }
+      row.appendChild(b);
+    });
+    done.filter((i) => i.proj === p).forEach((i) => {
+      const x = (((i.s - view.from) / (view.to - view.from)) * 100);
+      const dt = el("div");
+      dt.style.cssText = `position:absolute;left:${x}%;top:27px;width:6px;height:6px;border-radius:50%;transform:translateX(-50%);
+        background:${PROJECTS[p]};opacity:${hover && hover !== i.id ? .3 : 1}`;
+      dt.dataset.id = i.id; dt.title = `${i.title} · ${fmt(i.s)} 完成`;
+      row.appendChild(dt);
+    });
+    box.appendChild(row);
+  });
+
+  // 上下文切换连线（相邻不同项目之间画跳转弧）
+  const seq = [...items].sort((a, b) => a.s - b.s);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "100%"); svg.setAttribute("height", projs.length * rowH + 30);
+  svg.style.cssText = "position:absolute;inset:0;pointer-events:none";
+  let paths = "";
+  for (let i = 1; i < seq.length; i++) {
+    const a = seq[i - 1], b = seq[i];
+    if (a.proj === b.proj) continue;
+    const x1 = pct(a.e), x2 = pct(b.s);
+    const y1 = projs.indexOf(a.proj) * rowH + 28, y2 = projs.indexOf(b.proj) * rowH + 28;
+    if (x2 < 0 || x1 > 100) continue;
+    paths += `<path d="M ${x1}% ${y1} C ${(x1 + x2) / 2}% ${y1}, ${(x1 + x2) / 2}% ${y2}, ${x2}% ${y2}"
+      fill="none" stroke="var(--line2)" stroke-width="1" stroke-dasharray="2 3" opacity=".55"/>`;
+  }
+  svg.innerHTML = paths;
+  box.appendChild(svg);
+
+  stage.appendChild(box);
+  const cap = el("div", "axis");
+  cap.innerHTML = `<span>${fmt(view.from)}</span><span>${fmt(view.to)}</span>`;
+  cap.style.marginTop = "4px";
+  stage.appendChild(cap);
+  stage.appendChild(el("div", "hintline"));
+
+  box.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-id]");
+    if (t) { sel = t.dataset.id; render(); }
+  });
+  box.addEventListener("pointermove", (e) => {
+    const t = e.target.closest("[data-id]");
+    if (!t) return;
+    const it = items.find((x) => x.id === t.dataset.id);
+    if (it && hover !== it.id) { hover = it.id; render(); }
+    if (it) showTip(e, `<b>${esc(it.title)}</b><span>${esc(it.proj)} · ${it.kind === "log" ? fmt(it.s) + "–" + fmt(it.e) : fmt(it.s) + " 完成"}</span>`);
+  });
+  box.addEventListener("pointerleave", () => { hover = null; hideTip(); render(); });
+}
+
+/* ================= 3) 表盘 ================= */
+function renderDial(stage) {
+  const S = 320, C = S / 2, R = 126;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", S); svg.setAttribute("height", S);
+  svg.style.cssText = "display:block;margin:2px auto 0";
+  const ang = (m) => (m / 1440) * Math.PI * 2 - Math.PI / 2;
+  const pt = (m, r) => [C + Math.cos(ang(m)) * r, C + Math.sin(ang(m)) * r];
+  const arc = (a, b) => {
+    const [x1, y1] = pt(a, R), [x2, y2] = pt(b, R);
+    const large = b - a > 720 ? 1 : 0;
+    return `M ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2}`;
+  };
+  let g = "";
+  g += `<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="var(--line)" stroke-width="1"/>`;
+  g += `<circle cx="${C}" cy="${C}" r="${R - 26}" fill="none" stroke="var(--grid)" stroke-width="1"/>`;
+  for (let h = 0; h < 24; h++) {
+    const a = ang(h * 60), [x1, y1] = pt(h * 60, R + 4), [x2, y2] = pt(h * 60, R + (h % 3 ? 7 : 12));
+    g += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--line2)" stroke-width="1"/>`;
+    if (h % 3 === 0) {
+      const [tx, ty] = pt(h * 60, R + 24);
+      g += `<text x="${tx}" y="${ty}" fill="var(--ink4)" font-size="9.5" text-anchor="middle" dominant-baseline="middle">${String(h).padStart(2, "0")}</text>`;
+    }
+  }
+  items.filter((i) => i.kind === "log").forEach((i) => {
+    const dim = (hover && hover !== i.id) || (sel && sel !== i.id);
+    g += `<path d="${arc(i.s, Math.max(i.e, i.s + 4))}" fill="none" stroke="${PROJECTS[i.proj]}" stroke-width="16"
+      stroke-linecap="round" opacity="${dim ? .22 : .9}" style="cursor:pointer" data-id="${i.id}"/>`;
+  });
+  items.filter((i) => i.kind === "done").forEach((i) => {
+    const [x, y] = pt(i.s, R - 13);
+    const dim = (hover && hover !== i.id) || (sel && sel !== i.id);
+    g += `<circle cx="${x}" cy="${y}" r="3.4" fill="${PROJECTS[i.proj]}" opacity="${dim ? .25 : 1}" style="cursor:pointer" data-id="${i.id}"/>`;
+  });
+  if (playing) {
+    const [x1, y1] = pt(playAt, 34), [x2, y2] = pt(playAt, R + 10);
+    g += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--acc2)" stroke-width="1.2"/>
+          <circle cx="${x2}" cy="${y2}" r="3" fill="var(--acc2)"/>`;
+  }
+  const { logs, done, span } = stats();
+  g += `<text x="${C}" y="${C - 14}" fill="var(--ink2)" font-size="26" font-weight="600" text-anchor="middle">${(span / 60).toFixed(1)}h</text>`;
+  g += `<text x="${C}" y="${C + 8}" fill="var(--ink4)" font-size="10" text-anchor="middle">在轴时长 · ${logs.length} 段记录</text>`;
+  g += `<text x="${C}" y="${C + 26}" fill="var(--ink4)" font-size="10" text-anchor="middle">${done.length} 件完成</text>`;
+  svg.innerHTML = g;
+
+  const wrap = el("div"); wrap.style.position = "relative"; wrap.appendChild(svg);
+  stage.appendChild(wrap);
+  const legend = el("div", "legend");
+  legend.style.marginTop = "2px";
+  Object.entries(PROJECTS).forEach(([p, c]) => {
+    const l = el("span", "lg"); const i = el("i"); i.style.background = c; i.style.borderRadius = "50%";
+    l.append(i, el("span", "", p)); legend.appendChild(l);
+  });
+  stage.appendChild(legend);
+
+  svg.addEventListener("pointermove", (e) => {
+    const t = e.target.closest("[data-id]");
+    if (!t) return;
+    const it = items.find((x) => x.id === t.dataset.id);
+    if (it && hover !== it.id) { hover = it.id; render(); }
+    if (it) showTip(e, `<b>${esc(it.title)}</b><span>${it.kind === "log" ? fmt(it.s) + "–" + fmt(it.e) + " · " + dur(it.e - it.s) : fmt(it.s) + " 完成"}</span>`);
+  });
+  svg.addEventListener("pointerleave", () => { hover = null; hideTip(); render(); });
+  svg.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-id]");
+    if (t) { sel = t.dataset.id; render(); }
+  });
+}
+
+/* ================= 4) 周脉冲 ================= */
+function renderWeek(stage) {
+  const days = ["10-28 二", "10-29 三", "10-30 四", "10-31 五", "11-01 六", "11-02 日", "11-03 一"];
+  const seed = [
+    [3, 4, 5, 3, 2, 1, 0], [2, 3, 6, 4, 3, 2, 1], [4, 5, 7, 5, 4, 2, 0],
+    [1, 2, 4, 3, 6, 3, 1], [0, 1, 2, 1, 0, 0, 0], [2, 3, 5, 4, 3, 2, 1], [1, 2, 3, 2, 1, 0, 0],
+  ];
+  const wrap = el("div");
+  wrap.style.cssText = "display:grid;grid-template-columns:56px 1fr;row-gap:3px;column-gap:8px;align-items:center";
+  ["09", "12", "15", "18", "21"].forEach((h, row) => {
+    wrap.appendChild(el("div", "", h)).style.cssText = "font-size:9.5px;color:var(--ink4);text-align:right";
+    const line = el("div");
+    line.style.cssText = "display:grid;grid-template-columns:repeat(7,1fr);gap:4px";
+    days.forEach((d, col) => {
+      const v = seed[col][row];
+      const cell = el("div");
+      const a = v ? 0.12 + v * 0.1 : 0.04;
+      cell.style.cssText = `height:22px;border-radius:5px;background:var(--acc);opacity:${a};cursor:pointer`;
+      if (col === 5) cell.style.outline = "1px solid var(--acc)";
+      cell.dataset.day = d;
+      cell.onmouseenter = (e) => showTip(e, `<b>${d} ${h}:00</b><span>${v ? v + " 条活动" : "没有记录"}</span>`);
+      cell.onmouseleave = hideTip;
+      line.appendChild(cell);
+    });
+    wrap.appendChild(line);
+  });
+  const foot = el("div");
+  foot.style.cssText = "display:grid;grid-template-columns:56px 1fr;column-gap:8px;margin-top:4px";
+  foot.appendChild(el("div", ""));
+  const dline = el("div");
+  dline.style.cssText = "display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:9px;color:var(--ink4);text-align:center";
+  days.forEach((d) => dline.appendChild(el("div", "", d)));
+  foot.appendChild(dline);
+  wrap.appendChild(foot);
+  stage.appendChild(wrap);
+  stage.appendChild(el("div", "hintline")).textContent = "";
+  const n = el("div", "empty", "一周的节奏：越亮=那天那段时间越忙。点任意格子可以跳到那天（原型里只做悬停）。");
+  n.style.cssText = "margin-top:10px;font-size:10.5px;color:var(--ink4)";
+  stage.appendChild(n);
+}
+
+/* ================= 渲染入口 ================= */
+function render() {
+  const stage = $("#stage");
+  stage.innerHTML = "";
+  paintStats();
+  if (mode === "river") renderRiver(stage);
+  else if (mode === "lanes") renderLanes(stage);
+  else if (mode === "dial") renderDial(stage);
+  else renderWeek(stage);
+  renderSide();
+  renderSource();
+}
+
+/* ================= 源码回写（演示「即时编辑即时渲染」） ================= */
+function renderSource(hitId) {
+  const logs = items.filter((i) => i.kind === "log").sort((a, b) => a.s - b.s);
+  const done = items.filter((i) => i.kind === "done").sort((a, b) => a.s - b.s);
+  const lines = [
+    ["```", "c"], ["tlt-timeline", "k"], ["date: auto", ""], [`view: ${mode}`, ""], ["```", "c"], [""],
+  ];
+  if (logs.length) lines.push(["# 记录（有起止时刻才是条）", "c"]);
+  logs.forEach((i) => lines.push([`- ${fmt(i.s)}–${fmt(i.e)} ${i.title} [proj:: ${i.proj}]`, i.id === hitId ? "hit" : ""]));
+  if (done.length) lines.push([""], ["# 完成（只有时刻的，画成点）", "c"]);
+  done.forEach((i) => lines.push([`- ${fmt(i.s)} ${i.title} [done:: true] [proj:: ${i.proj}]`, i.id === hitId ? "hit" : ""]));
+  $("#src").innerHTML = lines.map(([t, c]) => `<span class="${c}">${esc(t)}</span>`).join("\n");
+}
+
+/* ================= 交互：模式 / 主题 / 播放 / 缩放 / 刷选 ================= */
+$("#modes").addEventListener("click", (e) => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  mode = b.dataset.mode;
+  [...$("#modes").children].forEach((x) => x.classList.toggle("on", x === b));
+  render();
+});
+$("#theme").addEventListener("click", () => {
+  document.body.classList.toggle("light");
+  $("#theme").textContent = document.body.classList.contains("light") ? "☀" : "☾";
+});
+$("#play").addEventListener("click", () => {
+  playing = !playing;
+  $("#play").textContent = playing ? "❚❚ 暂停" : "▶ 回放";
+  if (playing) {
+    playAt = M(8);
+    const t0 = performance.now();
+    const tick = (now) => {
+      if (!playing) return;
+      const p = Math.min(1, (now - t0) / 13000);
+      playAt = M(8) + p * (M(20) - M(8));
+      const cur = items.filter((i) => i.kind === "log" && i.s <= playAt && playAt < i.e);
+      const side = $("#side");
+      if (cur.length) {
+        side.querySelector("h3") && (side.querySelector("h3").textContent = "此刻 " + fmt(playAt));
+      }
+      render();
+      if (p < 1) requestAnimationFrame(tick); else { playing = false; $("#play").textContent = "▶ 回放"; render(); }
+    };
+    requestAnimationFrame(tick);
+  } else render();
+});
+$("#stage").addEventListener("wheel", (e) => {
+  if (mode !== "river" && mode !== "lanes") return;
+  e.preventDefault();
+  const span = view.to - view.from;
+  const next = clamp(span * (e.deltaY > 0 ? 1.18 : 0.85), 90, DAY.to - DAY.from);
+  const mid = (view.from + view.to) / 2;
+  view = { from: clamp(mid - next / 2, DAY.from, DAY.to - next), to: clamp(mid + next / 2, DAY.from + next, DAY.to) };
+  render();
+}, { passive: false });
+$("#stage").addEventListener("dblclick", () => { view = { ...DAY }; render(); });
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { sel = null; render(); }
+  if (e.key === " ") { e.preventDefault(); $("#play").click(); }
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    const d = e.key === "ArrowRight" ? 15 : -15;
+    items.forEach((i) => {}); // 选中项微调
+    const it = items.find((x) => x.id === sel);
+    if (it) { it.s = clamp(it.s + d, 0, 1435); it.e = Math.max(it.s, it.e + (it.kind === "log" ? d : 0)); render(); toast(`已${d > 0 ? "后移" : "前移"} 15 分钟`); }
+  }
+});
+
+/* 初始化：默认选中「部门里程碑」那条，展示编辑态 */
+render();
+</script>
+</body>
+</html>

@@ -3054,19 +3054,20 @@ await t("日历默认时间：30 分钟粒度向下取（11:13→11:00、11:40�
   dlg.remove();
 });
 
-await t("周视图点空白的时间换算：像素高度要加上 7:00 起点", async () => {
+await t("周视图点空白的时间换算：像素→时间（全天制，0:00 起）", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
   await view.onOpen();
   view.tab = "today"; view.calView = "w"; view.viewDate = D;
   await view.render();
   // jsdom 里 inner 的 rect 全是 0，于是 clientY 就是"距表格顶部的像素"：
-  // 56px = 1 小时（表格从 7:00 开始）→ 300px ≈ 5h21m → 12:21 → 向下取 12:00
+  // 56px = 1 小时，表格覆盖全天（0:00 起）→ 300px ≈ 5h21m → 05:21 → 向下取 05:00
   const inner = view.contentEl.querySelector(".tlt-winner");
   assert.ok(inner, "周视图要有 .tlt-winner");
-  assert.equal(view.timeAtY(300), "12:00", `300px 应是 12:00，实际 ${view.timeAtY(300)}`);
-  assert.equal(view.timeAtY(56), "08:00", `56px 应是 08:00，实际 ${view.timeAtY(56)}`);
-  assert.equal(view.timeAtY(0), "07:00", `顶部该夹到 07:00，实际 ${view.timeAtY(0)}`);
+  assert.equal(view.timeAtY(300), "05:00", `300px 应是 05:00，实际 ${view.timeAtY(300)}`);
+  assert.equal(view.timeAtY(56), "01:00", `56px 应是 01:00，实际 ${view.timeAtY(56)}`);
+  assert.equal(view.timeAtY(0), "00:00", `顶部是 00:00，实际 ${view.timeAtY(0)}`);
+  assert.equal(view.timeAtY(56 * 23), "23:00", `23 小时后是 23:00，实际 ${view.timeAtY(56 * 23)}`);
 });
 
 await t("概览→工作台联动：未指派/紧急/未排期 真的筛，不是只换页签", async () => {
