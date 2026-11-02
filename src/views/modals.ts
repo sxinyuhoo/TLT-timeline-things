@@ -222,12 +222,29 @@ function projectPicker(app: App, store: Store, parent: HTMLElement, init: { proj
   msRow.appendChild(msWrap);
 }
 
+/** 归属（工作 / 个人）：**写 [scope::]，不是标签**——跟标签分开，别再混在一起 */
+function scopeRow(parent: HTMLElement, draft: { scope: "工作" | "个人" }) {
+  const r = row(parent, T("归属"));
+  const wrap = el("div", "tlt-quick");
+  const paint = () => {
+    wrap.empty();
+    (["工作", "个人"] as const).forEach((v) => {
+      const b = el("button", "tlt-chip" + (draft.scope === v ? " on" : ""), T(v));
+      b.onclick = () => { draft.scope = v; paint(); };
+      wrap.appendChild(b);
+    });
+  };
+  paint();
+  r.appendChild(wrap);
+}
+
 /** 标签行（新建与详情共用） */
 function tagPicker(store: Store, parent: HTMLElement, draft: { tags: string[] }) {
   const tagRow = row(parent, T("标签"));
   const tagWrap = el("div", "tlt-quick");
   const known = Array.from(new Set(store.tasks.flatMap((x) => x.tags || [])));
-  const all = Array.from(new Set(["工作", "个人", ...store.tags, ...known, ...draft.tags]));
+  const all = Array.from(new Set([...store.tags, ...known, ...draft.tags]))
+    .filter((x) => x !== "工作" && x !== "个人");        // 这两个是归属，不是标签
   const paint = () => {
     tagWrap.empty();
     all.forEach((tg) => {
@@ -581,6 +598,7 @@ export class TaskModal extends TltModal {
   showTimeline = false;
   draft: {
     title: string; project?: string; milestone?: string; tags: string[];
+    scope: "工作" | "个人";
     start?: string; due?: string; est?: number; wl: number; pw: Period; pri: Pri; owners: string[];
   };
 
@@ -591,6 +609,7 @@ export class TaskModal extends TltModal {
       project: task.project,
       milestone: task.milestone,
       tags: [...(task.tags || [])],
+      scope: task.scope === "个人" ? "个人" : "工作",
       start: task.start,
       due: task.due,
       est: task.est,
@@ -648,6 +667,7 @@ export class TaskModal extends TltModal {
     contentEl.appendChild(title);
 
     projectPicker(this.app, this.store, contentEl, { project: t.project, milestone: t.milestone }, this.draft);
+    scopeRow(contentEl, this.draft);
     tagPicker(this.store, contentEl, this.draft);
 
     // 开始 / 截止 并成一行：两个日期输入 + 截止的快捷按钮
@@ -773,6 +793,7 @@ export class TaskModal extends TltModal {
       if ((d.tags || []).join(",") !== (t.tags || []).join(",")) {
         await this.store.setField(t, "tags", (d.tags || []).join(", "));
       }
+      if (d.scope !== t.scope) await this.store.setField(t, "scope", d.scope);
       if ((d.owners || []).join(",") !== t.owners.join(",")) {
         await this.store.setField(t, "owner", (d.owners || []).map((o) => `[[${o}]]`).join(", "));
       }
@@ -911,6 +932,8 @@ export class DoneAtModal extends TltModal {
 interface QuickDraft {
   start: string; due: string; est: number; pri: Pri;
   owners: string[]; project: string; milestone: string; tags: string[];
+  /** 归属：[scope:: 工作]/[scope:: 个人]（不是标签） */
+  scope: "工作" | "个人";
   /** 建任务时就先把子项写好（落盘时跟在任务行下面） */
   steps: string[];
 }
@@ -931,7 +954,7 @@ export class QuickTaskModal extends TltModal {
     const ms = preset?.milestone && msList.includes(preset.milestone) ? preset.milestone : msList[0] || "";
     this.draft = {
       start: todayISO(), due: preset?.due || todayISO(),
-      est: 1, pri: 1, owners: [],
+      est: 1, pri: 1, owners: [], scope: "工作",
       project: proj, milestone: ms, tags: [], steps: [],
     };
   }
@@ -1020,10 +1043,11 @@ export class QuickTaskModal extends TltModal {
     msRow.appendChild(msWrap);
 
     // 标签（工作 / 个人 也当成普通标签，不再单独设「范围」）
+    scopeRow(contentEl, this.draft);
     const tagRow = row(contentEl, T("标签"));
     const tagWrap = el("div", "tlt-quick");
     const knownTags = Array.from(new Set(this.store.tasks.flatMap((t) => t.tags || [])));
-    const allTags = Array.from(new Set(["工作", "个人", ...knownTags]));
+    const allTags = Array.from(new Set([...knownTags])).filter((x) => x !== "工作" && x !== "个人");
     const paintTags = () => {
       tagWrap.empty();
       allTags.forEach((tg) => {
@@ -1140,6 +1164,7 @@ export class QuickTaskModal extends TltModal {
         pri: this.draft.pri,
         owners: this.draft.owners,
         tags: this.draft.tags,
+        scope: this.draft.scope,
         steps: this.draft.steps.length ? this.draft.steps.map((text) => ({ text, done: false })) : undefined,
       });
       this.close(); void this.onChange(); new Notice(T("已创建任务"));

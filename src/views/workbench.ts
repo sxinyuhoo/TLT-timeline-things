@@ -55,7 +55,9 @@ const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
 /** 时间轴左边留给刻度、右边留边距（与 styles.css 里 .tlt-blk 的 left/right 保持一致） */
 const GUTTER = 52, RIGHT_PAD = 8;
 /** 周视图里一小时占多少像素（比日视图压得紧） */
-const HOUR_css = () => 48;
+let WEEK_HOUR = 48;                       // 周视图每小时多少像素：渲染时按窗口高度重算（见 paneCalWeek）
+const setWeekHour = (h: number) => { WEEK_HOUR = h; };
+const HOUR_css = () => WEEK_HOUR;
 
 /**
  * 一个任务的日程块挂在哪一天：排期日 → 完成日（已完成）→ 截止日。
@@ -156,7 +158,7 @@ export class WorkbenchView extends ItemView {
   /** 人员视图的时间窗口：本月 / 下个月 / 全部 */
   private staffDim: StaffDim = "m";
   /** 概览面板点进来的快捷筛选（任务侧）：late 逾期 / noowner 未指派 / nodue 未排期 / urgent 紧急 */
-  quick: "late" | "noowner" | "nodue" | "urgent" | null = null;
+  quick: "late" | "noowner" | "nodue" | "urgent" | "monthdue" | null = null;
   /** 概览面板点进来的快捷筛选（人员侧）：busy 饱和 / idle 空闲 */
   staffOnly: "busy" | "idle" | null = null;
   private starZoom = 1;
@@ -706,7 +708,7 @@ export class WorkbenchView extends ItemView {
       uns.forEach((t) => {
         const c = el("span", "tlt-chipq");
         c.dataset.sched = t.id;
-        c.title = `${t.title}\n${T("点一下排进这天的时间表")}`;   // 悬停先给任务名（提示别抢位）
+        c.title = t.title;                                  // 只给任务名：怎么用这个框，框头已经写了
         c.textContent = `${t.title}${t.wl ? " · " + t.wl + "%" : ""}`;
         chips.appendChild(c);
       });
@@ -985,20 +987,27 @@ export class WorkbenchView extends ItemView {
       ? T("{l} · {a} 逾期 / {b} 有截止 / {c} 没截止", { l: label, a: m.late.length, b: m.todo.length, c: m.pending.length })
       : T("{l} · {a} 逾期 / {b} 要做 / {c} 已完成 / {d} 未分配里程碑 / {e} 待排期", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.orphans.length, e: m.pending.length })));
     head.appendChild(el("span", "tlt-spacer"));
-    const tags = Array.from(new Set(["工作", "个人", ...this.store.tasks.flatMap((t) => t.tags || [])]));
-    // 每个 chip 带上条数：库里 96% 的任务都算「工作」时，光看列表会以为筛选没生效，数字能说明白
+    // 归属只看 [scope::]（工作也显式写）；没标的单独一档，标完就消失
     const inScope = this.store.tasks.filter((t) => t.kind === "task" && (!this.proj || t.project === this.proj));
+    const realTags = Array.from(new Set(this.store.tasks.flatMap((t) => t.tags || [])))
+      .filter((x) => x !== "工作" && x !== "个人");        // 工作/个人是归属，不是标签
+    const scopes: string[] = ["工作", "个人"];
+    if (inScope.some((t) => t.scope === "未标注")) scopes.push("未标注");
     const countOf = (v: string | null) => !v ? inScope.length
-      : v === "工作" || v === "个人" ? inScope.filter((t) => t.scope === v).length
+      : scopes.includes(v) ? inScope.filter((t) => t.scope === v).length
       : inScope.filter((t) => (t.tags || []).includes(v)).length;
     const tf = el("div", "tlt-seg tlt-tag-seg");
-    [{ v: null, t: T("全部") }, ...tags.map((t) => ({ v: t, t: t === "工作" ? T("工作") : t === "个人" ? T("个人") : t }))].forEach(({ v: tv, t }) => {
-      const b = el("button", "tlt-seg-b" + (this.taskTag === tv ? " on" : ""), `${t} ${countOf(tv)}`);
+    const mkChip = (tv: string | null, label: string, tip?: string) => {
+      const b = el("button", "tlt-seg-b" + (this.taskTag === tv ? " on" : ""), `${label} ${countOf(tv)}`);
       b.dataset.tag = tv ?? "";
-      if (tv === "工作") b.title = T("没标 [scope:: 个人] 的都算工作——库里大部分任务都是这一类，所以筛完看着变化不大");
-      if (tv === "个人") b.title = T("只看标了 [scope:: 个人] 的任务");
+      if (tip) b.title = tip;
       tf.appendChild(b);
-    });
+    };
+    mkChip(null, T("全部"));
+    scopes.forEach((sc) => mkChip(sc, T(sc),
+      sc === "工作" ? T("只看显式写了 [scope:: 工作] 的任务") : sc === "个人" ? T("只看显式写了 [scope:: 个人] 的任务")
+        : T("还没有归属的任务（没写 [scope::]，旧任务见 tools/backfill-scope.mjs）")));
+    realTags.forEach((tg) => mkChip(tg, tg));
     head.appendChild(tf);
     const seg = el("div", "tlt-seg tlt-dim-seg");
     ([["d", T("今天")], ["run", T("开展中")], ["w", T("本周")], ["m", T("本月")], ["q", T("本季度")], ["all", T("全部")]] as const).forEach(([k, t]) => {
@@ -1012,7 +1021,7 @@ export class WorkbenchView extends ItemView {
     if (this.quick) {
       const f = el("div", "tlt-pane-h");
       const chip = el("button", "tlt-qs-filter",
-        T("筛选中：{n}", { n: { late: T("逾期"), noowner: T("未指派"), nodue: T("未排期"), urgent: T("紧急") }[this.quick] }) + "  ×");
+        T("筛选中：{n}", { n: { late: T("逾期"), noowner: T("未指派"), nodue: T("未排期"), urgent: T("紧急"), monthdue: T("本月到期") }[this.quick] }) + "  ×");
       chip.dataset.qclear2 = "1";
       chip.title = T("点一下取消这个筛选");
       f.appendChild(chip);
@@ -1054,12 +1063,13 @@ export class WorkbenchView extends ItemView {
       .filter((t) => !this.proj || t.project === this.proj)
       .filter((t) => !this.q || t.title.includes(this.q) || (t.project || "").includes(this.q) || (t.milestone || "").includes(this.q))
       .filter((t) => !this.taskTag ||
-        (this.taskTag === "工作" || this.taskTag === "个人" ? t.scope === this.taskTag : (t.tags || []).includes(this.taskTag)))
+        (["工作", "个人", "未标注"].includes(this.taskTag) ? t.scope === this.taskTag : (t.tags || []).includes(this.taskTag)))
       // 概览面板点进来的那一下：真的按那一类筛，别只是换个页签
       .filter((t) => !this.quick
         || (this.quick === "late" ? !t.done && !!t.due && t.due < todayISO()
           : this.quick === "noowner" ? !t.done && !t.owners.length
           : this.quick === "nodue" ? !t.done && !t.due
+          : this.quick === "monthdue" ? !t.done && !!t.due && t.due >= todayISO() && inPeriod(t.due, "m")
           : !t.done && (t.pri || 1) >= 3));
     const dim = this.taskDim;
     const period = (dim === "all" || dim === "run" ? "all" : dim) as Period;
@@ -1339,6 +1349,7 @@ export class WorkbenchView extends ItemView {
     if (t.est !== undefined) meta.appendChild(el("span", "tlt-wl", `${t.est} ${T("人天")}`));
     else if (t.wl) meta.appendChild(el("span", "tlt-wl", `${t.wl}%`));
     if (t.scope === "个人") meta.appendChild(el("span", "tlt-tag own", T("个人")));
+    else if (t.scope === "未标注") meta.appendChild(el("span", "tlt-tag own", T("未标注")));
     (t.tags || []).forEach((tg) => meta.appendChild(el("span", "tlt-tag", tg)));
     if (t.owners.length) meta.appendChild(el("span", "", t.owners.join(T("、"))));
     if (t.files.length) meta.appendChild(el("span", "", `▤ ${t.files.length}`));
@@ -1659,7 +1670,15 @@ export class WorkbenchView extends ItemView {
    * 周视图：7 列 × 同一条时间轴，列头可点（切到那天）。
    * 块的写法照 macOS 日历：标题 + 起止时间；计划块实线左边条、记录块虚线。
    */
+  /**
+   * 周视图：整块（{DAY_FROM/60} 点到 {DAY_TO/60} 点）尽量一屏放下。
+   * 做法是先量"这个格子还能占多高"，再由它反推每小时多少像素（44–80 之间），
+   * 这样全屏时不用滚、小窗口里也不至于挤成一条。
+   */
   private paneCalWeek(): HTMLElement {
+    // 每小时多少像素：先按 48 画一版，挂进 DOM 后再量一次真实可用高度（见方法末尾的自动校正）。
+    // 刻度必须在这一轮就定下来，且要在 const HOUR = HOUR_css() 之前（踩过一次：块用了上一轮的刻度）。
+    const hours = (DAY_TO - DAY_FROM) / 60;
     const p = el("div", "tlt-pane");
     const start = this.store.settings.weekStart === 0 ? 0 : 1;
     const days = weekDays(this.viewDate, start);
@@ -1680,6 +1699,8 @@ export class WorkbenchView extends ItemView {
     p.appendChild(head);
 
     const scroll = el("div", "tlt-wscroll");
+    p.appendChild(scroll);
+    scroll.style.height = `${HOUR * hours + 8}px`;     // 高度＝整块的时间轴（每小时刻度见方法开头）
     const inner = el("div", "tlt-winner");
     inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR}px`;
     for (let mnt = DAY_FROM; mnt <= DAY_TO; mnt += 60) {
@@ -1722,6 +1743,7 @@ export class WorkbenchView extends ItemView {
     scroll.appendChild(inner);
     p.appendChild(scroll);
     void GUTTER;
+    window.setTimeout(() => this.fitWeekHeight(), 30);   // 挂进 DOM 后再量一次真实高度
     return p;
   }
 
@@ -1983,6 +2005,22 @@ export class WorkbenchView extends ItemView {
       if (centerOnMonth() > 60) window.setTimeout(centerOnMonth, 240);
     }, 40);
     return p;
+  }
+
+  /** 周视图挂进 DOM 之后量一次真实可用高度，把每小时刻度调到"刚好铺满"（只在真的变了才重画一次） */
+  private fitWeekHeight() {
+    const work = this.contentEl.querySelector<HTMLElement>(".tlt-work");
+    const sc = this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
+    if (!work || !sc) return;
+    if (work.clientHeight < 200) return;        // 还没布局（或环境没有真实尺寸，比如测试的 jsdom）：保持默认刻度
+
+    // 再留 10px：滚动壳自身还有 8px 的额外高度（边框 + 底部余量），算进去才不会差几像素就出滚动条
+    const room = work.clientHeight - (sc.getBoundingClientRect().top - work.getBoundingClientRect().top) - 32;
+    const hours = (DAY_TO - DAY_FROM) / 60;
+    const want = Math.max(32, Math.min(84, Math.floor(room / hours)));
+    if (want === HOUR_css()) return;                 // 已经对上了，别再重画
+    setWeekHour(want);
+    void this.render();
   }
 
   private paneMilestones(): HTMLElement {

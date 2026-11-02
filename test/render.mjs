@@ -1936,13 +1936,16 @@ await t("概览入口：点一下只切换一次（别开了又关）", async ()
   assert.equal(calls, 1, `点一次只该切一次（点两次＝开了又关，看起来像没反应），实际 ${calls} 次`);
 });
 
-await t("工作/个人分类：只认 [scope:: 个人]（老数据的 tags 写法已迁移，不再猜）", async () => {
+await t("归属：只看 [scope::]（显式写工作/个人；没写＝未标注，不再拿「没标个人」当工作）", async () => {
   document.body.empty();
-  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 工作的事 📅 ${D} [tags:: 工作]\n- [ ] 规范的个人事 📅 ${D} [scope:: 个人]\n- [ ] 只有旧标签的个人事 📅 ${D} [tags:: 个人]\n- [ ] 什么都不写的事 📅 ${D}\n`;
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 工作的事 📅 ${D} [tags:: 工作]\n- [ ] 显式工作的事 📅 ${D} [scope:: 工作]\n- [ ] 规范的个人事 📅 ${D} [scope:: 个人]\n- [ ] 只有旧标签的个人事 📅 ${D} [tags:: 个人]\n- [ ] 什么都不写的事 📅 ${D}\n`;
   await store.load();
   const byTitle = (n) => store.tasks.find((t) => t.title === n);
   assert.equal(byTitle("规范的个人事").scope, "个人", "[scope:: 个人] → 个人");
-  assert.equal(byTitle("只有旧标签的个人事").scope, "工作", "只靠 [tags:: 个人] 不再算个人（已迁移）");
+  assert.equal(byTitle("显式工作的事").scope, "工作", "[scope:: 工作] → 工作");
+  assert.equal(byTitle("只有旧标签的个人事").scope, "未标注", "只靠 [tags:: 个人] 既不是个人、也不是工作——归属只看 [scope::]");
+  assert.equal(byTitle("工作的事").scope, "未标注", "只写 [tags:: 工作] 不算工作归属（工具脚本会给老数据补上 [scope:: 工作]）");
+  assert.equal(byTitle("什么都不写的事").scope, "未标注", "没写归属就是未标注，不再默认算工作");
 
   const view = mount(WorkbenchView);
   await view.onOpen();
@@ -2126,7 +2129,9 @@ await t("随手记转任务：只带标题，不带标签", async () => {
   assert.equal(name.value, "整理脚本", "任务名用那句话");
   // 任务表单里会把"所有已知标签"都列出来（只是候选）；要看**选中**的那些
   const on = [...host.querySelectorAll(".tlt-chip.on")].map((c) => c.textContent.trim());
-  assert.deepEqual(on, [], `不该把随手记的标签预选上：${on.join(",")}`);
+  // 归属那一行（工作/个人）本来就有一个默认选中，标签一个都不该预选
+  const tagOn = on.filter((x) => x !== "工作" && x !== "个人");
+  assert.deepEqual(tagOn, [], `不该把随手记的标签预选上：${on.join(",")}`);
 });
 
 await t("重启后的占位页签：注册完视图要把它们重新实例化（幽灵图标 + tlt-messages 的根因）", async () => {
@@ -3086,6 +3091,32 @@ await t("概览→工作台联动：未指派/紧急/未排期 真的筛，不�
   assert.deepEqual(titles(), ["火烧眉毛"], `紧急筛选：${titles()}`);
   await view.focusOn({ tab: "month", dim: "all", quick: "nodue" });
   assert.deepEqual(titles(), ["没人没期"], `未排期筛选：${titles()}`);
+});
+
+await t("归属筛选：工作/个人按 [scope::] 显式筛，未标注单独一档（补完老数据就消失）", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n`
+    + `- [ ] 显式工作 📅 ${D} [scope:: 工作] [created:: ${D}]\n`
+    + `- [ ] 显式个人 📅 ${D} [scope:: 个人] [created:: ${D}]\n`
+    + `- [ ] 没写归属 📅 ${D} [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month"; view.taskDim = "all"; view.taskTag = null;
+  await view.render();
+  const chips = [...view.contentEl.querySelectorAll("[data-tag]")].map((b) => [b.dataset.tag, b.textContent.trim()]);
+  assert.ok(chips.some(([v, t]) => v === "未标注" && / 1$/.test(t)), `没写归属的该单独一档：${JSON.stringify(chips)}`);
+  const titles = () => [...view.contentEl.querySelectorAll(".tlt-task-t")].map((e) => e.textContent.trim());
+  view.contentEl.querySelector('[data-tag="工作"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  assert.deepEqual(titles(), ["显式工作"], `工作档只该有显式写 scope 的：${titles()}`);
+  view.contentEl.querySelector('[data-tag="个人"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  assert.deepEqual(titles(), ["显式个人"], `个人档：${titles()}`);
+  view.contentEl.querySelector('[data-tag="未标注"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 200));
+  assert.deepEqual(titles(), ["没写归属"], `未标注档：${titles()}`);
 });
 
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {

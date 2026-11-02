@@ -56,7 +56,7 @@ export function dateFromPath(path: string): string {
   return todayISO();
 }
 
-const isPersonal = (t: Task) => t.scope === "个人" || (t.tags || []).includes("个人");
+const isPersonal = (t: Task) => t.scope === "个人";        // 只看 [scope::]，不猜 tags
 
 function pick(tasks: Task[], o: DailyOptions, date: string) {
   const scopeOk = (t: Task) =>

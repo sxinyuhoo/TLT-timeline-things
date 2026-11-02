@@ -87,7 +87,7 @@ export class OverviewPanelView extends ItemView {
     const grid = el("div", "tlt-pn-grid");
     grid.append(
       this.numCard(T("逾期"), String(late.length), late.length ? "late" : "", { goto: { tab: "month", dim: "all", quick: "late" } }),
-      this.numCard(T("本月到期"), String(monthDue.length), "", { goto: { tab: "month", dim: "m" } }),
+      this.numCard(T("本月到期"), String(monthDue.length), "", { goto: { tab: "month", dim: "m", quick: "monthdue" } }),
       this.numCard(T("未指派"), String(noOwner.length), noOwner.length ? "warn" : "", { goto: { tab: "month", dim: "all", quick: "noowner" } }),
       this.numCard(T("未排期"), String(noDue.length), "", { goto: { tab: "month", dim: "all", quick: "nodue" } }),
     );

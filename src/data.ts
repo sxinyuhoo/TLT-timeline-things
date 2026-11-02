@@ -21,9 +21,12 @@ export function toggleMdCheckbox(text: string, idx: number): string {
   return text;
 }
 
-/** 任务属于工作还是个人：**只认 `[scope:: 个人]`**（老数据已一次性迁移过来，别再猜 tags） */
-export function taskScopeOf(f: Record<string, string>): "工作" | "个人" {
-  return f["scope"] === "个人" ? "个人" : "工作";
+/** 任务的归属：**只看 `[scope::]`**（显式写 工作 / 个人）。
+ *  没写就是「未标注」——不再把"没标个人"当成工作，那样 96% 的任务都算工作、筛选等于没筛。
+ *  新建任务一定会写上 `[scope:: 工作]`/`[scope:: 个人]`；老数据用 tools/backfill-scope.mjs 一次性补齐。 */
+export function taskScopeOf(f: Record<string, string>): "工作" | "个人" | "未标注" {
+  const v = f["scope"];
+  return v === "个人" ? "个人" : v === "工作" ? "工作" : "未标注";
 }
 
 export type Pri = 0 | 1 | 2 | 3;   // 0 是历史值（老的「低」），读取时归到 1
@@ -54,7 +57,7 @@ export interface Task {
   pri: Pri;
   owners: string[];
   tags: string[];
-  scope: "工作" | "个人";
+  scope: "工作" | "个人" | "未标注";
   project: string;
   milestone?: string;
   steps: Step[];
@@ -259,7 +262,7 @@ export function newTaskLine(t: Partial<Task> & { title: string }): string {
   if (t.pri && t.pri !== 1) s += ` [pri:: ${t.pri}]`;
   if (t.owners && t.owners.length) s += ` [owner:: ${t.owners.map((o) => `[[${o}]]`).join(", ")}]`;
   if (t.tags && t.tags.length) s += ` [tags:: ${t.tags.join(", ")}]`;
-  if (t.scope === "个人") s += ` [scope:: 个人]`;
+  if (t.scope) s += ` [scope:: ${t.scope}]`;        // 归属一律写显式（工作也写）
   if (t.st) s += ` [st:: ${t.st}]`;
   if (t.en) s += ` [en:: ${t.en}]`;
   if (t.created) s += ` [created:: ${t.created}]`;
