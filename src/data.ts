@@ -163,6 +163,16 @@ export function parseDate(s: string): Date {
 export const D = (s?: string) => (s ? parseDate(s) : new Date(NaN));
 export const todayISO = () => iso(new Date());
 
+/**
+ * 默认开始时间：按 30 分钟粒度**向下取**。
+ * 11:13 → 660（11:00）、11:40 → 690（11:30）、11:30 → 690。
+ * 日历里"新建日程 / 一键排进日历"的默认时间都用它——口径只有这一份。
+ */
+export const floorToHalfHour = (min: number) => Math.floor(min / 30) * 30;
+/** 现在几点（同样按 30 分钟向下取到刻度） */
+export const nowHalfHour = () => floorToHalfHour(new Date().getHours() * 60 + new Date().getMinutes());
+
+
 export function addDays(s: string, n: number): string {
   const d = parseDate(s); d.setDate(d.getDate() + n); return iso(d);
 }

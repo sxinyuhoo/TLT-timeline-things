@@ -1173,7 +1173,7 @@ export class QuickLogModal extends TltModal {
     const en = el("input", "tlt-input");
     en.type = "time";
     const [hh, mm] = this.startAt.split(":").map(Number);
-    en.value = minToHHMM(hh * 60 + (mm || 0) + 30);
+    en.value = minToHHMM(Math.min(23 * 60 + 59, hh * 60 + (mm || 0) + 60));   // 默认一小时，要细的自己改
     const times = el("div", "tlt-times");
     times.append(st, el("span", "tlt-dash", "–"), en);
     contentEl.appendChild(times);

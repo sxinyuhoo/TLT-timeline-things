@@ -68,7 +68,7 @@ await esbuild.build({
       export { TLTSettingTab, TLTPlugin } from "./src/main";
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
-      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal, LogModal, StaffModal, MsgModal } from "./src/views/modals";
+      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal, LogModal, StaffModal, MsgModal, QuickLogModal, MilestoneModal } from "./src/views/modals";
       export { SORT_KEYS, DEFAULT_SORT } from "./src/store";
       export { registerTltIcons, refreshTabHeaders, reviveTltLeaves } from "./src/main";
       export { registeredIcons } from "obsidian";
@@ -87,7 +87,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, LogModal, StaffModal, MsgModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, LogModal, StaffModal, MsgModal, QuickLogModal, MilestoneModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -1273,21 +1273,22 @@ await t("今天的排期从「现在」开始，并跳过已占用的时段", as
   const t0 = view.store.tasks.find((t) => !t.done && !t.st) || view.store.tasks[0];
   const toMin = (v) => (v ? Number(v.split(":")[0]) * 60 + Number(v.split(":")[1]) : 0);
 
-  // 按同一套规则算出期望值：现在（15 分钟取整，不早于 9:00）→ 跳过已占用时段
+  // 按同一套规则算出期望值：现在（30 分钟向下取，不早于 9:00）→ 跳过已占用时段（块默认 1 小时）
   const now = new Date();
-  let want = Math.max(9 * 60, Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15) * 15);
+  const half = (m) => Math.floor(m / 30) * 30;
+  let want = Math.max(9 * 60, half(now.getHours() * 60 + now.getMinutes()));
   const spans = [
     ...view.store.logs.filter((l) => l.due === D),
     ...view.store.tasks.filter((x) => x.due === D && x.st && !x.done && x.id !== t0.id),
   ].map((b) => ({ a: toMin(b.st) || 7 * 60, b: toMin(b.en) || (toMin(b.st) || 7 * 60) + 30 }))
     .filter((r) => r.b > r.a).sort((x, y) => x.a - y.a);
-  for (const r of spans) { if (want + 30 <= r.a) break; if (want < r.b) want = r.b; }
-  want = Math.round(want / 5) * 5;
+  for (const r of spans) { if (want + 60 <= r.a) break; if (want < r.b) want = r.b; }
+  want = half(want);
 
   await view.scheduleTask(t0);
   await view.store.load();
   const after = view.store.tasks.find((t) => t.id === t0.id);
-  if (want >= 22 * 60) {                 // 深夜跑测试：这天确实排满了，不该硬塞
+  if (want + 60 > 23 * 60) {             // 深夜跑测试：这天确实排满了，不该硬塞
     assert.ok(!after.st, "排满时不该写入时间");
     return;
   }
@@ -2733,7 +2734,7 @@ await t("年视图：热力图四档（1–2 浅、3–4 中、5+ 深）", async
   assert.ok(/条日程|没有日程/.test(cellOf(`${y}-03-06`).title), `格子要有悬停说明：${cellOf(`${y}-03-06`).title}`);
 });
 
-await t("点空白创建日程：默认半小时", async () => {
+await t("一键排进日历：默认一小时", async () => {
   document.body.empty();
   Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
   files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n- [ ] 排一下 📅 ${D} [created:: ${D}]\n`;
@@ -2752,7 +2753,7 @@ await t("点空白创建日程：默认半小时", async () => {
   const st = /\[st:: (\d{2}):(\d{2})\]/.exec(line);
   const en = /\[en:: (\d{2}):(\d{2})\]/.exec(line);
   const mins = (m) => Number(m[1]) * 60 + Number(m[2]);
-  assert.equal(mins(en) - mins(st), 30, `默认该是半小时：${line}`);
+  assert.equal(mins(en) - mins(st), 60, `默认该是一小时：${line}`);
 });
 
 await t("消息详情：删除在最左，删完详情框自动关掉", async () => {
@@ -3026,6 +3027,37 @@ await t("进度环：弧的旋转原点必须＝圆心（等于 viewBox 中心�
   // 代码里的圆心常量也得是 13（CX）——两边对不上的时候，弧整段会被顶偏
   const src = (await import("node:fs")).readFileSync("src/views/workbench.ts", "utf8");
   assert.ok(/const R = 10\.2, C = 2 \* Math\.PI \* R, CX = 13;/.test(src), "环的圆心常量该是 CX = 13");
+});
+
+await t("日历默认时间：30 分钟粒度向下取（11:13→11:00、11:40→11:30），默认时长 1 小时", async () => {
+  // 口径检查走源码（避免依赖运行时刻）
+  const src = (await import("node:fs")).readFileSync("src/data.ts", "utf8");
+  assert.ok(/export const floorToHalfHour = \(min: number\) => Math\.floor\(min \/ 30\) \* 30;/.test(src), "要有 30 分钟向下取的助手");
+  assert.ok(/export const nowHalfHour = /.test(src), "要有\"现在的半小时刻度\"助手");
+  // 建日程弹窗：开始时间给 11:00，结束该默认 12:00（1 小时）
+  document.body.empty();
+  new QuickLogModal(app, store, D, () => {}, "11:00").open();
+  await new Promise((r) => window.setTimeout(r, 120));
+  const dlg = [...document.querySelectorAll(".tlt-host")].pop();
+  const times = [...dlg.querySelectorAll('input[type="time"]')].map((i) => i.value);
+  assert.equal(times[0], "11:00", `开始时间应预填：${times.join(" / ")}`);
+  assert.equal(times[1], "12:00", `默认时长该是 1 小时：${times.join(" / ")}`);
+  dlg.remove();
+});
+
+await t("周视图点空白的时间换算：像素高度要加上 7:00 起点", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "w"; view.viewDate = D;
+  await view.render();
+  // jsdom 里 inner 的 rect 全是 0，于是 clientY 就是"距表格顶部的像素"：
+  // 30px = 1 小时（表格从 7:00 开始）→ 300px 该是 7:00 + 10h = 17:00
+  const inner = view.contentEl.querySelector(".tlt-winner");
+  assert.ok(inner, "周视图要有 .tlt-winner");
+  assert.equal(view.timeAtY(300), "17:00", `300px 应是 17:00，实际 ${view.timeAtY(300)}`);
+  assert.equal(view.timeAtY(30), "08:00", `30px 应是 08:00，实际 ${view.timeAtY(30)}`);
+  assert.equal(view.timeAtY(0), "07:00", `顶部该夹到 07:00，实际 ${view.timeAtY(0)}`);
 });
 
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {

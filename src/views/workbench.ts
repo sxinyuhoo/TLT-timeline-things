@@ -6,7 +6,7 @@ import type { SortCfg, SortKey } from "../store";
 import type { Idea } from "../data";
 import {
   Task, Msg, Period, todayISO, addDays,
-  hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox,
+  hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox, floorToHalfHour, nowHalfHour,
 } from "../data";
 import type { StaffDim } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
@@ -2187,8 +2187,9 @@ export class WorkbenchView extends ItemView {
     const inner = this.contentEl.querySelector<HTMLElement>(".tlt-winner");
     if (!inner) return undefined;
     const top = inner.getBoundingClientRect().top;
-    const raw = ((clientY - top) / HOUR_css()) * 60;
-    const mins = Math.max(DAY_FROM, Math.min(DAY_TO - 30, Math.round(raw / 15) * 15));
+    // 注意起点是 DAY_FROM（表格 0 像素处＝ 7:00），漏掉这一项会让每次点击都落在 7:00 附近
+    const raw = DAY_FROM + ((clientY - top) / HOUR_css()) * 60;
+    const mins = Math.max(DAY_FROM, Math.min(DAY_TO - 60, floorToHalfHour(raw)));
     return minToHHMM(mins);
   }
 
@@ -2211,7 +2212,9 @@ export class WorkbenchView extends ItemView {
       const mCell = pick(".tlt-mcell[data-day]");
       // 点格子里的空白＝就地建一条日程（周视图还能按点的高度给时间）；点日期数字/列头才去那天
       if (!pick("[data-goday]") && (wkCol || mCell)) {
-        const startAt = wkCol ? this.timeAtY(ev.clientY) : undefined;
+        // 周视图按点的高度给时间；月视图没有时间轴——今天用"现在向下取到半小时"，别的日子用 09:00
+        const startAt = wkCol ? this.timeAtY(ev.clientY)
+          : (k === todayISO() ? minToHHMM(nowHalfHour()) : undefined);
         new QuickLogModal(this.app, this.store, k, () => { void this.refresh(); }, startAt).open();
         return;
       }
@@ -2426,7 +2429,8 @@ export class WorkbenchView extends ItemView {
     if (grid && !pick(".tlt-blk")) {
       const rect = grid.getBoundingClientRect();
       const y = ev.clientY - rect.top + grid.scrollTop;
-      const mins = Math.max(DAY_FROM, Math.min(DAY_TO - 30, Math.round((DAY_FROM + (y / HOUR_PX) * 60) / 15) * 15));
+      // 默认按 30 分钟粒度向下取：点 11:13 那一段＝11:00 开始（时长默认 1 小时）
+      const mins = Math.max(DAY_FROM, Math.min(DAY_TO - 60, floorToHalfHour(DAY_FROM + (y / HOUR_PX) * 60)));
       new QuickLogModal(this.app, this.store, this.viewDate, () => this.refresh(), minToHHMM(mins)).open();
     }
   }
@@ -2575,20 +2579,18 @@ export class WorkbenchView extends ItemView {
       .filter((r) => r.b > r.a)
       .sort((x, y) => x.a - y.a);
 
-    // 今天：从"现在"开始（向上取到下一个 15 分钟），而不是固定 9 点
+    // 今天：从"现在"开始——按 30 分钟粒度**向下取**（11:13 → 11:00，11:40 → 11:30）
+    // 别的日子：从 9 点开始
     let start = 9 * 60;
-    if (day === todayISO()) {
-      const now = new Date();
-      start = Math.max(start, Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15) * 15);
-    }
-    // 往后挪到第一个不撞的空档
+    if (day === todayISO()) start = Math.max(start, nowHalfHour());
+    // 往后挪到第一个不撞的空档（对齐到 30 分钟刻度）
     for (const r of spans) {
-      if (start + 30 <= r.a) break;
+      if (start + 60 <= r.a) break;
       if (start < r.b) start = r.b;
     }
-    start = Math.round(start / 5) * 5;
-    if (start >= 22 * 60) { new Notice(T("这天排满了，换一天试试")); return; }
-    const end = Math.min(23 * 60, start + 30);        // 默认半小时，细化的自己在日历上拖
+    start = floorToHalfHour(start);
+    if (start + 60 > DAY_TO) { new Notice(T("这天排满了，换一天试试")); return; }
+    const end = Math.min(DAY_TO, start + 60);         // 默认一小时，要细的自己拖
     // 只排时间：截止日是"什么时候要交"，跟"哪天做"没有关系，一个字都不动
     await this.store.setField(t, "plan", day);
     await this.store.setField(t, "st", minToHHMM(start));
