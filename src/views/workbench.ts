@@ -55,8 +55,7 @@ const DAY_FROM = 7 * 60, DAY_TO = 23 * 60, HOUR_PX = 62;
 /** 时间轴左边留给刻度、右边留边距（与 styles.css 里 .tlt-blk 的 left/right 保持一致） */
 const GUTTER = 52, RIGHT_PAD = 8;
 /** 周视图里一小时占多少像素（比日视图压得紧） */
-let WEEK_HOUR = 48;                       // 周视图每小时多少像素：渲染时按窗口高度重算（见 paneCalWeek）
-const setWeekHour = (h: number) => { WEEK_HOUR = h; };
+const WEEK_HOUR = 56;                     // 周视图每小时多少像素（固定：够高才看得清；一天放不下就由滚动壳内部滚）
 const HOUR_css = () => WEEK_HOUR;
 
 /**
@@ -1356,11 +1355,13 @@ export class WorkbenchView extends ItemView {
     body.appendChild(meta);
     r.appendChild(body);
     // 右列：环（子项完成度）＋ 时间轨（时间走到哪了）
+    // 右栏（进度环 + 时间轨）：环**永远占一个槽位**——没有子项的也留白，
+    // 这样每一行的时间轨都从同一个 x 开始，"剩 N 天"也落在同一列（用户：没对齐不好看）
     const aside = el("div", "tlt-task-x");
-    if (t.steps.length) aside.appendChild(this.stepRing(t));
+    aside.appendChild(t.steps.length ? this.stepRing(t) : el("span", "tlt-ringslot"));
     const rail = this.timeRail(t);
     if (rail) aside.appendChild(rail);
-    if (aside.childElementCount) r.appendChild(aside);
+    r.appendChild(aside);
     if (this.expandedSteps.has(t.id)) r.appendChild(this.stepBlock(t));
     r.addEventListener("contextmenu", (ev) => {
       ev.preventDefault();
@@ -1676,8 +1677,8 @@ export class WorkbenchView extends ItemView {
    * 这样全屏时不用滚、小窗口里也不至于挤成一条。
    */
   private paneCalWeek(): HTMLElement {
-    // 每小时多少像素：先按 48 画一版，挂进 DOM 后再量一次真实可用高度（见方法末尾的自动校正）。
-    // 刻度必须在这一轮就定下来，且要在 const HOUR = HOUR_css() 之前（踩过一次：块用了上一轮的刻度）。
+    // 每小时 56px（固定）：7:00–23:00 一共 896px，放不下就由滚动壳内部滚——
+    // 不再为了"一屏塞下"把刻度压到 30 出头。刻度要在 const HOUR = HOUR_css() 之前读。
     const hours = (DAY_TO - DAY_FROM) / 60;
     const p = el("div", "tlt-pane");
     const start = this.store.settings.weekStart === 0 ? 0 : 1;
@@ -1700,7 +1701,7 @@ export class WorkbenchView extends ItemView {
 
     const scroll = el("div", "tlt-wscroll");
     p.appendChild(scroll);
-    scroll.style.height = `${HOUR * hours + 8}px`;     // 高度＝整块的时间轴（每小时刻度见方法开头）
+    scroll.style.height = `${HOUR * hours + 8}px`;     // 先按完整时间轴给高，挂进 DOM 后再收进可用高度（内部滚）
     const inner = el("div", "tlt-winner");
     inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR}px`;
     for (let mnt = DAY_FROM; mnt <= DAY_TO; mnt += 60) {
@@ -2007,20 +2008,18 @@ export class WorkbenchView extends ItemView {
     return p;
   }
 
-  /** 周视图挂进 DOM 之后量一次真实可用高度，把每小时刻度调到"刚好铺满"（只在真的变了才重画一次） */
+  /**
+   * 周视图挂进 DOM 之后：把滚动壳撑到"能用多少用多少"的高度（内部自己滚）。
+   * 刻度固定 56px/小时——不再为了塞进一屏把每小时压到 30 出头（那样早晚时段全糊在一起，用户看不到）。
+   */
   private fitWeekHeight() {
     const work = this.contentEl.querySelector<HTMLElement>(".tlt-work");
     const sc = this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
     if (!work || !sc) return;
-    if (work.clientHeight < 200) return;        // 还没布局（或环境没有真实尺寸，比如测试的 jsdom）：保持默认刻度
-
-    // 再留 10px：滚动壳自身还有 8px 的额外高度（边框 + 底部余量），算进去才不会差几像素就出滚动条
+    if (work.clientHeight < 200) return;             // 还没布局（或环境没有真实尺寸，比如测试的 jsdom）
     const room = work.clientHeight - (sc.getBoundingClientRect().top - work.getBoundingClientRect().top) - 32;
-    const hours = (DAY_TO - DAY_FROM) / 60;
-    const want = Math.max(32, Math.min(84, Math.floor(room / hours)));
-    if (want === HOUR_css()) return;                 // 已经对上了，别再重画
-    setWeekHour(want);
-    void this.render();
+    const box = Math.max(320, room);                 // 至少这么高，矮了就内部滚
+    if (Math.abs(box - sc.clientHeight) > 4) sc.style.height = `${box}px`;
   }
 
   private paneMilestones(): HTMLElement {

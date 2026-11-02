@@ -2892,8 +2892,8 @@ await t("周视图：拖块的下缘＝只改结束时间（开始时间不动�
   const PE = dom.window.PointerEvent || dom.window.MouseEvent;
   const mk = (type, x, y) => new PE(type, { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y });
   grip.dispatchEvent(mk("pointerdown", 100, 230));
-  window.dispatchEvent(mk("pointermove", 100, 278));      // 周视图 48px＝1 小时 → 往下 48px＝+1 小时
-  window.dispatchEvent(mk("pointerup", 100, 278));
+  window.dispatchEvent(mk("pointermove", 100, 286));      // 周视图 56px＝1 小时 → 往下 56px＝+1 小时
+  window.dispatchEvent(mk("pointerup", 100, 286));
   await new Promise((r) => window.setTimeout(r, 300));
   const text = files["TLT/tasks/示例项目.md"];
   assert.match(text, /\[st:: 09:00\]/, `开始时间不该动：${text}`);
@@ -3061,11 +3061,11 @@ await t("周视图点空白的时间换算：像素高度要加上 7:00 起点",
   view.tab = "today"; view.calView = "w"; view.viewDate = D;
   await view.render();
   // jsdom 里 inner 的 rect 全是 0，于是 clientY 就是"距表格顶部的像素"：
-  // 48px = 1 小时（表格从 7:00 开始）→ 300px = 6h15m → 13:15 → 向下取 13:00
+  // 56px = 1 小时（表格从 7:00 开始）→ 300px ≈ 5h21m → 12:21 → 向下取 12:00
   const inner = view.contentEl.querySelector(".tlt-winner");
   assert.ok(inner, "周视图要有 .tlt-winner");
-  assert.equal(view.timeAtY(300), "13:00", `300px 应是 13:00，实际 ${view.timeAtY(300)}`);
-  assert.equal(view.timeAtY(48), "08:00", `48px 应是 08:00，实际 ${view.timeAtY(48)}`);
+  assert.equal(view.timeAtY(300), "12:00", `300px 应是 12:00，实际 ${view.timeAtY(300)}`);
+  assert.equal(view.timeAtY(56), "08:00", `56px 应是 08:00，实际 ${view.timeAtY(56)}`);
   assert.equal(view.timeAtY(0), "07:00", `顶部该夹到 07:00，实际 ${view.timeAtY(0)}`);
 });
 
@@ -3117,6 +3117,31 @@ await t("归属筛选：工作/个人按 [scope::] 显式筛，未标注单独�
   view.contentEl.querySelector('[data-tag="未标注"]').dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 200));
   assert.deepEqual(titles(), ["没写归属"], `未标注档：${titles()}`);
+});
+
+await t("任务行右栏：进度环占固定槽位，时间轨的四个位置逐行对齐", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-ringslot\s*{[^}]*width:\s*26px/.test(css), "没子项的任务也要占一个 26px 的环槽位");
+  assert.ok(/\.tlt-rail \.tlt-rail-d\s*{[^}]*min-width:\s*30px/.test(css), "起止日期列要等宽");
+  assert.ok(/\.tlt-rail \.tlt-rail-s\s*{[^}]*min-width:\s*58px/.test(css), "剩余天数文案要等宽");
+  // 结构契约：不管有没有子项，右栏都要有「环位 + 轨」
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n`
+    + `- [ ] 有子项 📅 ${D} [scope:: 工作]\n  - [ ] 一\n`
+    + `- [ ] 无子项 📅 ${D} [scope:: 工作]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month"; view.proj = "示例项目";
+  await view.render();
+  const rows = [...view.contentEl.querySelectorAll(".tlt-task")];
+  assert.equal(rows.length, 2, "两条任务");
+  rows.forEach((r) => {
+    const slot = r.querySelector(".tlt-stepring, .tlt-ringslot");
+    const rail = r.querySelector(".tlt-rail");
+    assert.ok(slot && rail, `每行都要有环位 + 时间轨：${r.textContent.slice(0, 12)}`);
+  });
 });
 
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {

@@ -296,7 +296,7 @@ body.tlt-light {
 /* ---- 时间轴 ---- */
 .tlt-daywrap { display: flex; gap: 12px; align-items: flex-start; }
 .tlt-daygrid {
-  position: relative; flex: 1; min-width: 0; height: 480px; overflow-y: auto;
+  position: relative; flex: 1; min-width: 0; height: 640px; overflow-y: auto;
   border: 1px solid var(--tlt-line); border-radius: 11px; background: var(--tlt-bg2);
   overscroll-behavior: contain;
 }
@@ -1708,8 +1708,14 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 /* 时间轨：左端开始日 — 一条轴 — 右端截止日 — 一句状态 */
 .tlt-rail { display: inline-flex; align-items: center; gap: 6px; font-size: 9px; color: var(--tlt-ink4);
   font-variant-numeric: tabular-nums; }
+/* 三列对齐：起始日 / 进度条 / 截止日 / 剩余文案 各占固定宽度，每一行都落在同一列 */
+.tlt-rail .tlt-rail-d { min-width: 30px; text-align: center; }
+.tlt-rail-bar { flex: 1 1 auto; min-width: 46px; max-width: 128px; }
+.tlt-rail .tlt-rail-s { min-width: 58px; text-align: right; }
+/* 进度环的固定槽位：没有子项的任务也占同样的宽，右边的轨才对得齐 */
+.tlt-ringslot { flex: none; display: inline-block; width: 26px; }
 .tlt-rail.done { opacity: .55; }
-.tlt-rail-bar { position: relative; width: 54px; height: 4px; border-radius: 2px; background: var(--tlt-line4); }
+.tlt-rail-bar { position: relative; height: 4px; border-radius: 2px; background: var(--tlt-line4); }
 .tlt-rail-bar i { position: absolute; left: 0; top: 0; height: 100%; border-radius: 2px; background: var(--tlt-acc); }
 .tlt-rail-now { position: absolute; top: -2.5px; width: 1px; height: 9px; background: var(--tlt-ink4); opacity: .8; }
 .tlt-task.done .tlt-rail-bar i { background: var(--tlt-ink4); }
