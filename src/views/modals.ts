@@ -666,8 +666,8 @@ export class TaskModal extends TltModal {
     const title = el("textarea", "tlt-input wide tlt-title-ta");
     title.rows = 1;
     const fitTitle = () => {
-      title.style.height = "auto";
-      title.style.height = `${Math.min(150, title.scrollHeight)}px`;
+      title.setCssProps({ height: "auto" });          // 先松回自动，量出真实内容高度
+      title.setCssProps({ height: `${Math.min(150, title.scrollHeight)}px` });
     };
     const normTitle = (v: string) => v.replace(/[\r\n]+/g, " ").replace(/ {2,}/g, " ").trimStart();
     title.placeholder = T("任务名");
@@ -676,7 +676,7 @@ export class TaskModal extends TltModal {
     title.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || e.shiftKey) return;      // 回车＝保存（Shift+回车只是视觉换行）
       e.preventDefault();
-      (this.contentEl.querySelector("[data-tsave]") as HTMLElement | null)?.click();
+      this.contentEl.querySelector<HTMLElement>("[data-tsave]")?.click();
     });
     contentEl.appendChild(title);
     window.setTimeout(fitTitle, 0);

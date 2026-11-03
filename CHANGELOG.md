@@ -1,5 +1,14 @@
 # 更新日志
 
+## 0.9.61
+
+**修 0.9.60 的两条审核级 lint error**（功能无变化）
+
+- `obsidianmd/no-static-styles-assignment`：标题框的自动高度从 `element.style.height = …` 改成 `setCssProps`（官方推荐写法）
+- `@typescript-eslint/no-unnecessary-type-assertion`：`querySelector` 的返回类型改用泛型参数，不用再手动断言
+- 发版流程加了闸门：lint 不过就**不发版**（0.9.60 那次是用 `;` 串的命令，lint 报错也继续往下跑了）
+
+
 ## 0.9.60
 
 **任务页头改 AAA 竖排 + 标题可视觉换行 + 手机档筛选按 iOS 重排**
