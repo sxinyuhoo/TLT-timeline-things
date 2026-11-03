@@ -1292,7 +1292,7 @@ await t("今天的排期从「现在」开始，并跳过已占用的时段", as
   await view.scheduleTask(t0);
   await view.store.load();
   const after = view.store.tasks.find((t) => t.id === t0.id);
-  if (want + 60 > 23 * 60) {             // 深夜跑测试：这天确实排满了，不该硬塞
+  if (want + 60 > 24 * 60) {             // 深夜跑测试：这天确实排满了（时间轴是全天的，截止 24:00），不该硬塞
     assert.ok(!after.st, "排满时不该写入时间");
     return;
   }

@@ -606,8 +606,11 @@ export class WorkbenchView extends ItemView {
       who.dataset.projclear = "1";
       who.title = T("只看这一个项目，点击回到全部");
     }
-    crumbs.append(who, el("span", "tlt-sep", "/"), el("span", "", this.tabName()));
-    if (this.proj) crumbs.appendChild(el("span", "tlt-hint2", T("已按项目筛选")));
+    crumbs.appendChild(who);
+    if (this.tier !== "phone") {          // 手机档只留项目名，页签名让位给标题宽度
+      crumbs.append(el("span", "tlt-sep", "/"), el("span", "", this.tabName()));
+      if (this.proj) crumbs.appendChild(el("span", "tlt-hint2", T("已按项目筛选")));
+    }
     top.appendChild(crumbs);
     top.appendChild(el("div", "tlt-spacer"));
 
@@ -663,11 +666,11 @@ export class WorkbenchView extends ItemView {
     panelBtn.appendChild(panelIcon());
     // 注意：不要在这里再挂 onclick——视图根部有个委托点击（[data-panelopen]）已经在处理，
     // 两边都挂会"开一次又关一次"，表现就是点了没反应。
-    const theme = el("button", "tlt-btn", this.plugin.isLight() ? "☾" : "☀");
+    const theme = el("button", "tlt-btn tlt-theme-btn", this.plugin.isLight() ? "☾" : "☀");
     theme.dataset.tltTheme = "1";
     theme.title = T("切换明暗");
     theme.onclick = (ev) => { ev.stopPropagation(); this.plugin.toggleTheme(); };
-    const add = el("button", "tlt-btn pri lg", T("＋ 新建"));
+    const add = el("button", "tlt-btn pri lg tlt-newbtn", T("＋ 新建"));
     add.dataset.newtask = "1";
     top.append(panelBtn, theme, add);
     m.appendChild(top);
