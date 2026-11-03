@@ -660,26 +660,12 @@ export class TaskModal extends TltModal {
     contentEl.addClass("tlt-modal");
     const t = this.task;
 
-    // 标题用 textarea（自动长高）而不是单行 input：长任务名能整段看见，手机上尤其明显。
-    // 但**文件里一条任务只能是一行**（解析是行级的，换行会把任务截断），所以：
-    // 视觉上可换行，存盘时把换行压成空格。
-    const title = el("textarea", "tlt-input wide tlt-title-ta");
-    title.rows = 1;
-    const fitTitle = () => {
-      title.setCssProps({ height: "auto" });          // 先松回自动，量出真实内容高度
-      title.setCssProps({ height: `${Math.min(150, title.scrollHeight)}px` });
-    };
-    const normTitle = (v: string) => v.replace(/[\r\n]+/g, " ").replace(/ {2,}/g, " ").trimStart();
+    // 标题保持单行 input：文件里一条任务就是一行，编辑框也照这个来（换行留给列表里的"自动换行"显示）。
+    const title = el("input", "tlt-input wide");
     title.placeholder = T("任务名");
     title.value = this.draft.title;
-    title.oninput = () => { this.draft.title = normTitle(title.value); fitTitle(); };
-    title.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" || e.shiftKey) return;      // 回车＝保存（Shift+回车只是视觉换行）
-      e.preventDefault();
-      this.contentEl.querySelector<HTMLElement>("[data-tsave]")?.click();
-    });
+    title.oninput = () => { this.draft.title = title.value; };
     contentEl.appendChild(title);
-    window.setTimeout(fitTitle, 0);
 
     projectPicker(this.app, this.store, contentEl, { project: t.project, milestone: t.milestone }, this.draft);
     scopeRow(contentEl, this.draft);
@@ -797,7 +783,6 @@ export class TaskModal extends TltModal {
 
     const foot = el("div", "tlt-m-foot");
     const save = el("button", "tlt-btn pri", T("保存"));
-    save.dataset.tsave = "1";      // 标题 textarea 里按回车＝点它
     save.onclick = () => { void (async () => {
       const d = this.draft;
       // 先就地改字段（行号不变），最后再改标题/搬文件——搬完行号就失效了

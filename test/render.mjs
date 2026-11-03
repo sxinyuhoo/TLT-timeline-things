@@ -3231,12 +3231,12 @@ await t("置顶项目改名后仍然置顶 · 开展中只有一个「进行中�
   assert.ok(rows.includes("有截止的活") && rows.includes("没截止的活"), `两条都该在「进行中」里：${rows.join(" | ")}`);
 });
 
-await t("任务页头：归属/维度/排序各自一行，全部左对齐（AAA）；标题框可视觉换行但存盘压成一行", async () => {
+await t("任务页头：信息在左、两种筛选与排序在右（同一右缘）；标题编辑保持单行、列表可折两行", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
-  assert.ok(/\.tlt-task-head \{\s*display: flex; flex-direction: column; align-items: flex-start;/.test(css), "页头要竖排左对齐");
-  assert.ok(/\.tlt-title-ta \{/.test(css), "标题用可换行的 textarea 样式");
-  assert.ok(/data-tier="phone"\] \.tlt-th-l3 \.tlt-tag-seg \{[\s\S]{0,120}display: flex; width: 100%/.test(css), "手机档归属筛选＝通栏分段控件");
-  assert.ok(/data-tier="phone"\] \.tlt-th-l4 \.tlt-dim-seg \{[\s\S]{0,160}overflow-x: auto/.test(css), "手机档维度筛选＝横向可滑胶囊行");
+  assert.ok(/\.tlt-task-head \{[\s\S]{0,140}grid-template-columns: minmax\(0, 1fr\) auto/.test(css), "页头该是左信息/右控件的两列网格");
+  assert.ok(/\.tlt-th-l3 \{ grid-column: 2; grid-row: 1; justify-content: flex-end/.test(css), "归属筛选在右列");
+  assert.ok(/\.tlt-th-l5 \{ grid-column: 2; grid-row: 3; justify-content: flex-end/.test(css), "排序也在右列");
+  assert.ok(/\.tlt-task-tx \{[\s\S]{0,160}-webkit-line-clamp: 2/.test(css), "列表里长标题折两行");
   document.body.empty();
   const view = mount(WorkbenchView);
   await view.onOpen();
@@ -3244,22 +3244,37 @@ await t("任务页头：归属/维度/排序各自一行，全部左对齐（AAA
   await view.render();
   const head = view.contentEl.querySelector(".tlt-task-head");
   const rows = [...head.children];
-  assert.equal(rows.length, 5, `页头应是 5 行（标签/计数/归属/维度/排序），实际 ${rows.length}`);
-  assert.ok(rows[4].classList.contains("tlt-th-l5"), "最后一行是排序");
-  const lefts = rows.map((r) => r.getBoundingClientRect().left);
-  assert.ok(new Set(lefts).size <= 1, `各行左缘要一致：${lefts.join(",")}`);
-  // 标题 textarea：换行被压成空格
+  const box = (e) => e.getBoundingClientRect();
+  const l1 = rows.find((r) => r.classList.contains("tlt-th-l1"));
+  const l2 = rows.find((r) => r.classList.contains("tlt-th-l2"));
+  const l3 = rows.find((r) => r.classList.contains("tlt-th-l3"));
+  const l5 = rows.find((r) => r.classList.contains("tlt-th-l5"));
+  assert.ok(l1 && l2 && l3 && l5, "五行都要在");
+  assert.ok(Math.abs(box(l1).left - box(l2).left) < 1.5, `左侧两行左缘该一致：${box(l1).left} vs ${box(l2).left}`);
+  assert.ok(box(l3).left > box(l1).right - 2, `筛选该在信息右侧：l3=${box(l3).left}, l1.right=${box(l1).right}`);
+  assert.ok(Math.abs(box(l3).right - box(l5).right) < 1.5, `右列各行右缘该一致：${box(l3).right} vs ${box(l5).right}`);
+  // 标题编辑：回到单行 input
   const task = view.store.tasks[0];
   if (task) {
     const m = new TaskModal(view.app, view.store, task, () => {});
     m.open();
-    const ta = m.contentEl.querySelector(".tlt-title-ta");
-    assert.ok(ta, "标题要渲染成 textarea");
-    ta.value = "第一行\n第二行";
-    ta.dispatchEvent(new MouseEvent("input", { bubbles: true }));
-    assert.equal(m.draft.title, "第一行 第二行", `换行该被压成空格：${JSON.stringify(m.draft.title)}`);
+    const field = m.contentEl.querySelector(".tlt-input.wide");
+    assert.equal(field?.tagName, "INPUT", `标题该是单行 input，实际 ${field?.tagName}`);
     m.close();
   }
+});
+
+await t("日历定位：容器还没高度时不能把「定位到现在」用掉（更新后第一次打开停在 0 点的坑）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "d"; view.calAt = new Date();
+  await view.render();
+  // jsdom 没有布局：clientHeight 恒为 0，正是"插件刚更新完、视图还没稳"的状态
+  view.focusPending = 9 * 60;
+  view.applyCalendarFocus();
+  assert.equal(view.focusPending, 9 * 60, "该等容器有高度再定位，不能提前把 focus 用掉");
+  assert.ok(typeof view.onResize === "function", "要有 onResize：拿到真实尺寸时补做一次定位");
 });
 
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {

@@ -2004,13 +2004,27 @@ body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(
 
 
 /* ---- 任务页头：四行布局（维度标签 / 计数 / 归属与标签 / 维度与排序） ---- */
+/* 任务页头：**左边放信息（本月 + 计数）、右边放控件（两种筛选 + 排序）**。
+   右列三行共用同一列宽，所以三行右缘天然对齐；手机档退回单列、全部左对齐。 */
 .tlt-task-head {
-  display: flex; flex-direction: column; align-items: flex-start;
-  gap: 6px; padding-bottom: 8px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto;
+  align-items: start; gap: 6px 20px; padding-bottom: 8px;
 }
 .tlt-task-head > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.tlt-task-head > div { width: 100%; }
-.tlt-th-l5 { margin-top: 2px; }        /* 排序自成一行，左缘与任务行对齐 */
+.tlt-task-head > div { min-width: 0; }
+.tlt-task-head .tlt-th-l1 { grid-column: 1; grid-row: 1; }
+.tlt-task-head .tlt-th-l2 { grid-column: 1; grid-row: 2; }
+.tlt-task-head .tlt-th-l3 { grid-column: 2; grid-row: 1; justify-content: flex-end; }
+.tlt-task-head .tlt-th-l4 { grid-column: 2; grid-row: 2; justify-content: flex-end; }
+.tlt-task-head .tlt-th-l5 { grid-column: 2; grid-row: 3; justify-content: flex-end; }
+
+/* 手机档：单列，信息在上、控件在下，全部左对齐 */
+.tlt-root[data-tier="phone"] .tlt-task-head { grid-template-columns: 1fr; gap: 6px; }
+.tlt-root[data-tier="phone"] .tlt-th-l1 { grid-column: 1; grid-row: 1; }
+.tlt-root[data-tier="phone"] .tlt-th-l3 { grid-column: 1; grid-row: 2; justify-content: flex-start; }
+.tlt-root[data-tier="phone"] .tlt-th-l4 { grid-column: 1; grid-row: 3; justify-content: flex-start; }
+.tlt-root[data-tier="phone"] .tlt-th-l5 { grid-column: 1; grid-row: 4; justify-content: flex-start; }
 .tlt-th-l1 .tlt-th-dim { font-size: 11.5px; color: var(--tlt-ink2); }
 .tlt-th-l2 { font-size: 10.5px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; }
 .tlt-th-l3, .tlt-th-l4 { gap: 6px; }
@@ -2083,10 +2097,15 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 
 
 /* 标题编辑框：自动长高、可视觉换行（存盘时换行会被压成空格——文件里一条任务只能一行） */
-.tlt-title-ta {
-  resize: none; overflow: hidden; line-height: 1.45;
-  min-height: 34px; padding: 7px 10px; white-space: pre-wrap; word-break: break-word;
+/* 标题编辑框保持单行（文件里一条任务是一行）；**列表**里长标题自动换行（最多两行） */
+/* display 用 :is() 抬一级 —— 宿主（Obsidian 基础样式）会把 span 的 display 顶成 flow-root，
+   光写 .tlt-task-tx 压不住，换行就失效。 */
+:is(.tlt-root, .tlt-modal) .tlt-task-tx {
+  min-width: 0; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 1.42;
 }
+.tlt-task-t .tlt-pd { flex: none; margin-top: 4px; align-self: flex-start; }
 
 /* ==========================================================================
    手机档：筛选组件按 iOS 的做法重排

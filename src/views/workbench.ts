@@ -198,6 +198,8 @@ export class WorkbenchView extends ItemView {
   private scrollToMin: number | null = null;
   /** 日历里"待居中到视口 42%"的时刻（分钟）；应用一次就清掉 */
   private focusPending: number | null = null;
+  /** "定位到现在"重试次数：容器还没真实高度时不能写 scrollTop，等它稳 */
+  private focusTries = 0;
   /** 上一次自动居中的"视图+日期"，用来判断这次要不要重新居中 */
   private calFocusKey = "";
   /** 周视图同一天重渲时恢复的滚动位置（上一屏还是周视图才作数） */
@@ -1552,7 +1554,9 @@ export class WorkbenchView extends ItemView {
       const pr = el("i", "tlt-pd" + (t.pri >= 3 ? " u" : ""));
       title.appendChild(pr);
     }
-    title.appendChild(document.createTextNode(t.title));
+    const tx = el("span", "tlt-task-tx");     // 文本单独一层：列表里长标题最多折两行，圆点仍跟第一行对齐
+    tx.appendChild(document.createTextNode(t.title));
+    title.appendChild(tx);
     body.appendChild(title);
     const meta = el("div", "tlt-task-m");
     if (t.milestone) meta.appendChild(el("span", "tlt-tag", t.milestone));
@@ -2245,10 +2249,24 @@ export class WorkbenchView extends ItemView {
     const box = this.contentEl.querySelector<HTMLElement>(".tlt-daygrid")
       ?? this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
     if (!box) return;
+    // 容器还没拿到真实高度时（插件刚更新完、视图刚开、叶子还没布局）**不要**定位，也不要把 focus 用掉：
+    // 这时候写 scrollTop 会被浏览器夹成 0，表现就是"每次更新后第一次打开日历都停在 0 点"。
+    if (box.clientHeight < 80) {
+      if (this.focusTries++ < 20) window.setTimeout(() => this.applyCalendarFocus(), 150);
+      else this.focusTries = 0;
+      return;
+    }
+    this.focusTries = 0;
     const perHour = box.classList.contains("tlt-daygrid") ? HOUR_PX : HOUR_css();
     const target = Math.max(0, ((focus - DAY_FROM) / 60) * perHour - box.clientHeight * 0.42);
     this.focusPending = null;                    // 用掉就清：后面手动滚动/重渲都不该再被拽回去
     if (Math.abs(box.scrollTop - target) > 2) box.scrollTop = target;
+  }
+
+  /** 视图拿到/换掉真实尺寸时（Obsidian 会调）：高度重算 + 补做一次"定位到现在" */
+  onResize(): void {
+    this.fitCalendarHeight();
+    this.applyCalendarFocus();
   }
 
   private fitCalendarHeight() {
