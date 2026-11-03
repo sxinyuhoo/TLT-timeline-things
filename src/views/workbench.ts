@@ -396,7 +396,8 @@ export class WorkbenchView extends ItemView {
     const shead = el("div", "tlt-shead tlt-shead-proj");
     shead.appendChild(el("span", "tlt-shead-t", T("项目 · 进度")));
     const acts = el("div", "tlt-shead-acts");
-    const psort = el("button", "tlt-padd", "⇅");
+    const psort = el("button", "tlt-padd");
+    setIcon(psort, "tlt-updown");
     psort.title = T("项目排序：名称 / 完成进度 / 创建时间 / 截止时间");
     psort.dataset.sortproj = "1";
     psort.onclick = (ev) => { ev.stopPropagation(); this.sidebarSortMenu(psort); };
@@ -448,7 +449,8 @@ export class WorkbenchView extends ItemView {
       edit.dataset.projedit = p;
       row.append(sw, nameEl, edit, el("span", "tlt-ppct", pct + "%"));
       // 项目级动作：悬停出现「…」，右键也可以
-      const more = el("button", "tlt-pmore", "⋯");
+      const more = el("button", "tlt-pmore");
+      setIcon(more, "tlt-dots");
       more.title = T("新建里程碑 / 归档项目");
       more.dataset.projmenu = p;
       more.onclick = (ev) => { ev.stopPropagation(); this.projectMenu(more, p); };
@@ -468,14 +470,16 @@ export class WorkbenchView extends ItemView {
     const archived = this.store.archivedProjects();
     if (archived.length) {
       const head = el("div", "tlt-shead tlt-shead-arch");
-      const caret = el("span", "tlt-caret", this.showArchived ? "▾" : "▸");
+      const caret = el("span", "tlt-caret");
+      const paintCaret = () => { caret.empty(); setIcon(caret, this.showArchived ? "tlt-chev-d" : "tlt-chev-r"); };
+      paintCaret();
       head.append(caret, el("span", "", `${T("已归档")} · ${archived.length}`));
       const listBox = el("div", "tlt-archlist");
       if (!this.showArchived) listBox.addClass("tlt-hidden");
       head.onclick = () => {
         this.showArchived = !this.showArchived;
         listBox.toggleClass("tlt-hidden", !this.showArchived);
-        caret.setText(this.showArchived ? "▾" : "▸");
+        paintCaret();
       };
       scroll.append(head, listBox);
       {
@@ -484,7 +488,8 @@ export class WorkbenchView extends ItemView {
           card.dataset.archproj = f.path;
           const row = el("div", "tlt-prow");
           row.append(el("span", "tlt-sw arch"), el("span", "tlt-pname", f.basename));
-          const more = el("button", "tlt-pmore", "⋯");
+          const more = el("button", "tlt-pmore");
+          setIcon(more, "tlt-dots");
           more.title = T("还原 / 打开文件");
           more.onclick = (ev) => { ev.stopPropagation(); this.archivedMenu(more, f); };
           row.appendChild(more);
@@ -555,9 +560,9 @@ export class WorkbenchView extends ItemView {
           const row = el("button", "tlt-csearch-i");
           row.dataset.calgoto = `${h.day}|${h.title}`;
           row.append(
-            el("span", "tlt-csearch-d", h.day.slice(5)),
-            el("span", "tlt-csearch-t", h.st ? `${h.st}${h.en ? "–" + h.en : ""}` : T("全天")),
-            el("span", "tlt-csearch-n", h.title),
+            el("span", "tlt-csearch-n", h.title),                                  // 第一行：任务名
+            el("span", "tlt-csearch-m",                                            // 第二行：日期 · 时间（灰、小）
+              `${h.day.slice(5)} · ${h.st ? `${h.st}${h.en ? "–" + h.en : ""}` : T("全天")}`),
           );
           pop.appendChild(row);
         });
@@ -765,7 +770,9 @@ export class WorkbenchView extends ItemView {
     this.scrollToMin = null;
     const d0 = new Date();
     const nowMin = d0.getHours() * 60 + d0.getMinutes();
-    const pxOf = (min: number) => ((min - DAY_FROM) / 60) * HOUR_PX - 90;
+    // 定位口径：把要看的那个时刻放在**视口中间偏上**（0.42 处），不再顶在视口最上面
+    const viewH = grid.clientHeight || 640;                 // 还没挂载时用 CSS 里的高度兜底
+    const pxOf = (min: number) => ((min - DAY_FROM) / 60) * HOUR_PX - viewH * 0.42;
     let target: number;
     if (jump !== null) target = pxOf(jump);
     else if (this.dayScroll && this.dayScroll.day === sel) target = this.dayScroll.top;

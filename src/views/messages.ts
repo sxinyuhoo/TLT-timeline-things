@@ -1,5 +1,5 @@
 import { t as T } from "../i18n";
-import { ItemView, WorkspaceLeaf, Notice, App, requestUrl } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, App, requestUrl, setIcon } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS } from "../store";
 import { Msg, Feed, todayISO, addDays, D, cleanFeedUrl, errMsg } from "../data";
@@ -253,7 +253,9 @@ export class MessagesView extends ItemView {
       ["bands", T("按源分带")], ["axis", T("可缩放时间轴")], ["heat", T("月度热力")], ["net", T("人物脉络")]] as const;
     const cur = MODES.find(([v]) => v === this.mode) ?? MODES[0];
     const viewBtn = el("button", "tlt-btn tlt-viewbtn");
-    viewBtn.append(el("span", "tlt-viewbtn-i", "▤"), el("span", "", T(cur[1])), el("span", "tlt-viewbtn-c", "⌄"));
+    const vIco = el("span", "tlt-viewbtn-i"); setIcon(vIco, "tlt-list");
+    const vCar = el("span", "tlt-viewbtn-c"); setIcon(vCar, "tlt-chev-d");
+    viewBtn.append(vIco, el("span", "", T(cur[1])), vCar);
     viewBtn.onclick = () => {
       popMenu(viewBtn, MODES.map(([v, label]) => ({
         label: (v === this.mode ? "✓ " : "   ") + T(label),
