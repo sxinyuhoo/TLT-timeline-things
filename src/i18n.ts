@@ -97,6 +97,8 @@ export const EN: Record<string, string> = {
   "按创建时间": "By created",
   "按截止时间": "By due",
   "反向排列": "Reverse",
+  "还有 {n} 条，再打几个字缩小范围": "{n} more — type a bit more to narrow it down",
+  "没有匹配的日程": "No matching schedule",
   "归属": "Ownership",
   "本月到期": "Due this month",
   "还没有归属的任务（没写 [scope::]，旧任务见 tools/backfill-scope.mjs）": "Tasks with no ownership yet (no [scope::] field; old data: tools/backfill-scope.mjs)",

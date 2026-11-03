@@ -1604,8 +1604,10 @@ await t("排序：项目 / 里程碑 / 任务各排各的，候选口径不一�
   const taskTitles = [...document.querySelectorAll(".tlt-task")].map((r) => (r.querySelector(".tlt-task-t")?.textContent || "").trim());
   assert.deepEqual(taskTitles.slice(0, 2), ["b2", "b1"], `紧急的该在前：${taskTitles.join(" | ")}`);
 
-  // 候选口径：任务没有"截止时间"，项目有"完成进度"
-  assert.ok(!SORT_KEYS.task.includes("due"), "任务的排序口径里不该有截止时间");
+  // 候选口径：项目有"完成进度"；任务现在也有"截止时间"（0.9.50 加回来的）
+  assert.deepEqual(SORT_KEYS.task, ["name", "pri", "due", "created"], "任务口径：名称 / 优先级 / 截止时间 / 创建时间");
+  await view.pickSort("task", "due");
+  assert.deepEqual(view.sortCfg("task"), { by: "due", dir: 1 }, "选截止时间默认最近在前");
   assert.ok(SORT_KEYS.project.includes("progress"), "项目要能按进度排");
   assert.deepEqual(SORT_KEYS.milestone, ["name", "created", "due", "progress"]);
 });
@@ -3142,6 +3144,40 @@ await t("任务行右栏：进度环占固定槽位，时间轨的四个位置�
     const slot = r.querySelector(".tlt-stepring, .tlt-ringslot");
     const rail = r.querySelector(".tlt-rail");
     assert.ok(slot && rail, `每行都要有环位 + 时间轨：${r.textContent.slice(0, 12)}`);
+  });
+});
+
+await t("日历搜索：搜索框下弹结果，点了跳到那天并把块闪两下；折叠按钮用 SVG 不是文本箭头", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  const far = day2(D, 12);
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n\n`
+    + `- [ ] 找得到我 📅 ${far} [st:: 14:30] [en:: 15:30] [scope:: 工作] [created:: ${D}]\n`
+    + `- [ ] 别的活 📅 ${D} [st:: 09:00] [en:: 10:00] [scope:: 工作] [created:: ${D}]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "m"; view.q = "找得到";
+  await view.render();
+  const pop = view.contentEl.querySelector(".tlt-csearch");
+  assert.ok(pop, "日历页签里搜东西该在搜索框下弹结果");
+  const rows = [...pop.querySelectorAll(".tlt-csearch-i")];
+  assert.equal(rows.length, 1, `只该命中一条：${rows.map((r) => r.textContent).join(" | ")}`);
+  assert.match(rows[0].textContent, /14:30/, "结果里要带时间");
+  rows[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 260));
+  assert.equal(view.viewDate, far, "点了要跳到那一天");
+  assert.equal(view.calView, "d", "切换成日视图");
+  const blk = [...view.contentEl.querySelectorAll(".tlt-blk")]
+    .find((b) => (b.querySelector(".tlt-blk-t")?.textContent || "").includes("找得到我"));
+  assert.ok(blk, "日视图里该有那个块");
+  assert.ok(blk.classList.contains("tlt-flash"), "跳过去要闪两下（.tlt-flash）");
+  // 折叠/展开按钮：SVG 图标，不是文本 ‹ ›（有些字体里会渲染成问号）
+  const folds = [...view.contentEl.querySelectorAll(".tlt-fold-btn")];
+  assert.ok(folds.length > 0, "该有折叠按钮");
+  folds.forEach((b) => {
+    assert.ok(b.querySelector("svg"), `折叠按钮要是 SVG 图标：${JSON.stringify(b.textContent)}`);
+    assert.equal(b.textContent.trim(), "", `不该再有文本字符：${b.textContent}`);
   });
 });
 

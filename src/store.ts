@@ -59,7 +59,7 @@ export interface SortCfg { by: SortKey; dir: 1 | -1 }
 export const SORT_KEYS: Record<"project" | "milestone" | "task", SortKey[]> = {
   project: ["name", "progress", "created", "due"],
   milestone: ["name", "created", "due", "progress"],
-  task: ["name", "pri", "created"],
+  task: ["name", "pri", "due", "created"],
 };
 export const DEFAULT_SORT: SortCfg = { by: "name", dir: 1 };
 /** 选这个口径时默认往哪个方向：优先级是"紧急在前"，其余是正序 */

@@ -1,0 +1,1240 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>TLT · 时间线原型 v5</title>
+<style>
+  :root{
+    --bg:#0D0E12; --panel:#13141A; --panel2:#191A23; --panel3:#1F212B;
+    --line:#23252F; --line2:#313441; --line3:#3D4150;
+    --ink:#ECEDF2; --ink2:#C4C6D0; --ink3:#8D90A0; --ink4:#6C6F7E; --ink5:#4C4F5C;
+    --acc:#5B6CFF; --acc2:#93A0FF; --hot:#D98080;
+    --p1:#5B6CFF; --p2:#31CFAE; --p3:#E2B25A; --p4:#B57BFF; --p5:#E06C9F;
+    --grid:#1A1C25;
+    --shadow:0 18px 48px rgba(0,0,0,.55);
+  }
+  body.light{
+    --bg:#F2F4F8; --panel:#FFFFFF; --panel2:#F7F8FC; --panel3:#EEF1F7;
+    --line:#DFE3EC; --line2:#C8CEDA; --line3:#B4BCCB;
+    --ink:#111318; --ink2:#333947; --ink3:#5A6270; --ink4:#7B8290; --ink5:#9AA0AC;
+    --acc:#4453DB; --acc2:#6675EC; --hot:#BF4B45; --p3:#BE8A1E;
+    --grid:#E7EBF2;
+    --shadow:0 18px 44px rgba(20,25,50,.16);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:13px/1.5 -apple-system,"Helvetica Neue","PingFang SC","Hiragino Sans GB",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .app{width:1120px;margin:0 auto;padding:22px 8px 30px}
+
+  /* ================= 头部 ================= */
+  header{display:flex;align-items:flex-end;gap:16px;padding:0 3px 12px}
+  .kicker{display:block;font-size:9px;letter-spacing:.18em;color:var(--ink4);margin-bottom:5px}
+  h1{margin:0;font-size:21px;font-weight:600;letter-spacing:-.3px;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:9px}
+  h1 em{font-style:normal;font-size:11.5px;color:var(--ink4);font-weight:400}
+  h1 .scale{font-size:11px;color:var(--acc2);background:rgba(91,108,255,.12);border-radius:5px;padding:2px 7px;font-weight:500;letter-spacing:.02em}
+  .stats{display:flex;gap:15px;padding-bottom:2px}
+  .stat{font-size:10px;color:var(--ink3);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .stat b{display:block;font-size:14.5px;color:var(--ink2);font-weight:600;margin-top:1px}
+  .hsp{flex:1}
+  .tabs{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
+  .tab{border:0;background:none;color:var(--ink3);font:inherit;font-size:11px;padding:5px 11px;border-radius:6px;cursor:pointer;transition:.12s}
+  .tab:hover{color:var(--ink2)}
+  .tab.on{background:var(--panel2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line2)}
+  .ico{border:1px solid var(--line);background:var(--panel);color:var(--ink3);width:29px;height:29px;border-radius:8px;
+       cursor:pointer;font-size:11px;display:grid;place-items:center;transition:.12s;flex:none}
+  .ico:hover{color:var(--ink);border-color:var(--line2)}
+  .ico.wide{width:auto;padding:0 10px;font-size:11px}
+  .ico.warn{color:var(--acc2);border-color:var(--line3)}
+  .ico.gone{display:none}
+
+  /* ================= 面包屑 ================= */
+  .crumbs{display:flex;align-items:center;gap:7px;padding:0 3px 11px;min-height:22px}
+  .crumb{border:0;background:none;color:var(--ink3);font:inherit;font-size:11.5px;padding:2px 6px;border-radius:6px;cursor:pointer;font-variant-numeric:tabular-nums}
+  .crumb:hover{color:var(--ink);background:var(--panel2)}
+  .crumb.cur{color:var(--ink);font-weight:600;cursor:default}
+  .crumb.cur:hover{background:none}
+  .crumb-sep{color:var(--ink5);font-size:11px}
+  .crumbs .zoom{margin-left:auto;display:flex;gap:5px}
+  .zbtn{border:1px solid var(--line);background:var(--panel);color:var(--ink3);font-size:10.5px;border-radius:7px;
+        padding:3px 9px;cursor:pointer;font-variant-numeric:tabular-nums}
+  .zbtn:hover{color:var(--ink)}
+
+  /* ================= 主区 ================= */
+  main{display:grid;gap:12px;align-items:stretch;position:relative}
+  main.withside{grid-template-columns:1fr 300px}
+  .stage{position:relative;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);
+         border-radius:12px;padding:14px 16px 10px;min-height:300px;overflow:hidden}
+  .side{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+        display:flex;flex-direction:column;overflow:hidden;max-height:660px}
+  .side .ins{overflow:auto;padding:13px 13px 12px}
+  .side .hd{display:flex;align-items:center;gap:8px;padding:11px 12px 9px 13px;border-bottom:1px solid var(--line);flex:none}
+  .side .hd b{font-size:11.5px;font-weight:600;color:var(--ink2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .side .hd .x{border:0;background:none;color:var(--ink4);cursor:pointer;font-size:13px;padding:0 3px;line-height:1}
+  .side .hd .x:hover{color:var(--ink)}
+
+  .axis{display:flex;margin-top:3px;color:var(--ink4);font-size:9px;font-variant-numeric:tabular-nums}
+  .axis span{flex:1}
+  .axis span:last-child{flex:none}
+  .legend{display:flex;flex-wrap:wrap;gap:11px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+  .lg{display:flex;align-items:center;gap:5px;color:var(--ink3);font-size:10px}
+  .lg i{width:8px;height:8px;border-radius:2px}
+  .hintline{font-size:10px;color:var(--ink4);margin-top:6px}
+
+  /* 事实条 */
+  .facts{display:flex;margin-top:auto;padding-top:9px;border-top:1px solid var(--line)}
+  .fact{flex:1;padding:7px 0 1px;display:flex;flex-direction:column;gap:1px}
+  .fact+.fact{border-left:1px solid var(--line);padding-left:12px}
+  .fact span{font-size:9px;color:var(--ink4);letter-spacing:.04em}
+  .fact b{font-size:12.5px;color:var(--ink2);font-weight:600;font-variant-numeric:tabular-nums}
+
+  /* 完成 chips */
+  .chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:9px}
+  .chip-lab{font-size:9.5px;color:var(--ink4)}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--ink2);
+    background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:2px 8px;cursor:pointer}
+  .chip:hover{border-color:var(--line2)}
+  .chip i{width:5px;height:5px;border-radius:50%}
+
+  /* 悬浮提示 */
+  .tip{position:fixed;z-index:60;pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .1s,transform .1s;
+       background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:6px 9px;max-width:300px;box-shadow:var(--shadow)}
+  .tip.on{opacity:1;transform:none}
+  .tip b{display:block;font-size:11.5px;color:var(--ink);font-weight:550;margin-bottom:2px}
+  .tip span{font-size:10px;color:var(--ink4);font-variant-numeric:tabular-nums}
+
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(8px);opacity:0;
+    background:var(--panel2);border:1px solid var(--line2);color:var(--ink2);font-size:11px;
+    padding:6px 12px;border-radius:8px;transition:.18s;pointer-events:none;z-index:70;box-shadow:var(--shadow)}
+  .toast.on{opacity:1;transform:translateX(-50%)}
+
+  /* ================= 浮层：事件详情（下钻层） ================= */
+  .peek{position:fixed;z-index:55;width:480px;max-height:76vh;display:flex;flex-direction:column;
+    background:var(--panel);border:1px solid var(--line3);border-radius:14px;box-shadow:var(--shadow);
+    opacity:0;transform:scale(.965) translateY(6px);transform-origin:top left;transition:opacity .18s cubic-bezier(.2,.8,.2,1),transform .2s cubic-bezier(.2,.8,.2,1);
+    pointer-events:none;overflow:hidden}
+  .peek.on{opacity:1;transform:none;pointer-events:auto}
+  .peek .top{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);flex:none}
+  .peek .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .peek .when{font-size:10px;color:var(--ink4);font-variant-numeric:tabular-nums}
+  .peek .close{margin-left:auto;border:0;background:none;color:var(--ink4);font-size:14px;cursor:pointer;padding:0 2px;line-height:1}
+  .peek .close:hover{color:var(--ink)}
+  .peek h3{margin:0;padding:13px 16px 8px;font-size:15.5px;font-weight:650;line-height:1.42;letter-spacing:-.1px;flex:none}
+  .peek .body{padding:0 16px 8px;overflow:auto;font-size:12.5px;line-height:1.72;color:var(--ink2);flex:1;min-height:0}
+  .peek .body h4{font-size:11.5px;margin:12px 0 4px; color:var(--ink); letter-spacing:.02em}
+  .peek .body p{margin:0 0 9px}
+  .peek .body p strong:first-child{color:var(--ink)}
+  .peek .body ul{margin:4px 0 8px;padding-left:17px}
+  .peek .body li{margin-bottom:3px}
+  .peek .body code{font:11px/1.5 ui-monospace,Menlo,monospace;background:var(--panel2);border-radius:4px;padding:1px 5px;color:var(--acc2)}
+  .peek .body blockquote{margin:8px 0 10px;padding:7px 10px 7px 11px;border-left:2px solid var(--acc);background:rgba(91,108,255,.07);border-radius:0 6px 6px 0;color:var(--ink2)}
+  .peek .body .img{height:54px;border-radius:7px;background:linear-gradient(120deg,var(--panel2),var(--panel3));border:1px solid var(--line);display:grid;place-items:center;color:var(--ink4);font-size:10px;margin:6px 0}
+  .peek .body .tag{display:inline-block;font-size:10px;color:var(--ink3);background:var(--panel2);border:1px solid var(--line);
+    border-radius:20px;padding:1px 7px;margin:0 4px 4px 0}
+  .peek .foot{display:flex;gap:7px;padding:9px 12px 11px;border-top:1px solid var(--line);flex:none}
+  .b{border:1px solid var(--line2);background:var(--panel2);color:var(--ink2);border-radius:7px;padding:5px 10px;
+     font:inherit;font-size:10.5px;cursor:pointer;transition:.12s}
+  .b:hover{color:var(--ink)}
+  .b.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  .b.danger{color:var(--hot)}
+
+  /* 编辑表单 */
+  .ed{display:flex;flex-direction:column;gap:8px}
+  .ed label{font-size:9px;color:var(--ink4);letter-spacing:.1em;display:block;margin-bottom:3px}
+  .ed input,.ed select,.ed textarea{width:100%;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
+    border-radius:7px;padding:6px 8px;font:inherit;font-size:11.5px;resize:vertical}
+  .ed textarea{min-height:78px;line-height:1.6}
+  .ed input:focus,.ed select:focus,.ed textarea:focus{outline:none;border-color:var(--acc)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btns{display:flex;gap:7px;margin-top:2px}
+  .note{color:var(--ink4);font-size:10.5px;line-height:1.7;margin-top:9px}
+
+  /* 侧栏条目 */
+  .item{display:flex;gap:7px;padding:5px 4px;border-radius:7px;cursor:pointer}
+  .item:hover{background:var(--panel2)}
+  .item.on{background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line2)}
+  .item i{width:2.5px;border-radius:2px;flex:none;background:var(--c);margin:2px 0}
+  .item .t{font-size:11px;color:var(--ink2);line-height:1.35}
+  .item .m{font-size:9px;color:var(--ink4);font-variant-numeric:tabular-nums;margin-top:1px}
+  .side h3{margin:0 0 8px;font-size:9.5px;letter-spacing:.13em;color:var(--ink4);font-weight:500}
+  .side h3.sub{margin-top:12px}
+  .side h3 .add{float:right;margin-top:-3px}
+
+  /* 抽屉（收起后的把手） */
+  .handle{position:absolute;right:-1px;top:46px;
+    border:1px solid var(--line3);border-right:0;background:var(--panel2);color:var(--ink2);
+    border-radius:9px 0 0 9px;padding:11px 7px;cursor:pointer;font-size:10.5px;writing-mode:vertical-rl;
+    letter-spacing:.14em;box-shadow:var(--shadow)}
+  .handle::before{content:"✎";writing-mode:horizontal-tb;display:block;margin-bottom:6px;font-size:11px;color:var(--acc2)}
+  .handle:hover{color:var(--ink);border-color:var(--acc)}
+
+  /* 周脉冲 */
+  .pulse{display:grid;grid-template-columns:44px 1fr;row-gap:3px;column-gap:7px;align-items:center}
+  .pulse .lab{font-size:9px;color:var(--ink4);text-align:right}
+  .pulse .row{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .cell{height:26px;border-radius:4px;background:var(--acc);cursor:pointer}
+  .cell.today{outline:1px solid var(--acc2);outline-offset:-1px}
+  .bars{display:grid;grid-template-columns:44px 1fr;column-gap:7px;margin-top:14px;align-items:end}
+  .bars .set{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;align-items:end;height:78px}
+  .bars .col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px}
+  .bars .col em{font-style:normal;font-size:8.5px;color:var(--ink4);font-variant-numeric:tabular-nums}
+  .bars .col b{border-radius:3px 3px 1px 1px;background:var(--acc);width:100%}
+  .days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:8.5px;color:var(--ink4);margin-top:2px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <span class="kicker" id="kicker">TLT · TIMELINE</span>
+      <h1><span id="range">2026-11-02</span><em id="weekday">周一</em><span class="scale" id="scaleTag">日</span></h1>
+    </div>
+    <div class="stats">
+      <span class="stat">记录<b id="s-log">—</b></span>
+      <span class="stat">时间点<b id="s-done">—</b></span>
+      <span class="stat">在轴时长<b id="s-span">—</b></span>
+      <span class="stat">最大并发<b id="s-conc">—</b></span>
+    </div>
+    <div class="hsp"></div>
+    <div class="tabs" id="modes">
+      <button class="tab on" data-mode="flow">航道</button>
+      <button class="tab" data-mode="lanes">泳道</button>
+      <button class="tab" data-mode="dial">表盘</button>
+      <button class="tab" data-mode="pulse">周脉冲</button>
+    </div>
+    <button class="ico wide" id="play">▶ 回放</button>
+    <button class="ico" id="theme">☾</button>
+  </header>
+
+  <div class="crumbs" id="crumbs"></div>
+
+  <main id="main">
+    <div class="stage" id="stage"></div>
+    <aside class="side" id="side"></aside>
+    <button class="handle" id="handle" title="展开编辑">编辑</button>
+  </main>
+</div>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+<div class="peek" id="peek"></div>
+
+<script>
+/* ============================================================
+   数据：三段时间线（日 / 年 / 十年），用来演示尺度自适应
+   ============================================================ */
+const PROJECTS = {
+  "交通核心算法研发": "var(--p1)",
+  "omniwise": "var(--p2)",
+  "技术预研": "var(--p3)",
+  "mvlab 运营管理": "var(--p4)",
+  "读书笔记": "var(--p5)",
+};
+const M = (h, m = 0) => h * 60 + m;
+const DAY = { from: M(6), to: M(24) };
+
+const LONG_MD = `
+**一句话**：把「一车一档」的核减逻辑从人工判断改成规则引擎，误差从 8% 压到 2% 以内。
+
+#### 背景
+湖南项目上线后发现核减项经常被漏判，原因是老逻辑写死在脚本里，每加一条规则要改代码。
+
+#### 结论
+- 规则引擎 + 词表双轨：命中词表的走快速路径，其余走模型打分；
+- 阈值从 0.62 调到 0.55，召回上升 6 个点，误判只多 0.3%；
+- 需要补一份规则维护手册，交给项目组自己改。
+
+> 会上定的口径：核减解释必须能回指到具体规则条目，否则不算通过。
+
+\`\`\`ts
+const score = rule.hit(text) ? 1 : model.confidence(text);
+const drop = score < 0.55;
+\`\`\`
+
+#### 待办
+1. 规则维护手册（本周五前）
+2. 与项目组对齐回归样本集
+3. 补充 30 条边界用例
+
+![会议白板](board.png)
+`;
+
+let items = [
+  /* --- 2026-11-02 这一天 --- */
+  { id: "a", date: "2026-11-02", kind: "log", s: M(9, 10), e: M(9, 40), proj: "mvlab 运营管理", title: "晨会 · 对齐本周三件大事",
+    md: "本周只做三件事：**tlt 插件的 1.0、部门里程碑梳理、湖南核减闭环**。" },
+  { id: "b", date: "2026-11-02", kind: "log", s: M(11, 30), e: M(12, 15), proj: "交通核心算法研发", title: "湖南算法核减项与项目组讨论", md: LONG_MD },
+  { id: "c", date: "2026-11-02", kind: "log", s: M(13, 30), e: M(15, 10), proj: "mvlab 运营管理", title: "部门里程碑 & 任务梳理",
+    md: "把 18 个项目的里程碑重排了一遍，`PDCO` 口径统一为「计划-执行-检查-收尾」，见 [[里程碑规范]]。" },
+  { id: "d", date: "2026-11-02", kind: "log", s: M(14, 20), e: M(14, 50), proj: "技术预研", title: "供应商电话 · 数据接口",
+    md: "对方支持批量拉取，但**限流 20 QPS**，需要本地加一层缓存。" },
+  { id: "e", date: "2026-11-02", kind: "log", s: M(15, 20), e: M(16, 0), proj: "技术预研", title: "验收口径与南理工对齐",
+    md: "验收只看三件事：**召回、误判、可解释性**。可解释性用规则回指率衡量。" },
+  { id: "f", date: "2026-11-02", kind: "log", s: M(17, 0), e: M(17, 30), proj: "omniwise", title: "aula 视觉算法评审",
+    md: "视觉侧建议先上 4 类标签，剩下的走长尾。" },
+  { id: "p1", date: "2026-11-02", kind: "point", s: M(10, 12), proj: "交通核心算法研发", title: "一车一档 V2.0 需求评审",
+    md: "评审通过，进入开发。**风险**：与 V1 的字段兼容需要再确认一轮。" },
+  { id: "p2", date: "2026-11-02", kind: "point", s: M(13, 0), proj: "omniwise", title: "taisl_okc 图谱交付",
+    md: "图谱 1.2 万实体、4.6 万关系，已交付甲方。" },
+  { id: "p3", date: "2026-11-02", kind: "point", s: M(17, 20), proj: "技术预研", title: "路由模型技术路径调研",
+    md: "结论：**先不做端到端**，用规则 + 小模型过渡。" },
+  { id: "p4", date: "2026-11-02", kind: "point", s: M(20, 15), proj: "mvlab 运营管理", title: "SOP 流程定义",
+    md: "SOP 三阶段：登记 → 评审 → 归档，责任人写在每条的 `[owner::]` 里。" },
+  { id: "p5", date: "2026-11-02", kind: "point", s: M(21, 40), proj: "读书笔记", title: "写 300 字读书随记" },
+
+  /* --- 2026 这一年的点（同一条时间线，换尺度看） --- */
+  { id: "y1", date: "2026-01-14", kind: "point", proj: "读书笔记", title: "开始读《人类简史》" },
+  { id: "y2", date: "2026-02-26", kind: "point", proj: "技术预研", title: "端到端模型 POC 立项" },
+  { id: "y3", date: "2026-04-08", kind: "log", proj: "交通核心算法研发", title: "湖南项目立项", endDate: "2026-06-30" },
+  { id: "y4", date: "2026-05-19", kind: "point", proj: "交通核心算法研发", title: "一车一档 V1 上线" },
+  { id: "y5", date: "2026-07-02", kind: "log", proj: "omniwise", title: "omniwise 内测", endDate: "2026-09-15" },
+  { id: "y6", date: "2026-08-11", kind: "point", proj: "技术预研", title: "路由模型首版" },
+  { id: "y7", date: "2026-09-23", kind: "point", proj: "交通核心算法研发", title: "V2.0 需求冻结" },
+  { id: "y8", date: "2026-11-02", kind: "point", proj: "mvlab 运营管理", title: "部门里程碑重排" },
+  { id: "y9", date: "2026-12-18", kind: "point", proj: "omniwise", title: "年度验收" },
+
+  /* --- 十年 · 读书/写作的长线 --- */
+  { id: "d1", date: "2016-03-08", kind: "point", proj: "读书笔记", title: "读完《百年孤独》", md: "第一次意识到**时间可以不打乱**地讲。" },
+  { id: "d2", date: "2018-06-21", kind: "log", proj: "读书笔记", title: "做第一本共读笔记", endDate: "2018-12-30" },
+  { id: "d3", date: "2020-02-14", kind: "point", proj: "读书笔记", title: "开始写阅读方法稿", md: "把「读」拆成拣、读、记、用四步。" },
+  { id: "d4", date: "2021-11-05", kind: "point", proj: "读书笔记", title: "第一篇文章发表" },
+  { id: "d5", date: "2023-04-17", kind: "log", proj: "读书笔记", title: "读《银河系搭车客指南》系列", endDate: "2023-08-02",
+    md: "系列五本，**非线性叙事**的范本。" },
+  { id: "d6", date: "2024-09-30", kind: "point", proj: "读书笔记", title: "阅读方法课讲完一轮" },
+  { id: "d7", date: "2026-05-19", kind: "point", proj: "读书笔记", title: "开始整理十年时间线", md: "就是你现在看到的这条。" },
+];
+
+/* ============================================================
+   尺度（zoom）与层级状态
+   ============================================================ */
+const SCALES = ["decade", "year", "month", "day"];
+const SCALE_INFO = {
+  decade: { zh: "十年", unit: 365 * 10 * 864e5 },
+  year:   { zh: "年",   unit: 365 * 864e5 },
+  month:  { zh: "月",   unit: 60 * 864e5 },
+  day:    { zh: "日",   unit: 864e5 },
+};
+let scale = "day";
+let cursor = "2026-11-02";   // 当前聚焦日期（面包屑最后一段）
+let mode = "flow";
+let sel = null;              // 正在编辑的 id
+let hover = null;
+let peekId = null;           // 浮层里的事件
+let sideOpen = true;
+let doneTime = true;         // 点：始终保留（点=时刻，段=区间）
+let brush = null;
+let drag = null;
+let playing = false;
+let playAt = M(8, 30);
+let view = { ...DAY };       // 日尺度的时间窗（分钟）
+let expanded = false;        // 十年尺度的"全部展开"
+
+const $ = (s, r = document) => r.querySelector(s);
+const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pad = (n) => String(n).padStart(2, "0");
+const fmt = (m) => `${pad(Math.floor(m / 60))}:${pad(Math.round(m % 60))}`;
+const dur = (m) => m >= 60 ? (m % 60 ? (m / 60).toFixed(1) : m / 60) + "h" : m + "m";
+const d2n = (s) => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+const n2d = (n) => { const d = new Date(n); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; };
+const WD = ["日", "一", "二", "三", "四", "五", "六"];
+const wd = (s) => "周" + WD[new Date(d2n(s)).getUTCDay()];
+function addDays(s, n) { return n2d(d2n(s) + n * 864e5); }
+function addMonths(s, n) { const d = new Date(d2n(s)); d.setUTCMonth(d.getUTCMonth() + n); return n2d(d.getTime()); }
+function addYears(s, n) { const d = new Date(d2n(s)); d.setUTCFullYear(d.getUTCFullYear() + n); return n2d(d.getTime()); }
+
+function cur() { return SCALES[SCALES.indexOf(scale)]; }
+function parentOf(s) {
+  if (s === "day" || s === "month") return "year";
+  if (s === "year") return "decade";
+  return null;
+}
+function anchorOf(target, dstr) {
+  const d = new Date(d2n(dstr));
+  if (target === "decade") return n2d(Date.UTC(Math.floor(d.getUTCFullYear() / 10) * 10, 0, 1));
+  if (target === "year") return n2d(Date.UTC(d.getUTCFullYear(), 0, 1));
+  if (target === "month") return n2d(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  return dstr;
+}
+function rangeOf() {
+  if (scale === "day") return [cursor, cursor];
+  if (scale === "month") return [anchorOf("month", cursor), addDays(addMonths(anchorOf("month", cursor), 1), -1)];
+  if (scale === "year") return [anchorOf("year", cursor), addDays(addYears(anchorOf("year", cursor), 1), -1)];
+  return [anchorOf("decade", cursor), addDays(addYears(anchorOf("decade", cursor), 10), -1)];
+}
+function inRange(it) {
+  const [f, t] = rangeOf();
+  const s = it.date, e = it.endDate || it.date;
+  return s <= t && e >= f;
+}
+function crumbs() {
+  const [f, t] = rangeOf();
+  const c = [];
+  c.push({ label: "全部", scale: "decade", cur: false });
+  const y = f.slice(0, 4);
+  c.push({ label: y + " 年", scale: "year", cur: scale === "decade" });
+  c.push({ label: f.slice(5, 7) + " 月", scale: "month", cur: scale === "year" && true });
+  c.push({ label: f, scale: "day", cur: scale === "day" || scale === "month" });
+  return c;
+}
+
+/* 统计 */
+function logs() { return items.filter((i) => i.kind === "log" && inRange(i)); }
+function points() { return items.filter((i) => i.kind === "point" && inRange(i)); }
+function dayPoints() { return points().filter((i) => i.date === cursor && i.s != null); }
+function dayLogs() { return logs().filter((i) => i.date === cursor && i.s != null); }
+function spanMin() {
+  if (scale === "day") return logs().filter((i) => i.date === cursor).reduce((n, i) => n + (i.e - i.s), 0);
+  return logs().reduce((n, i) => n + i.slot * 90, 0);
+}
+function concAt(t) { return logs().filter((i) => i.kind === "log" && i.date === cursor && i.s <= t && t < i.e).length; }
+function maxConc() { let m = 0; for (let t = DAY.from; t < DAY.to; t += 5) m = Math.max(m, concAt(t)); return m; }
+function paintStats() {
+  const L = logs(), P = points();
+  $("#s-log").textContent = L.length;
+  $("#s-done").textContent = scale === "day" ? dayPoints().length : P.length;
+  $("#s-span").textContent = scale === "day" ? dur(spanMin()) : (scale === "year" || scale === "decade" ? L.length + " 段经历" : L.length + " 段");
+  $("#s-conc").textContent = scale === "day" ? maxConc() : "—";
+  const [f, t] = rangeOf();
+  $("#range").textContent = scale === "day" ? cursor : scale === "month" ? f.slice(0, 7) : scale === "year" ? f.slice(0, 4) : f.slice(0, 4) + "–" + t.slice(0, 4);
+  $("#weekday").textContent = scale === "day" ? wd(cursor) : "";
+  $("#scaleTag").textContent = SCALE_INFO[scale].zh;
+}
+
+/* ============================================================
+   悬浮 / toast / 详情浮层
+   ============================================================ */
+const tip = $("#tip"), peek = $("#peek");
+function showTip(e, html) {
+  tip.innerHTML = html; tip.classList.add("on");
+  const pad2 = 10, r = tip.getBoundingClientRect();
+  tip.style.left = clamp(e.clientX + 14, pad2, innerWidth - r.width - pad2) + "px";
+  tip.style.top = clamp(e.clientY - r.height - 12, pad2, innerHeight - r.height - pad2) + "px";
+}
+function hideTip() { tip.classList.remove("on"); }
+let th;
+function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("on"); clearTimeout(th); th = setTimeout(() => t.classList.remove("on"), 1700); }
+
+function mdToHTML(md) {
+  let h = String(md);
+  // 1) 引用：在转义之前用占位符保护（否则 > 会被转成 &gt;）
+  h = h.replace(/(?:^>\s*[^\n]*$\n?)+/gm, (m) =>
+    "@@BQ@@" + m.split("\n").filter(Boolean).map((l) => l.replace(/^>\s?/, "")).join("@@BR@@") + "@@ENDBQ@@\n\n");
+  h = esc(h).trim();
+  h = h.replace(/^#{4,6}\s*(.+)$/gm, "<h4>$1</h4>").replace(/^###\s*(.+)$/gm, "<h4>$1</h4>");
+  h = h.replace(/```(\w*)\n([\s\S]*?)```/g, (_, l, code) => `<pre style="margin:8px 0 10px;background:var(--panel2);border:1px solid var(--line);border-radius:7px;overflow:auto;font:11px/1.6 ui-monospace,Menlo,monospace;color:var(--ink2);padding:9px 11px"><code>${code.replace(/\n$/, "")}</code></pre>`);
+  h = h.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, a, u) => `<div class="img">图片 · ${a || u}（点开看原图）</div>`);
+  h = h.replace(/^(\d+)\.\s+(.+)$/gm, "<li>$2</li>").replace(/^[-*]\s+(.+)$/gm, "<li>$1</li>");
+  h = h.replace(/(?:<li>[\s\S]*?<\/li>\s*)+/g, (m) => "<ul>" + m.trim() + "</ul>");
+  h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
+  h = h.replace(/\[\[([^\]]+)\]\]/g, '<span class="tag">$1</span>');
+  h = h.replace(/\[proj::\s*([^\]]+)\]/g, '<span class="tag">$1</span>');
+  h = h.replace(/@@BQ@@([\s\S]*?)@@ENDBQ@@/g, (_, inner) => "<blockquote>" + inner.replace(/@@BR@@/g, "<br>") + "</blockquote>");
+  h = h.split(/\n{2,}/).map((b) => /^\s*<(h4|ul|pre|blockquote|div)/.test(b.trim()) ? b : "<p>" + b.replace(/\n/g, "<br>") + "</p>").join("");
+  return h;
+}
+
+function openPeek(id, at, ev) {
+  const it = items.find((x) => x.id === id);
+  if (!it) return;
+  peekId = id;
+  const when = it.kind === "log"
+    ? (isDay(it) ? `${fmt(it.s)}–${fmt(it.e)} · ${dur(it.e - it.s)}` : `${it.date} → ${it.endDate} · ${it.slot ? it.slot + " 个月" : ""}`)
+    : (isDay(it) ? fmt(it.s) + " 完成" : it.date);
+  peek.innerHTML = `
+    <div class="top"><span class="dot" style="background:${PROJECTS[it.proj]}"></span>
+      <span class="when">${esc(when)} · ${esc(it.proj)}</span>
+      <button class="close" id="peek-x">✕</button></div>
+    <h3>${esc(it.title)}</h3>
+    <div class="body">${it.md ? mdToHTML(it.md) : '<p style="color:var(--ink4)">这条还没有正文。点「编辑」可以补一段 Markdown，支持标题、列表、代码块、引用、双链。</p>'}</div>
+    <div class="foot">
+      <button class="b pri" id="peek-edit">编辑</button>
+      <button class="b" id="peek-open">打开笔记</button>
+      <button class="b" id="peek-zoom">${scale === "day" ? "在一年里的位置" : "回到这一天"}</button>
+    </div>`;
+  peek.classList.add("on");
+  const r = peek.getBoundingClientRect();
+  let x = (at ? at.x : innerWidth / 2) + 16, y = (at ? at.y : 120) - 28;
+  if (x + r.width > innerWidth - 14) x = (at ? at.x : innerWidth / 2) - r.width - 16;
+  peek.style.left = clamp(x, 12, innerWidth - r.width - 12) + "px";
+  peek.style.top = clamp(y, 12, innerHeight - r.height - 12) + "px";
+  $("#peek-x").onclick = closePeek;
+  $("#peek-open").onclick = () => toast("会打开这条所在的笔记并定位到那一行");
+  $("#peek-edit").onclick = () => { closePeek(); sel = it.id; if (!sideOpen) toggleSide(true); render(); };
+  $("#peek-zoom").onclick = () => {
+    if (scale === "day") { setScale("year"); closePeek(); }
+    else { cursor = it.date; setScale("day"); closePeek(); }
+  };
+}
+function closePeek() { peekId = null; peek.classList.remove("on"); }
+function isDay(it) { return !!it.e && it.e > 0; }
+
+/* ============================================================
+   渲染：日尺度的四个视图
+   ============================================================ */
+const Xd = (m) => ((m - view.from) / (view.to - view.from)) * 100;
+
+/* ---- 航道 ---- */
+function renderFlow(stage) {
+  const L = logs().filter((i) => i.date === cursor);
+  const P = points().filter((i) => i.date === cursor);
+  const W = stage.clientWidth - 32;
+  const lv = [], ends = [];
+  [...L].sort((a, b) => a.s - b.s).forEach((it) => {
+    let k = 0; while (ends[k] !== undefined && ends[k] > it.s) k++;
+    ends[k] = it.e; it.lv = k;
+  });
+  const levels = Math.max(1, ends.length);
+  const railH = 34, laneH = 15, gap = 4;
+  const plotH = levels * (laneH + gap);
+  const H = railH + plotH + 26;
+  const base = railH + plotH;
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", W); svg.setAttribute("height", H); svg.style.cssText = "display:block;touch-action:none";
+  let g = "";
+  for (let h = Math.ceil(view.from / 60); h * 60 <= view.to; h++) {
+    const x = (Xd(h * 60) / 100) * W;
+    g += `<line x1="${x}" y1="${railH - 10}" x2="${x}" y2="${base + 4}" stroke="var(--grid)"/>`;
+    g += `<text x="${x + 4}" y="${base + 17}" fill="var(--ink3)" font-size="9">${pad(h)}:00</text>`;
+  }
+  // 记录条（不标空档）
+  L.filter((i) => i.s != null && i.date === cursor).forEach((i) => {
+    const x = (Xd(i.s) / 100) * W, w = Math.max(3, (Xd(i.e) / 100) * W - x);
+    const y = railH + (levels - 1 - i.lv) * (laneH + gap);
+    const on = hover === i.id || sel === i.id || peekId === i.id;
+    const dim = (hover && hover !== i.id) || (sel && sel !== i.id);
+    g += `<rect data-id="${i.id}" x="${x}" y="${y}" width="${w}" height="${laneH}" rx="4" fill="${PROJECTS[i.proj]}"
+      opacity="${dim ? .22 : on ? 1 : .82}" style="cursor:grab"/>`;
+    if (w > 88) g += `<text x="${x + 7}" y="${y + 10.6}" fill="#fff" fill-opacity="${dim ? .35 : .92}" font-size="9"
+      pointer-events="none">${esc(i.title.length > w / 9.4 ? i.title.slice(Math.max(0, Math.floor(w / 9.4) - 1)) + "…" : i.title)}</text>`;
+  });
+  // 时间点轨道（始终在）
+  g += `<rect x="0" y="0" width="${W}" height="${railH - 10}" rx="4" fill="var(--panel2)" opacity=".5"/>`;
+  g += `<line x1="0" y1="${railH - 10}" x2="${W}" y2="${railH - 10}" stroke="var(--line2)"/>`;
+  g += `<text x="7" y="${railH - 19}" fill="var(--ink3)" font-size="8" letter-spacing=".12em">时间点</text>`;
+  P.filter((i) => i.s != null && i.date === cursor).forEach((i) => {
+    const x = (Xd(i.s) / 100) * W;
+    const on = hover === i.id || sel === i.id || peekId === i.id;
+    const dim = (hover && hover !== i.id) || (sel && sel !== i.id);
+    g += `<line x1="${x}" y1="${railH - 10}" x2="${x}" y2="${base}" stroke="${PROJECTS[i.proj]}" stroke-dasharray="2 3" opacity="${on ? .5 : .14}"/>`;
+    g += `<circle data-id="${i.id}" cx="${x}" cy="${railH - 20}" r="${on ? 4.6 : 3.8}" fill="${PROJECTS[i.proj]}" opacity="${dim ? .3 : 1}" style="cursor:pointer"/>`;
+    g += `<circle cx="${x}" cy="${railH - 20}" r="7.4" fill="none" stroke="${PROJECTS[i.proj]}" stroke-opacity="${dim ? .1 : .3}"/>`;
+    if (on) {
+      g += `<rect x="${x - 60}" y="${railH - 50}" width="120" height="17" rx="4" fill="var(--panel2)" stroke="var(--line2)"/>`;
+      g += `<text x="${x}" y="${railH - 38}" fill="var(--ink)" font-size="9.5" text-anchor="middle">${esc(i.title.slice(0, 16))}${i.title.length > 16 ? "…" : ""}</text>`;
+    }
+  });
+  if (playing) {
+    const x = (Xd(playAt) / 100) * W;
+    g += `<line x1="${x}" y1="${railH - 34}" x2="${x}" y2="${base}" stroke="var(--acc2)" stroke-width="1.2"/>
+          <circle cx="${x}" cy="${railH - 34}" r="2.8" fill="var(--acc2)"/>
+          <text x="${x + 6}" y="${railH - 31}" fill="var(--acc2)" font-size="8.5">${fmt(Math.round(playAt))}</text>`;
+  }
+  if (brush) {
+    const x0 = (Xd(Math.min(brush.a, brush.b)) / 100) * W, x1 = (Xd(Math.max(brush.a, brush.b)) / 100) * W;
+    g += `<rect x="${x0}" y="${railH - 10}" width="${x1 - x0}" height="${base - railH + 10}" fill="var(--acc)" opacity=".07"/>
+          <line x1="${x0}" y1="${railH - 10}" x2="${x0}" y2="${base}" stroke="var(--acc)" stroke-opacity=".5"/>
+          <line x1="${x1}" y1="${railH - 10}" x2="${x1}" y2="${base}" stroke="var(--acc)" stroke-opacity=".5"/>
+          <rect x="${clamp(x0 - 2, 0, W - 150)}" y="${railH - 50}" width="146" height="17" rx="4" fill="var(--panel2)" stroke="var(--line2)"/>
+          <text x="${clamp(x0 + 6, 6, W - 142)}" y="${railH - 38}" fill="var(--ink2)" font-size="8.5">${fmt(Math.round(Math.min(brush.a, brush.b)))}–${fmt(Math.round(Math.max(brush.a, brush.b)))} · ${dur(Math.round(Math.abs(brush.b - brush.a)))}</text>`;
+  }
+  svg.innerHTML = g;
+  stage.appendChild(svg);
+  stage.appendChild(axisRow());
+  stage.appendChild(legendRow([["↑ 高度 = 同时几件 · ● 上方 = 时间点（点开放大看正文）"]]));
+  stage.appendChild(hintRow("拖条改时间 · 点条或点看正文 · 滚轮缩放 · 双击还原"));
+  stage.appendChild(factsRow());
+  attachFlow(svg, W);
+}
+
+/* ---- 泳道 ---- */
+function renderLanes(stage) {
+  const L = logs().filter((i) => i.date === cursor && i.s != null);
+  const P = points().filter((i) => i.date === cursor && i.s != null);
+  const projs = [...new Set([...L, ...P].map((i) => i.proj))];
+  const rowH = 48;
+  const box = el("div");
+  box.style.cssText = `position:relative;height:${projs.length * rowH + 20}px`;
+  const grid = el("div");
+  grid.style.cssText = "position:absolute;inset:0;pointer-events:none";
+  for (let h = Math.ceil(view.from / 60); h * 60 <= view.to; h++) {
+    const gg = el("i");
+    gg.style.cssText = `position:absolute;left:${Xd(h * 60)}%;top:0;bottom:16px;width:1px;background:var(--grid)`;
+    grid.appendChild(gg);
+    const tx = el("div", "", pad(h) + ":00");
+    tx.style.cssText = `position:absolute;left:${Xd(h * 60)}%;bottom:0;font-size:8.5px;color:var(--ink5);transform:translateX(3px)`;
+    grid.appendChild(tx);
+  }
+  box.appendChild(grid);
+  projs.forEach((p, idx) => {
+    const row = el("div");
+    const hot = hover && (L.concat(P).find((x) => x.id === hover) || {}).proj === p;
+    row.style.cssText = `position:absolute;left:0;right:0;top:${idx * rowH}px;height:${rowH}px;border-top:1px solid var(--line);${hot ? "background:rgba(91,108,255,.05)" : ""}`;
+    const lab = el("div", "", p);
+    lab.style.cssText = "position:absolute;left:0;top:7px;font-size:9.5px;color:var(--ink4)";
+    row.appendChild(lab);
+    L.filter((i) => i.proj === p).forEach((i) => {
+      const dim = (hover && hover !== i.id) || (sel && sel !== i.id);
+      const wid = Math.max(((i.e - i.s) / (view.to - view.from)) * 100, .4);
+      const b = el("div"); b.dataset.id = i.id;
+      b.style.cssText = `position:absolute;left:${Xd(i.s)}%;width:${wid}%;top:23px;height:10px;border-radius:5px;
+        background:${PROJECTS[p]};opacity:${dim ? .24 : .92};cursor:grab`;
+      if (sel === i.id) b.style.boxShadow = "0 0 0 1px var(--ink)";
+      if (wid > 7.2) {
+        const t = el("div", "", i.title);
+        t.style.cssText = `position:absolute;left:${Xd(i.s) + .6}%;top:23.5px;font-size:9px;color:#fff;opacity:.92;z-index:3;
+          pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${wid - 1}%`;
+        row.appendChild(t);
+      }
+      row.appendChild(b);
+    });
+    P.filter((i) => i.proj === p).forEach((i) => {
+      const d = el("div"); d.dataset.id = i.id;
+      d.title = i.title;
+      d.style.cssText = `position:absolute;left:${Xd(i.s)}%;top:25.5px;width:7px;height:7px;border-radius:50%;transform:translateX(-50%);
+        background:${PROJECTS[p]};opacity:${hover && hover !== i.id ? .28 : 1};cursor:pointer`;
+      row.appendChild(d);
+    });
+    box.appendChild(row);
+  });
+  stage.appendChild(box);
+  requestAnimationFrame(() => {
+    const W = box.clientWidth; if (!W) return;
+    const seq = [...L].sort((a, b) => a.s - b.s);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", W); svg.setAttribute("height", projs.length * rowH + 20);
+    svg.style.cssText = "position:absolute;left:0;top:0;pointer-events:none;overflow:visible";
+    let paths = "";
+    for (let i = 1; i < seq.length; i++) {
+      const a = seq[i - 1], b = seq[i];
+      if (a.proj === b.proj) continue;
+      const x1 = (Xd(a.e) / 100) * W, x2 = (Xd(b.s) / 100) * W;
+      const y1 = projs.indexOf(a.proj) * rowH + 28, y2 = projs.indexOf(b.proj) * rowH + 28;
+      if (Math.abs(x2 - x1) < 3) continue;
+      const mx = (x1 + x2) / 2, dir = y2 > y1 ? 1 : -1;
+      paths += `<path d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--acc2)"
+        stroke-width="1.1" stroke-dasharray="2 3" opacity=".4"/>
+        <path d="M ${x2} ${y2} l -3.4 ${-3.4 * dir} l 6.8 0 z" fill="var(--acc2)" opacity=".5"/>`;
+    }
+    svg.innerHTML = paths; box.appendChild(svg);
+  });
+  stage.appendChild(axisRow());
+  stage.appendChild(legendRow([["虚线 → = 一次上下文切换"]]));
+  stage.appendChild(hintRow("点任意条或点看正文 · 拖条改时间"));
+  stage.appendChild(factsRow());
+  box.addEventListener("pointermove", (e) => {
+    const t = e.target.closest("[data-id]"); if (!t) { if (hover) { hover = null; render(); } hideTip(); return; }
+    const it = items.find((x) => x.id === t.dataset.id);
+    if (it && hover !== it.id) { hover = it.id; render(); }
+    if (it) showTip(e, tipFor(it));
+  });
+  box.addEventListener("pointerleave", () => { hover = null; hideTip(); render(); });
+  box.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-id]");
+    if (t) { const r = t.getBoundingClientRect(); openPeek(t.dataset.id, { x: r.right, y: r.top }, e); }
+  });
+}
+
+/* ---- 表盘 ---- */
+function renderDial(stage) {
+  const L = logs().filter((i) => i.date === cursor && i.s != null);
+  const P = points().filter((i) => i.date === cursor && i.s != null);
+  const S = 288, C = S / 2, R = 112;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", S); svg.setAttribute("height", S); svg.style.cssText = "display:block;margin:0 auto";
+  const ang = (m) => (m / 1440) * Math.PI * 2 - Math.PI / 2;
+  const pt = (m, r) => [C + Math.cos(ang(m)) * r, C + Math.sin(ang(m)) * r];
+  const arc = (a, b) => { const [x1, y1] = pt(a, R), [x2, y2] = pt(b, R); return `M ${x1} ${y1} A ${R} ${R} 0 ${b - a > 720 ? 1 : 0} 1 ${x2} ${y2}`; };
+  let g = `<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="var(--line)"/>
+           <circle cx="${C}" cy="${C}" r="${R - 24}" fill="none" stroke="var(--grid)"/>`;
+  for (let h = 0; h < 24; h++) {
+    const [x1, y1] = pt(h * 60, R + 3), [x2, y2] = pt(h * 60, R + (h % 3 ? 6 : 11));
+    g += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--line2)"/>`;
+    if (h % 3 === 0) { const [tx, ty] = pt(h * 60, R + 21); g += `<text x="${tx}" y="${ty}" fill="var(--ink4)" font-size="9" text-anchor="middle" dominant-baseline="middle">${pad(h)}</text>`; }
+  }
+  L.forEach((i) => {
+    const on = sel === i.id || hover === i.id || peekId === i.id;
+    if (on) g += `<path d="${arc(i.s, Math.max(i.e, i.s + 5))}" fill="none" stroke="var(--ink)" stroke-opacity=".2" stroke-width="20" stroke-linecap="round"/>`;
+    g += `<path data-id="${i.id}" d="${arc(i.s, Math.max(i.e, i.s + 5))}" fill="none" stroke="${PROJECTS[i.proj]}"
+      stroke-width="14" stroke-linecap="round" opacity="${hover && hover !== i.id ? .25 : .9}" style="cursor:pointer"/>`;
+  });
+  P.forEach((i) => {
+    const [x, y] = pt(i.s, R - 12);
+    g += `<circle data-id="${i.id}" cx="${x}" cy="${y}" r="${peekId === i.id ? 4.4 : 3.2}" fill="${PROJECTS[i.proj]}"
+      opacity="${hover && hover !== i.id ? .25 : 1}" style="cursor:pointer"/>`;
+  });
+  const s = spanMin();
+  g += `<text x="${C}" y="${C - 12}" fill="var(--ink)" font-size="24" font-weight="600" text-anchor="middle">${(s / 60).toFixed(1)}<tspan font-size="12" fill="var(--ink3)"> h</tspan></text>
+        <text x="${C}" y="${C + 9}" fill="var(--ink4)" font-size="9" text-anchor="middle">在轴时长 · ${L.length} 段</text>
+        <text x="${C}" y="${C + 24}" fill="var(--ink4)" font-size="9" text-anchor="middle">${P.length} 个时间点</text>`;
+  svg.innerHTML = g;
+  stage.appendChild(svg);
+  stage.appendChild(legendRow([]));
+  stage.appendChild(hintRow("外环 = 时间段 · 内环 = 时间点 · 点任意弧或点看正文"));
+  stage.appendChild(factsRow());
+  svg.addEventListener("pointermove", (e) => {
+    const t = e.target.closest("[data-id]"); if (!t) { hideTip(); if (hover) { hover = null; render(); } return; }
+    const it = items.find((x) => x.id === t.dataset.id);
+    if (it && hover !== it.id) { hover = it.id; render(); }
+    if (it) showTip(e, tipFor(it));
+  });
+  svg.addEventListener("pointerleave", () => { hover = null; hideTip(); render(); });
+  svg.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-id]");
+    if (t) { const r = t.getBoundingClientRect(); openPeek(t.dataset.id, { x: r.x + r.width, y: r.y + r.height / 2 }, e); }
+  });
+}
+
+/* ---- 周脉冲 ---- */
+function renderPulse(stage) {
+  const days = [];
+  const weekStart = addDays(cursor, -new Date(d2n(cursor)).getUTCDay());
+  for (let i = 0; i < 7; i++) days.push(addDays(weekStart, i));
+  const hours = [9, 12, 15, 18, 21];
+  const wrap = el("div", "pulse");
+  const seed = (d, h) => items.filter((i) => i.date === d && i.kind === "log" && Math.floor(i.s / 60) >= h - 3 && Math.floor(i.s / 60) < h).length
+    + items.filter((i) => i.date === d && i.kind === "point" && Math.floor(i.s / 60) >= h - 3 && Math.floor(i.s / 60) < h).length;
+  hours.forEach((h) => {
+    wrap.appendChild(el("div", "lab", pad(h)));
+    const row = el("div", "row");
+    days.forEach((d) => {
+      const v = seed(d, h);
+      const c = el("div", "cell" + (d === cursor ? " today" : ""));
+      c.style.opacity = v ? .1 + Math.min(v, 4) * .13 : .04;
+      c.onmouseenter = (e) => showTip(e, `<b>${d} ${pad(h)}:00–${pad(h + 3)}:00</b><span>${v ? v + " 条" : "没有记录"} · 点击跳到这天</span>`);
+      c.onmouseleave = hideTip;
+      c.onclick = () => { cursor = d; setScale("day"); };
+      row.appendChild(c);
+    });
+    wrap.appendChild(row);
+  });
+  wrap.appendChild(el("div", "lab", ""));
+  const dl = el("div", "days");
+  days.forEach((d) => dl.appendChild(el("div", "", d.slice(5) + " " + WD[new Date(d2n(d)).getUTCDay()])));
+  wrap.appendChild(dl);
+  stage.appendChild(wrap);
+
+  const tot = days.map((d) => items.filter((i) => i.date === d).length);
+  const mx = Math.max(...tot, 1), busiest = tot.indexOf(mx);
+  const bar = el("div", "bars");
+  bar.appendChild(el("div", ""));
+  const set = el("div", "set");
+  tot.forEach((v, i) => {
+    const col = el("div", "col");
+    col.appendChild(el("em", "", String(v)));
+    const b = el("b"); b.style.height = Math.max(2, (v / mx) * 58) + "px"; b.style.opacity = i === busiest ? .85 : .42;
+    col.appendChild(b); set.appendChild(col);
+  });
+  bar.appendChild(set);
+  stage.appendChild(bar);
+  stage.appendChild(hintRow("点任意格子跳到那天 · 描边列 = " + cursor));
+  stage.appendChild(factsRowWeek(days, tot, busiest));
+}
+
+/* ============================================================
+   渲染：年 / 十年尺度（"面"，可下钻）
+   ============================================================ */
+function spanSlot(it) {
+  let a = it.slot ? it.slot : (it.endDate && it.endDate !== it.date ? Math.max(1, Math.round((d2n(it.endDate) - d2n(it.date)) / (30 * 864e5))) : 1);
+  return Math.max(1, a);
+}
+function renderAggregate(stage) {
+  const [f, t] = rangeOf();
+  const L = logs().filter((i) => i.kind === "log");
+  const P = points();
+  // year: 每行一年（横向 1–12 月）；decade: 每行一年，纵向排 10 年
+  const yearsAll = [...new Set(L.concat(P).map((i) => Number(i.date.slice(0, 4))))].sort((a, b) => a - b);
+  const yFrom = Number(f.slice(0, 4)), yTo = Number(t.slice(0, 4));
+  const years = scale === "decade"
+    ? Array.from({ length: yTo - yFrom + 1 }, (_, k) => yFrom + k)
+    : [yFrom];
+  const bins = years.map((y) => ({ year: y, logs: [], points: [] }));
+  const startYear = years[0];
+  const put = (it, into) => {
+    const y = Number(it.date.slice(0, 4));
+    const bin = bins.find((b) => b.year === y);
+    if (bin) bin[into].push(it);
+  };
+  L.forEach((i) => { put(i, "logs"); });
+  P.forEach((i) => put(i, "points"));
+
+  const W = stage.clientWidth - 32;
+  const cap = 76;
+  const binsUsed = bins.filter((b) => b.logs.length || b.points.length);
+  const shown = scale === "decade" ? bins : binsUsed;
+  const compactEmpty = false;
+  const rowH = 58, gap = 14;
+  const rowHOf = () => rowH;
+  const H = shown.reduce((n, b) => n + rowHOf(b) + gap, 0) + 26;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", W); svg.setAttribute("height", H); svg.style.cssText = "display:block";
+  let g = "";
+  const PXM = W / 12;   // 每月的像素宽
+  // 月份竖网格 + 顶部月份刻度
+  for (let m = 1; m <= 12; m++) {
+    const x = (m - 1) * PXM;
+    if (m > 1) g += `<line x1="${x}" y1="8" x2="${x}" y2="${H - 18}" stroke="var(--grid)"/>`;
+    g += `<text x="${x + 3}" y="11" fill="var(--ink3)" font-size="9">${pad(m)}月</text>`;
+  }
+  shown.forEach((b, row) => {
+    const y = shown.slice(0, row).reduce((n, b) => n + rowHOf(b) + gap, 0) + 26;
+    const total = b.logs.length + b.points.length;
+    if (b.year === Number(cursor.slice(0, 4))) g += `<rect x="0" y="${y - 8}" width="${W}" height="${rowH}" rx="6" fill="var(--acc)" opacity=".04"/>`;
+    // 行底 + 月份网格
+    g += `<line x1="0" y1="${y + 48}" x2="${W}" y2="${y + 48}" stroke="var(--line)" stroke-opacity=".7"/>`;
+    // 经历（按真实起止月定位）
+    const stack = [];
+    const maxLane = 2;
+    const hidden = [];
+    b.logs.forEach((it) => {
+      const m1 = Number(it.date.slice(5, 7)), y1 = Number(it.date.slice(0, 4));
+      const ed = it.endDate || it.date;
+      const m2 = Number(ed.slice(5, 7)), y2 = Number(ed.slice(0, 4));
+      let x0 = (m1 - 1) * PXM, x1 = (m2 - 1) * PXM + PXM;
+      if (y1 < b.year) x0 = 0;
+      if (y2 > b.year) x1 = W;
+      const w = Math.max(7, x1 - x0);
+      let k = 0; while (stack[k] !== undefined && stack[k] > x0) k++;
+      if (k >= maxLane) { hidden.push(it); return; }
+      stack[k] = x1;
+      const yy = y + k * 13;
+      const on = hover === it.id || peekId === it.id || sel === it.id;
+      g += `<rect data-id="${it.id}" data-kind="bar" x="${x0}" y="${yy}" width="${w}" height="9" rx="4.5"
+        fill="${PROJECTS[it.proj]}" opacity="${hover && hover !== it.id ? .3 : on ? 1 : .88}" style="cursor:zoom-in"/>`;
+      if (w > 60) g += `<text x="${x0 + 7}" y="${yy + 7.4}" fill="#fff" font-size="8.5" pointer-events="none" opacity=".94">${esc(it.title.slice(0, Math.floor(w / 8.6)))}</text>`;
+    });
+    // 时间点（按真实月份定位，画在行底）
+    const dotStack = {};
+    b.points.forEach((it) => {
+      const mth = Number(it.date.slice(5, 7));
+      const x = (mth - 1) * PXM + PXM / 2;
+      const key = Math.round(x / 9);
+      const lv = (dotStack[key] = (dotStack[key] || 0) + 1);
+      const yy = y + 40 - (lv - 1) * 9;
+      const dim = hover && hover !== it.id;
+      g += `<circle data-id="${it.id}" data-kind="dot" cx="${x}" cy="${yy}" r="${peekId === it.id ? 4.4 : 3.4}"
+        fill="${PROJECTS[it.proj]}" stroke="var(--panel)" stroke-width="1.8" opacity="${dim ? .3 : 1}" style="cursor:zoom-in"/>`;
+    });
+    if (hidden.length) {
+      const bw = 96, bx = W - bw - 4, by = y + 30;
+      g += `<g data-id="${hidden[0].id}" style="cursor:pointer">
+        <rect x="${bx}" y="${by}" width="${bw}" height="19" rx="9.5" fill="var(--panel2)" stroke="var(--line3)"/>
+        <text x="${bx + 11}" y="${by + 13}" fill="var(--acc2)" font-size="9">展开 ${hidden.length} 段重叠</text>
+        <path d="M ${bx + bw - 15} ${by + 8} l 4 5 l 4 -5 z" fill="var(--acc2)" opacity=".9"/>
+      </g>`;
+    }
+    // 左侧年份 + 计数
+    g += `<text x="0" y="${y + 13}" fill="var(--ink)" font-size="12" font-weight="600">${b.year}</text>`;
+    g += `<text x="0" y="${y + 26}" fill="var(--ink4)" font-size="9">${b.logs.length} 段 · ${b.points.length} 点</text>`;
+    if (total) g += `<rect data-click="${b.year}" x="0" y="${y - 6}" width="${W}" height="${rowH}" fill="transparent" style="cursor:pointer"/>`;
+  });
+  // 底部刻度
+
+  svg.innerHTML = g;
+  stage.appendChild(svg);
+
+  stage.appendChild(aggLegend());
+  stage.appendChild(hintRow(scale === "decade"
+    ? "一行 = 一年 · 横轴 = 1–12 月 · 条 = 一段经历 · 圆点 = 时间点 · 点任意条/点即可放大下钻"
+    : "一整年铺开：横轴 = 1–12 月 · 条 = 一段经历 · 圆点 = 时间点 · 点任意条/点放大下钻到这一天"));
+
+  if (!expanded && binsUsed.length > shown.length) {
+    const more = el("button", "b", `还有 ${binsUsed.length - shown.length} 年 · 展开`);
+    more.style.cssText = "margin-top:12px;align-self:flex-start";
+    more.onclick = () => { expanded = true; render(); };
+    stage.appendChild(more);
+  }
+  stage.appendChild(factsRowAgg(L, P));
+
+  svg.addEventListener("pointermove", (e) => {
+    const t = e.target.closest("[data-id]"); if (!t) { hideTip(); if (hover) { hover = null; render(); } return; }
+    const it = items.find((x) => x.id === t.dataset.id);
+    if (it && hover !== it.id) { hover = it.id; render(); }
+    if (it) showTip(e, tipFor(it));
+  });
+  svg.addEventListener("pointerleave", () => { hover = null; hideTip(); render(); });
+  svg.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-id]");
+    if (t) {
+      const r = t.getBoundingClientRect();
+      const it = items.find((x) => x.id === t.dataset.id);
+      drill(it, { x: r.x + r.width, y: r.y + r.height / 2 });
+      return;
+    }
+    const rw = e.target.closest("[data-click]");
+    if (rw) { cursor = rw.dataset.click + "-06-01"; setScale("year"); }
+  });
+}
+
+/* ============================================================
+   下钻：打开浮层 + 平滑放大到下一尺度
+   ============================================================ */
+function drill(it, at) {
+  if (!it) return;
+  openPeek(it.id, at);
+  if (scale !== "day") {
+    setTimeout(() => { cursor = it.date; zoomIn(); }, 120);
+  }
+}
+function zoomIn() {
+  const i = SCALES.indexOf(scale);
+  if (i >= SCALES.length - 1) return;
+  setScale(SCALES[i + 1], it_ => it_.date && it_.date <= cursor);
+}
+function zoomOut() {
+  const i = SCALES.indexOf(scale);
+  if (i <= 0) return;
+  setScale(SCALES[i - 1]);
+}
+let pendingHighlight = null;
+function setScale(s, pred) {
+  scale = s; expanded = false; closePeek();
+  if (s === "day" && !items.some((i) => i.date === cursor)) cursor = "2026-11-02";
+  render(pred);
+}
+
+/* ============================================================
+   渲染入口
+   ============================================================ */
+function render(highlightPred) {
+  paintStats();
+  renderCrumbs();
+  $("#main").className = sideOpen ? "withside" : "";
+  $("#handle").className = "handle" + (sideOpen ? " gone" : "");
+  const stage = $("#stage");
+  stage.innerHTML = "";
+  if (mode === "pulse") renderPulse(stage);
+  else if (scale === "day") {
+    if (mode === "flow") renderFlow(stage);
+    else if (mode === "lanes") renderLanes(stage);
+    else renderDial(stage);
+  } else renderAggregate(stage);
+  renderSide();
+  if (typeof highlightPred === "function") {
+    const hit = items.find(highlightPred);
+    if (hit) { hover = hit.id; setTimeout(() => { hover = null; }, 2200); }
+  }
+}
+function renderCrumbs() {
+  const c = $("#crumbs"); c.innerHTML = "";
+  const parts = crumbs();
+  parts.forEach((p, i) => {
+    if (i) c.appendChild(el("span", "crumb-sep", "›"));
+    const b = el("button", "crumb" + (i === parts.length - 1 ? " cur" : ""), p.label);
+    b.onclick = () => { if (i === parts.length - 1) return; setScale(p.scale); };
+    c.appendChild(b);
+  });
+  const z = el("div", "zoom");
+  const zo = el("button", "zbtn", "缩小 ⌘-");
+  const zi = el("button", "zbtn", "放大 ⌘+");
+  zo.disabled = scale === "decade";
+  zi.disabled = scale === "day";
+  zo.onclick = zoomOut; zi.onclick = zoomIn;
+  z.append(zo, zi);
+  c.appendChild(z);
+}
+function axisRow() {
+  const a = el("div", "axis");
+  a.innerHTML = `<span>${fmt(view.from)}</span><span>${fmt(view.to)}</span>`;
+  return a;
+}
+function legendRow(extra) {
+  const l = el("div", "legend");
+  Object.entries(PROJECTS).forEach(([p, c]) => {
+    const s = el("span", "lg"); const i = el("i"); i.style.background = c;
+    s.append(i, el("span", "", p)); l.appendChild(s);
+  });
+  (extra || []).forEach(([txt]) => { const s = el("span", "lg"); s.style.color = "var(--ink4)"; s.textContent = txt; l.appendChild(s); });
+  return l;
+}
+function hintRow(t) { const h = el("div", "hintline", t); return h; }
+function factsRow() {
+  const r = el("div", "facts");
+  const L = logs().filter((i) => i.date === cursor), s = spanMin();
+  const first = L.length ? fmt(Math.min(...L.map((i) => i.s))) : "—";
+  const longest = L.length ? dur(Math.max(...L.map((i) => i.e - i.s))) : "—";
+  [["最长一段", longest], ["在轴合计", dur(s)], ["第一件事", first], ["切换项目", String(contextSwitches())]].forEach(([k, v]) => {
+    const f = el("div", "fact"); f.append(el("span", "", k), el("b", "", v)); r.appendChild(f);
+  });
+  return r;
+}
+function factsRowWeek(days, tot, busiest) {
+  const r = el("div", "facts");
+  [["一周合计", String(tot.reduce((a, b) => a + b, 0))], ["最忙", days[busiest].slice(5)], ["平均", (tot.reduce((a, b) => a + b, 0) / 7).toFixed(1)], ["空格子", String(days.filter((d) => !tot[days.indexOf(d)]).length)]]
+    .forEach(([k, v]) => { const f = el("div", "fact"); f.append(el("span", "", k), el("b", "", v)); r.appendChild(f); });
+  return r;
+}
+function aggLegend() {
+  const l = el("div", "legend");
+  const b = el("span", "lg"); const bi = el("i"); bi.style.cssText = "width:14px;height:8px;border-radius:4px;background:var(--ink4)";
+  b.append(bi, el("span", "", "一段经历（有起止）"));
+  const d = el("span", "lg"); const di = el("i"); di.style.cssText = "width:8px;height:8px;border-radius:50%;background:var(--ink4)";
+  d.append(di, el("span", "", "一个时间点（只有时刻）"));
+  const sep = el("span", "lg"); sep.style.cssText = "color:var(--line3);margin:0 1px";
+  sep.textContent = "│";
+  const w1 = el("span", "lg"); w1.style.cssText = "color:var(--ink5);letter-spacing:.08em;font-size:9px";
+  w1.textContent = "形状";
+  const w2 = el("span", "lg"); w2.style.cssText = "color:var(--ink5);letter-spacing:.08em;font-size:9px;margin-left:6px";
+  w2.textContent = "项目颜色";
+  l.append(w1, b, d, sep, w2);
+  Object.entries(PROJECTS).forEach(([p, c]) => {
+    const t = el("span", "lg"); const i = el("i"); i.style.background = c;
+    t.append(i, el("span", "", p)); l.appendChild(t);
+  });
+  return l;
+}
+function factsRowAgg(L, P) {
+  const r = el("div", "facts");
+  const yrs = new Set(L.concat(P).map((i) => i.date.slice(0, 4)));
+  [["跨度", Math.min(...[...yrs].map(Number)) + "–" + Math.max(...[...yrs].map(Number))], ["经历", String(L.length)], ["时间点", String(P.length)], ["活跃年", String(yrs.size)]]
+    .forEach(([k, v]) => { const f = el("div", "fact"); f.append(el("span", "", k), el("b", "", v)); r.appendChild(f); });
+  return r;
+}
+function contextSwitches() {
+  const L = logs().filter((i) => i.date === cursor).sort((a, b) => a.s - b.s);
+  let n = 0; for (let i = 1; i < L.length; i++) if (L[i].proj !== L[i - 1].proj) n++;
+  return n;
+}
+function tipFor(it) {
+  return it.kind === "log"
+    ? `<b>${esc(it.title)}</b><span>${it.date}${it.endDate ? " → " + it.endDate : ""} · ${isDay(it) ? fmt(it.s) + "–" + fmt(it.e) + " · " + dur(it.e - it.s) : spanSlot(it) + " 个月"} · ${esc(it.proj)}</span>`
+    : `<b>${esc(it.title)}</b><span>${it.date}${isDay(it) ? " " + fmt(it.s) : ""} · 时间点 · ${esc(it.proj)}</span>`;
+}
+
+/* ---- 航道交互（window 级监听，重绘不断手势） ---- */
+function attachFlow(svg, W) {
+  const rect0 = () => svg.getBoundingClientRect();
+  const mAt = (cx, r) => view.from + clamp((cx - r.left) / r.width, 0, 1) * (view.to - view.from);
+  svg.addEventListener("pointerdown", (e) => {
+    const t = e.target.closest("[data-id]");
+    const r = rect0();
+    if (t) {
+      const it = items.find((x) => x.id === t.dataset.id);
+      if (!it || it.kind !== "log") return;
+      sel = it.id;
+      drag = { id: it.id, x0: e.clientX, w: r.width, s0: it.s, e0: it.e, moved: false };
+      render();
+    } else if ((e.clientY - r.top) > 34) {
+      const a = mAt(e.clientX, r); brush = { a, b: a }; drag = { brush: true, w: r.width, rect: r };
+      render();
+    } else return;
+    e.preventDefault();
+    const move = (ev) => {
+      if (drag.brush) { brush.b = mAt(ev.clientX, drag.rect || rect0()); render(); return; }
+      const span = view.to - view.from;
+      const step = Math.round((((ev.clientX - drag.x0) / drag.w) * span) / 5) * 5;
+      const it = items.find((x) => x.id === drag.id); if (!it) return;
+      if (step !== 0) drag.moved = true;
+      it.s = clamp(drag.s0 + step, 0, 1435); it.e = clamp(drag.e0 + step, it.s + 5, 1440);
+      render(); showTip(ev, `<b>${esc(it.title)}</b><span>${fmt(it.s)}–${fmt(it.e)} · 松手写回</span>`);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      if (drag && drag.id && drag.moved) toast("时间已改 · 已写回块里");
+      if (drag && drag.brush && Math.abs(brush.b - brush.a) < 15) brush = null;
+      drag = null; hideTip(); render();
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
+  svg.addEventListener("pointermove", (e) => {
+    if (drag) return;
+    const t = e.target.closest("[data-id]");
+    if (t) {
+      const it = items.find((x) => x.id === t.dataset.id);
+      if (it && hover !== it.id) { hover = it.id; render(); }
+      if (it) showTip(e, tipFor(it));
+    } else { if (hover) { hover = null; render(); } hideTip(); }
+  });
+  svg.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-id]");
+    if (t) { const r = t.getBoundingClientRect(); openPeek(t.dataset.id, { x: r.x + r.width / 2, y: r.y }, e); }
+  });
+  svg.addEventListener("pointerleave", () => { if (!drag) { hover = null; hideTip(); render(); } });
+}
+
+/* ============================================================
+   侧栏（可折叠）
+   ============================================================ */
+function renderSide() {
+  const side = $("#side");
+  if (!side) return;
+  if (!sideOpen) { side.style.display = "none"; return; }
+  side.style.display = "flex";
+  side.innerHTML = "";
+  const it = items.find((x) => x.id === sel);
+  if (!it) {
+    const hd = el("div", "hd");
+    hd.appendChild(el("b", "", scale === "day" ? "这一天" : `${rangeOf()[0]} 起的这个${SCALE_INFO[scale].zh}`));
+    const x = el("button", "x", "✕"); x.onclick = () => toggleSide(false);
+    hd.appendChild(x);
+    side.appendChild(hd);
+    const ins = el("div", "ins");
+    const L = dayLogs().sort((a, b) => a.s - b.s);
+    const P = dayPoints().sort((a, b) => a.s - b.s);
+    ins.appendChild(h3("时间段", true));
+    const l1 = el("div"); L.forEach((i) => l1.appendChild(itemRow(i))); ins.appendChild(l1);
+    ins.appendChild(h3("时间点", false, P.length));
+    const l2 = el("div"); P.forEach((i) => l2.appendChild(itemRow(i))); ins.appendChild(l2);
+    ins.appendChild(el("div", "note", "点任意一条看正文；正文支持 Markdown 渲染。"));
+    side.appendChild(ins);
+    return;
+  }
+  const hd = el("div", "hd");
+  hd.appendChild(el("b", "", it.kind === "log" ? "编辑时间段" : "编辑时间点"));
+  const x = el("button", "x", "✕"); x.onclick = () => toggleSide(false);
+  hd.appendChild(x);
+  side.appendChild(hd);
+
+  const ins = el("div", "ins");
+  const ed = el("div", "ed");
+  const f1 = el("div"); f1.appendChild(el("label", "", "标题"));
+  const t = el("input"); t.value = it.title; f1.appendChild(t); ed.appendChild(f1);
+
+  const f2 = el("div", "row2");
+  const c1 = el("div"); c1.appendChild(el("label", "", it.kind === "log" ? "开始" : "时刻"));
+  const st = el("input"); st.type = it.date === cursor ? "time" : "date"; st.value = it.date === cursor ? fmt(it.s) : it.date; c1.appendChild(st);
+  const c2 = el("div"); c2.appendChild(el("label", "", "结束"));
+  const en = el("input"); en.type = it.date === cursor ? "time" : "date"; en.value = it.date === cursor ? fmt(it.e) : (it.endDate || it.date); c2.appendChild(en);
+  if (it.kind === "point") { en.disabled = true; en.style.opacity = .4; }
+  f2.append(c1, c2); ed.appendChild(f2);
+
+  const f3 = el("div"); f3.appendChild(el("label", "", "项目"));
+  const pj = el("select");
+  Object.keys(PROJECTS).forEach((p) => { const o = el("option", "", p); o.value = p; pj.appendChild(o); });
+  pj.value = it.proj; f3.appendChild(pj); ed.appendChild(f3);
+
+  const f4 = el("div"); f4.appendChild(el("label", "", "正文（Markdown，支持标题/列表/代码/引用/双链）"));
+  const ta = el("textarea"); ta.value = it.md || ""; f4.appendChild(ta); ed.appendChild(f4);
+
+  const btns = el("div", "btns");
+  const ok = el("button", "b pri", "保存"); const cc = el("button", "b", "取消"); const del = el("button", "b danger", "删除");
+  btns.append(ok, cc, del); ed.appendChild(btns);
+  ins.appendChild(ed);
+  ins.appendChild(el("div", "note", "保存后：图上位置、统计、块里的源码同时更新。"));
+  if (it.md) {
+    ins.appendChild(h3("预览", false));
+    const prev = el("div"); prev.style.cssText = "font-size:11.5px;line-height:1.65;color:var(--ink2)";
+    prev.innerHTML = mdToHTML(it.md);
+    ins.appendChild(prev);
+  }
+  side.appendChild(ins);
+
+  ok.onclick = () => {
+    it.title = t.value.trim() || it.title; it.proj = pj.value; it.md = ta.value;
+    if (st.type === "time") { const s2 = toMin(st.value); it.s = s2; it.e = it.kind === "point" ? s2 : Math.max(s2 + 5, toMin(en.value)); }
+    else { it.date = st.value; if (it.kind === "log") it.endDate = en.value; }
+    sel = null; render((z) => z.id === it.id); toast("已写回块里");
+  };
+  cc.onclick = () => { sel = null; render(); };
+  del.onclick = () => { items = items.filter((z) => z.id !== it.id); sel = null; render(); toast("已删除这一条"); };
+  [t, st, en, pj, ta].forEach((n) => (n.onkeydown = (e) => { if (e.key === "Enter" && (e.metaKey || n.tagName !== "TEXTAREA")) ok.click(); }));
+}
+function h3(txt, addBtn, count) {
+  const h = el("h3", "", txt + (count != null ? " · " + count : ""));
+  if (addBtn) {
+    const b = el("button", "b add", "＋");
+    b.title = "补一条时间段";
+    b.style.cssText = "padding:1px 7px;font-size:11px;line-height:1.3";
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const id = "n" + Date.now();
+      items.push({ id, date: cursor, kind: "log", s: M(10), e: M(10, 30), proj: "mvlab 运营管理", title: "新的时间段" });
+      sel = id; render();
+    };
+    h.appendChild(b);
+  }
+  return h;
+}
+function toMin(v) { const [h, m] = v.split(":").map(Number); return h * 60 + m; }
+function itemRow(x) {
+  const r = el("div", "item" + (sel === x.id ? " on" : ""));
+  const bar = el("i"); bar.style.setProperty("--c", PROJECTS[x.proj]);
+  const b = el("div");
+  b.appendChild(el("div", "t", x.title));
+  b.appendChild(el("div", "m", (x.kind === "log"
+    ? (isDay(x) ? `${fmt(x.s)}–${fmt(x.e)} · ${dur(x.e - x.s)}` : `${x.date} → ${x.endDate} · ${spanSlot(x)} 个月`)
+    : (isDay(x) ? `${fmt(x.s)} · 时间点` : `${x.date} · 时间点`)) + " · " + x.proj));
+  r.append(bar, b);
+  r.onclick = () => { sel = x.id; sideOpen = true; render(); };
+  return r;
+}
+function toggleSide(on) { sideOpen = on == null ? !sideOpen : on; render(); }
+
+/* ============================================================
+   顶栏控件
+   ============================================================ */
+$("#modes").addEventListener("click", (e) => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  mode = b.dataset.mode;
+  [...$("#modes").children].forEach((x) => x.classList.toggle("on", x === b));
+  if (mode !== "flow" && scale !== "day") setScale("day"); else render();
+});
+$("#handle").onclick = () => toggleSide(true);
+$("#theme").addEventListener("click", () => {
+  document.body.classList.toggle("light");
+  $("#theme").textContent = document.body.classList.contains("light") ? "☀" : "☾";
+});
+$("#play").addEventListener("click", () => {
+  if (scale !== "day" || mode !== "flow") { setScale("day"); mode = "flow"; [...$("#modes").children].forEach((x) => x.classList.toggle("on", x.dataset.mode === "flow")); }
+  playing = !playing;
+  $("#play").textContent = playing ? "❚❚ 暂停" : "▶ 回放";
+  if (!playing) { render(); return; }
+  playAt = M(8); const t0 = performance.now();
+  const tick = (now) => {
+    if (!playing) return;
+    const p = Math.min(1, (now - t0) / 14000);
+    playAt = M(8) + p * (M(20) - M(8));
+    const c2 = items.find((i) => i.date === cursor && i.kind === "log" && i.s <= playAt && playAt < i.e);
+    sel = c2 ? c2.id : null;
+    render();
+    if (p < 1) requestAnimationFrame(tick);
+    else { playing = false; $("#play").textContent = "▶ 回放"; sel = null; render(); }
+  };
+  requestAnimationFrame(tick);
+});
+$("#stage").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  // 缩放：先把时间窗收放（日尺度），到极限就切换尺度
+  if (scale === "day") {
+    const span = view.to - view.from;
+    const next = clamp(span * (e.deltaY > 0 ? 1.2 : .84), 90, DAY.to - DAY.from);
+    if (next > DAY.to - DAY.from - 1 && e.deltaY > 0) { zoomOut(); return; }
+    const mid = (view.from + view.to) / 2;
+    view = { from: clamp(mid - next / 2, DAY.from, DAY.to - next), to: clamp(mid + next / 2, DAY.from + next, DAY.to) };
+    render();
+  } else {
+    if (e.deltaY < 0) zoomIn(); else zoomOut();
+  }
+}, { passive: false });
+$("#stage").addEventListener("dblclick", () => { if (scale === "day") { view = { ...DAY }; render(); } else zoomIn(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { if (peekId) closePeek(); else { sel = null; brush = null; } render(); }
+  if ((e.metaKey || e.ctrlKey) && (e.key === "+" || e.key === "=")) { e.preventDefault(); zoomIn(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === "-") { e.preventDefault(); zoomOut(); }
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    const n = e.key === "ArrowRight" ? 1 : -1;
+    if (scale === "day") cursor = addDays(cursor, n);
+    else if (scale === "month") cursor = addMonths(cursor, n);
+    else if (scale === "year") cursor = addYears(cursor, n);
+    else cursor = addYears(cursor, n * 10);
+    render();
+  }
+});
+
+const _q = new URLSearchParams(location.search);
+try {
+  const a = _q.get("auto");
+  if (a === "decade" || a === "year") { scale = a; cursor = a === "decade" ? "2020-01-01" : "2026-01-01"; }
+  if (a === "month") { scale = "month"; cursor = "2026-11-01"; }
+  if (_q.get("mode")) mode = _q.get("mode");
+  if (_q.get("side") === "0") sideOpen = false;
+  if (_q.get("peek")) items.length && (peekId = _q.get("peek"));
+} catch (e) { console.error("auto-init failed", e && e.message); }
+try { render(); } catch (e) { document.body.insertAdjacentHTML("beforeend", '<pre style="color:#f88;padding:20px">渲染失败: ' + (e && e.stack || e) + '</pre>'); }
+window.__go = (sc, cu, md) => { if (cu) cursor = cu; if (md) mode = md; setScale(sc); };
+</script>
+</body>
+</html>

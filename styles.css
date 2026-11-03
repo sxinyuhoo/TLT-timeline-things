@@ -1896,3 +1896,26 @@ body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(
 .tlt-qs-filter { font: inherit; font-size: 10.5px; color: var(--tlt-acc-ink); background: rgba(91,108,255,.10);
   border: 1px solid rgba(91,108,255,.30); border-radius: 999px; padding: 2px 9px; cursor: pointer; }
 .tlt-qs-filter:hover { background: rgba(91,108,255,.18); }
+
+
+/* ---- 日历搜索：搜索框下弹结果（点了跳过去 + 块闪两下） ---- */
+.tlt-search { position: relative; }
+.tlt-csearch { position: absolute; top: 30px; left: 0; right: 0; z-index: 40;
+  background: var(--tlt-bg2); border: 1px solid var(--tlt-line2); border-radius: 10px;
+  box-shadow: 0 10px 26px rgba(0,0,0,.28); padding: 4px; max-height: 320px; overflow-y: auto; }
+.tlt-csearch-i { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  background: transparent; border: 0; border-radius: 7px; padding: 6px 8px; cursor: pointer;
+  color: var(--tlt-ink2); font: inherit; }
+.tlt-csearch-i:hover { background: var(--tlt-surface2); }
+.tlt-csearch-d { flex: none; width: 40px; font-size: 10px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; }
+.tlt-csearch-t { flex: none; width: 84px; font-size: 10px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; }
+.tlt-csearch-n { flex: 1; min-width: 0; font-size: 11px; color: var(--tlt-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlt-csearch-empty { font-size: 10.5px; color: var(--tlt-ink5); padding: 7px 9px; }
+/* 命中的块闪两下：只动描边，不动布局 */
+@keyframes tlt-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(91,108,255,0); }
+  25% { box-shadow: 0 0 0 3px rgba(91,108,255,.85); }
+  60% { box-shadow: 0 0 0 2px rgba(91,108,255,.35); }
+}
+.tlt-blk.tlt-flash { animation: tlt-flash .95s ease-in-out 2; z-index: 8; }

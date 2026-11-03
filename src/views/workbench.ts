@@ -1,5 +1,5 @@
 import { t as T } from "../i18n";
-import { ItemView, WorkspaceLeaf, Notice, TFile } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, TFile, setIcon } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS, SORT_KEYS, DEFAULT_SORT, SORT_DEFAULT_DIR } from "../store";
 import type { SortCfg, SortKey } from "../store";
@@ -163,6 +163,8 @@ export class WorkbenchView extends ItemView {
   staffOnly: "busy" | "idle" | null = null;
   private starZoom = 1;
   private scrollToMin: number | null = null;
+  /** 日历搜索跳转后要高亮的那个块（按标题找） */
+  private flashTitle: string | null = null;
   private ideaTags: Set<string> = new Set();
   private starPan = { x: 0, y: 0 };
 
@@ -325,7 +327,10 @@ export class WorkbenchView extends ItemView {
 
   private sortTasks(list: Task[]): Task[] {
     return this.sortBy("task", list, (t) => t.title, (t) => (
-      this.sortCfg("task").by === "pri" ? t.pri : this.sortCfg("task").by === "created" ? (t.created || null) : null
+      this.sortCfg("task").by === "pri" ? t.pri
+        : this.sortCfg("task").by === "due" ? (t.due || null)
+        : this.sortCfg("task").by === "created" ? (t.created || null)
+        : null
     ));
   }
 
@@ -367,7 +372,8 @@ export class WorkbenchView extends ItemView {
     const s = el("aside", "tlt-side");
     if (this.sideOff) {
       s.addClass("off");
-      const reopen = el("button", "tlt-fold-btn", "›");
+      const reopen = el("button", "tlt-fold-btn");
+      setIcon(reopen, "tlt-chev-r");
       reopen.title = T("展开项目栏");
       reopen.onclick = () => { void this.setPanels({ sideCollapsed: false }); };
       s.appendChild(reopen);
@@ -379,7 +385,8 @@ export class WorkbenchView extends ItemView {
     const folder = el("span", "tlt-fold", "TLT/");
     folder.title = `${this.cfg.tasksFolder} · ${this.cfg.teamFolder}`;
     top.appendChild(folder);
-    const fold = el("button", "tlt-fold-btn", "‹");
+    const fold = el("button", "tlt-fold-btn");
+    setIcon(fold, "tlt-chev-l");
     fold.title = T("收起项目栏");
     fold.onclick = () => { void this.setPanels({ sideCollapsed: true }); };
     top.appendChild(fold);
@@ -538,6 +545,26 @@ export class WorkbenchView extends ItemView {
     input.dataset.search = "1";
     input.dataset.focuskey = "search";
     search.appendChild(input);
+    // 日历页签：搜索不筛时间轴，而是在搜索框下面弹结果（点了跳过去，并把那个块闪两下）
+    if (this.tab === "today") {
+      const hits = this.calSearchHits();
+      if (hits.length || this.q.trim()) {
+        const pop = el("div", "tlt-csearch");
+        if (!hits.length) pop.appendChild(el("div", "tlt-csearch-empty", T("没有匹配的日程")));
+        hits.slice(0, 12).forEach((h) => {
+          const row = el("button", "tlt-csearch-i");
+          row.dataset.calgoto = `${h.day}|${h.title}`;
+          row.append(
+            el("span", "tlt-csearch-d", h.day.slice(5)),
+            el("span", "tlt-csearch-t", h.st ? `${h.st}${h.en ? "–" + h.en : ""}` : T("全天")),
+            el("span", "tlt-csearch-n", h.title),
+          );
+          pop.appendChild(row);
+        });
+        if (hits.length > 12) pop.appendChild(el("div", "tlt-csearch-empty", T("还有 {n} 条，再打几个字缩小范围", { n: hits.length - 12 })));
+        search.appendChild(pop);
+      }
+    }
     top.appendChild(search);
 
     // 概览面板入口：放在明暗切换左边（挨着日常要用的那几个小按钮，别丢在左边的面包屑尾巴上）
@@ -1638,8 +1665,8 @@ export class WorkbenchView extends ItemView {
     });
     bar.appendChild(seg);
 
-    const prev = el("button", "tlt-dnav", "‹"); prev.dataset.dnav = "-1";
-    const next = el("button", "tlt-dnav", "›"); next.dataset.dnav = "1";
+    const prev = el("button", "tlt-dnav"); setIcon(prev, "tlt-chev-l"); prev.dataset.dnav = "-1";
+    const next = el("button", "tlt-dnav"); setIcon(next, "tlt-chev-r"); next.dataset.dnav = "1";
     const lab = el("div", "tlt-dlabel");
     if (this.calView === "d") {
       const dl = D(sel);
@@ -2136,7 +2163,8 @@ export class WorkbenchView extends ItemView {
     const r = el("aside", "tlt-msgs");
     if (this.railOff) {
       r.addClass("off");
-      const reopen = el("button", "tlt-fold-btn", "‹");
+      const reopen = el("button", "tlt-fold-btn");
+      setIcon(reopen, "tlt-chev-l");
       reopen.title = T("展开消息栏");
       reopen.onclick = () => { void this.setPanels({ railCollapsed: false }); };
       r.appendChild(reopen);
@@ -2152,7 +2180,8 @@ export class WorkbenchView extends ItemView {
     expand.title = T("在独立页打开消息中心");
     expand.append(el("span", "tlt-expand-i", "⤢"), el("span", "", T("消息中心")));
     head.appendChild(expand);
-    const fold = el("button", "tlt-fold-btn", "›");
+    const fold = el("button", "tlt-fold-btn");
+    setIcon(fold, "tlt-chev-r");
     fold.title = T("收起消息栏");
     fold.onclick = () => { void this.setPanels({ railCollapsed: true }); };
     head.appendChild(fold);
@@ -2272,6 +2301,44 @@ export class WorkbenchView extends ItemView {
     return minToHHMM(mins);
   }
 
+  /** 日历搜索的命中项：按标题匹配"有时间的块"（记录 + 排过期/有时间的任务） */
+  private calSearchHits(): { day: string; st?: string; en?: string; title: string }[] {
+    const q = this.q.trim();
+    if (!q) return [];
+    const out: { day: string; st?: string; en?: string; title: string }[] = [];
+    for (const l of this.store.logs) {
+      if (!l.due || !l.title.includes(q)) continue;
+      out.push({ day: l.due, st: l.st, en: l.en, title: l.title });
+    }
+    for (const t of this.store.tasks) {
+      if (t.kind !== "task" || !t.title.includes(q)) continue;
+      const day = dayOfBlock(t);
+      if (!day || (!t.st && !t.en)) continue;
+      out.push({ day, st: t.st, en: t.en, title: t.title });
+    }
+    const today = todayISO();
+    return out.sort((a, b) => Math.abs(Date.parse(a.day) - Date.parse(today)) - Math.abs(Date.parse(b.day) - Date.parse(today)));
+  }
+
+  /** 跳到某个块：切到那天的日视图、滚到它的时间，并把那个块闪两下 */
+  private async gotoCalendarHit(day: string, title: string) {
+    const l = this.store.logs.find((x) => x.due === day && x.title === title);
+    const t = this.store.tasks.find((x) => x.kind === "task" && x.title === title && dayOfBlock(x) === day);
+    const st = l?.st || t?.st || "";
+    this.viewDate = day;
+    this.calView = "d";
+    this.scrollToMin = st ? hhmmToMin(st) : null;
+    this.flashTitle = title;
+    await this.render();
+    window.setTimeout(() => {
+      const blk = Array.from(this.contentEl.querySelectorAll<HTMLElement>(".tlt-blk"))
+        .find((b) => (b.querySelector(".tlt-blk-t")?.textContent ?? "").trim() === title);
+      if (!blk) return;
+      blk.classList.add("tlt-flash");
+      window.setTimeout(() => blk.classList.remove("tlt-flash"), 1900);
+    }, 60);
+  }
+
   private async onClick(ev: MouseEvent) {
     const t = ev.target as HTMLElement;
     // 只认视图内部的命中：closest() 会一路走到 body，
@@ -2280,6 +2347,13 @@ export class WorkbenchView extends ItemView {
       const hit = t.closest<HTMLElement>(sel);
       return hit && this.contentEl.contains(hit) ? hit : null;
     };
+
+    const calgoto = pick("[data-calgoto]");
+    if (calgoto) {
+      const [day, title] = (calgoto.dataset.calgoto || "").split("|");
+      await this.gotoCalendarHit(day, title);
+      return;
+    }
 
     const tab = pick("[data-tab]");
     if (tab) { this.tab = tab.dataset.tab!; await this.render(); return; }

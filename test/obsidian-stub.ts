@@ -14,7 +14,15 @@ export function getLanguage(): string { return "zh"; }
 export function normalizePath(p: string): string {
   return p.replace(/\\/g, "/").replace(/\/{2,}/g, "/").replace(/^\/|\/$/g, "");
 }
-export function setIcon() {}
+/** 桩件版的 setIcon：真的往元素里塞一个 <svg>，测试才能断言"图标在不在" */
+export function setIcon(el: { empty?: () => void; appendChild?: (n: unknown) => void; createSvg?: (t: string) => unknown; ownerDocument?: Document }, id: string) {
+  const doc = (el && el.ownerDocument) || (typeof document !== "undefined" ? document : undefined);
+  if (!doc || !el || typeof el.appendChild !== "function") return;
+  if (typeof el.empty === "function") el.empty();
+  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("data-icon", id);
+  el.appendChild(svg);
+}
 export function debounce<T extends Function>(fn: T) { return fn; }
 
 export const registeredIcons: string[] = [];
