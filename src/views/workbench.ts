@@ -1,5 +1,5 @@
 import { t as T } from "../i18n";
-import { ItemView, WorkspaceLeaf, Notice, TFile, setIcon } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, TFile } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS, SORT_KEYS, DEFAULT_SORT, SORT_DEFAULT_DIR } from "../store";
 import type { SortCfg, SortKey } from "../store";
@@ -12,7 +12,7 @@ import type { StaffDim } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
-import { setSvgMarkup, miniMarkdown } from "./dom";
+import { setSvgMarkup, miniMarkdown, svgIcon } from "./dom";
 import { newProjectFlow, newMilestoneFlow } from "../actions";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
@@ -149,6 +149,8 @@ export class WorkbenchView extends ItemView {
   /** 日历时间轴滚到哪了（按日期记）：同一天重渲要保住，换天才自动定位 */
   private dayScroll: { day: string; top: number } | null = null;
   private renderedDay = "";
+  /** 上一屏"确实画过周视图"的日期（重渲恢复位置要用，不能用日视图的 renderedDay 顶替） */
+  private renderedWeek = "";
   /** 最后点过的里程碑：新建任务时默认落在它下面 */
   private msSel: { project: string; name: string } | null = null;
   private expandedSteps = new Set<string>();
@@ -163,6 +165,12 @@ export class WorkbenchView extends ItemView {
   staffOnly: "busy" | "idle" | null = null;
   private starZoom = 1;
   private scrollToMin: number | null = null;
+  /** 日历里"待居中到视口 42%"的时刻（分钟）；应用一次就清掉 */
+  private focusPending: number | null = null;
+  /** 上一次自动居中的"视图+日期"，用来判断这次要不要重新居中 */
+  private calFocusKey = "";
+  /** 周视图同一天重渲时恢复的滚动位置（上一屏还是周视图才作数） */
+  private weekScroll: { day: string; top: number } | null = null;
   /** 日历搜索跳转后要高亮的那个块（按标题找） */
   private flashTitle: string | null = null;
   private ideaTags: Set<string> = new Set();
@@ -236,7 +244,14 @@ export class WorkbenchView extends ItemView {
     const prevScroll = root.querySelector<HTMLElement>(".tlt-work")?.scrollTop || 0;
     const prevSide = root.querySelector<HTMLElement>(".tlt-side-scroll")?.scrollTop || 0;
     const prevGrid = root.querySelector<HTMLElement>(".tlt-daygrid");
+    // 上一屏还是日视图 → 记住它滚到哪；上一屏不是（月/周/任务…）→ 缓存作废，
+    // 否则"很久以前那次日视图的 0"会在下一次打开日视图时把自动居中顶掉（用户报过）
     if (prevGrid && this.renderedDay) this.dayScroll = { day: this.renderedDay, top: prevGrid.scrollTop };
+    else this.dayScroll = null;
+    const prevWsc = root.querySelector<HTMLElement>(".tlt-wscroll");
+    if (prevWsc && this.renderedWeek) this.weekScroll = { day: this.renderedWeek, top: prevWsc.scrollTop };
+    else this.weekScroll = null;
+    this.renderedWeek = "";
     // 输入框在 render 里会被重建，先记下焦点与光标位置，建完再还回去
     const ae = document.activeElement;
     const focusKey = ae?.instanceOf(HTMLInputElement) && ae.dataset.focuskey
@@ -272,12 +287,19 @@ export class WorkbenchView extends ItemView {
       }
     }
 
-    // 日历时间轴：挂上 DOM 后同步设 scrollTop（元素还没挂载时设是无效的）
+    // 日历时间轴：挂上 DOM 后（①恢复上次滚动位置 ②按真实视口高度校正格子高度与定位）
     const grid = root.querySelector<HTMLElement>(".tlt-daygrid");
     if (grid?.dataset.scrollTop) {
       grid.scrollTop = Number(grid.dataset.scrollTop) || 0;
       delete grid.dataset.scrollTop;
     }
+    const wsc = root.querySelector<HTMLElement>(".tlt-wscroll");
+    if (wsc?.dataset.scrollTop) {
+      wsc.scrollTop = Number(wsc.dataset.scrollTop) || 0;
+      delete wsc.dataset.scrollTop;
+    }
+    try { this.fitCalendarHeight(); } catch (e) { console.error("TLT: 日历高度校正失败", e); }
+    window.setTimeout(() => this.applyCalendarFocus(), 120);     // 等高度彻底稳了再对位置（40ms 时偶发还差一截）
   }
 
   /* ---------- 左栏 ---------- */
@@ -373,7 +395,7 @@ export class WorkbenchView extends ItemView {
     if (this.sideOff) {
       s.addClass("off");
       const reopen = el("button", "tlt-fold-btn");
-      setIcon(reopen, "tlt-chev-r");
+      svgIcon(reopen, "chev-r");
       reopen.title = T("展开项目栏");
       reopen.onclick = () => { void this.setPanels({ sideCollapsed: false }); };
       s.appendChild(reopen);
@@ -386,7 +408,7 @@ export class WorkbenchView extends ItemView {
     folder.title = `${this.cfg.tasksFolder} · ${this.cfg.teamFolder}`;
     top.appendChild(folder);
     const fold = el("button", "tlt-fold-btn");
-    setIcon(fold, "tlt-chev-l");
+    svgIcon(fold, "chev-l");
     fold.title = T("收起项目栏");
     fold.onclick = () => { void this.setPanels({ sideCollapsed: true }); };
     top.appendChild(fold);
@@ -397,11 +419,12 @@ export class WorkbenchView extends ItemView {
     shead.appendChild(el("span", "tlt-shead-t", T("项目 · 进度")));
     const acts = el("div", "tlt-shead-acts");
     const psort = el("button", "tlt-padd");
-    setIcon(psort, "tlt-updown");
+    svgIcon(psort, "updown", 13);
     psort.title = T("项目排序：名称 / 完成进度 / 创建时间 / 截止时间");
     psort.dataset.sortproj = "1";
     psort.onclick = (ev) => { ev.stopPropagation(); this.sidebarSortMenu(psort); };
-    const padd = el("button", "tlt-padd", "＋");
+    const padd = el("button", "tlt-padd");
+    svgIcon(padd, "plus", 13);
     padd.title = T("新建项目");
     padd.dataset.newproj = "1";
     padd.onclick = () => newProjectFlow(this.app, this.store, () => this.render());
@@ -444,13 +467,15 @@ export class WorkbenchView extends ItemView {
       const pdesc = this.store.projectDesc(p);
       if (pdesc) nameEl.title = pdesc;
       // 名称边上一个小笔：改名称 / 写描述（点卡片整体仍然是筛选）
-      const edit = el("button", "tlt-pedit", "✎");
+      const edit = el("button", "tlt-pedit");
+
+      svgIcon(edit, "pen", 12);
       edit.title = T("项目信息（名称 / 描述）");
       edit.dataset.projedit = p;
       row.append(sw, nameEl, edit, el("span", "tlt-ppct", pct + "%"));
       // 项目级动作：悬停出现「…」，右键也可以
       const more = el("button", "tlt-pmore");
-      setIcon(more, "tlt-dots");
+      svgIcon(more, "dots", 13);
       more.title = T("新建里程碑 / 归档项目");
       more.dataset.projmenu = p;
       more.onclick = (ev) => { ev.stopPropagation(); this.projectMenu(more, p); };
@@ -471,7 +496,7 @@ export class WorkbenchView extends ItemView {
     if (archived.length) {
       const head = el("div", "tlt-shead tlt-shead-arch");
       const caret = el("span", "tlt-caret");
-      const paintCaret = () => { caret.empty(); setIcon(caret, this.showArchived ? "tlt-chev-d" : "tlt-chev-r"); };
+      const paintCaret = () => { caret.empty(); svgIcon(caret, this.showArchived ? "chev-d" : "chev-r", 12); };
       paintCaret();
       head.append(caret, el("span", "", `${T("已归档")} · ${archived.length}`));
       const listBox = el("div", "tlt-archlist");
@@ -489,7 +514,7 @@ export class WorkbenchView extends ItemView {
           const row = el("div", "tlt-prow");
           row.append(el("span", "tlt-sw arch"), el("span", "tlt-pname", f.basename));
           const more = el("button", "tlt-pmore");
-          setIcon(more, "tlt-dots");
+          svgIcon(more, "dots", 13);
           more.title = T("还原 / 打开文件");
           more.onclick = (ev) => { ev.stopPropagation(); this.archivedMenu(more, f); };
           row.appendChild(more);
@@ -771,14 +796,13 @@ export class WorkbenchView extends ItemView {
     const d0 = new Date();
     const nowMin = d0.getHours() * 60 + d0.getMinutes();
     // 定位口径：把要看的那个时刻放在**视口中间偏上**（0.42 处），不再顶在视口最上面
-    const viewH = grid.clientHeight || 640;                 // 还没挂载时用 CSS 里的高度兜底
-    const pxOf = (min: number) => ((min - DAY_FROM) / 60) * HOUR_PX - viewH * 0.42;
-    let target: number;
-    if (jump !== null) target = pxOf(jump);
-    else if (this.dayScroll && this.dayScroll.day === sel) target = this.dayScroll.top;
-    else target = pxOf(sel === todayISO() ? Math.max(DAY_FROM, nowMin) : 9 * 60);
+    // 真正的高度要等挂进 DOM 才知道，所以这里只记"要看的时刻"，由 fitWeekHeight 统一定位
     this.renderedDay = sel;
-    grid.dataset.scrollTop = String(Math.max(0, target));
+    if (jump !== null) this.focusPending = jump;
+    else if (this.dayScroll && this.dayScroll.day === sel) {
+      grid.dataset.scrollTop = String(Math.max(0, this.dayScroll.top));
+      this.focusPending = null;                      // 同一天重渲：保住用户滚到的位置，别又居中回去
+    } else this.focusPending = sel === todayISO() ? nowMin : 9 * 60;
     return p;
   }
 
@@ -1496,7 +1520,8 @@ export class WorkbenchView extends ItemView {
     i.dataset.ideanew = "1";
     const plus = el("button", "tlt-btn lg", T("＋ 随手记"));
     plus.dataset.ideanewmodal = "1";
-    cap.append(el("span", "tlt-plus", "✦"), i, plus);
+    const sp = el("span", "tlt-plus"); svgIcon(sp, "spark", 11);
+    cap.append(sp, i, plus);
     p.appendChild(cap);
     p.appendChild(el("div", "tlt-hint", T("用 # 打标签，想打几个打几个。回车收录；也可以点「＋ 随手记」用表单。")));
     const prev = el("div", "tlt-idea-prev");
@@ -1672,8 +1697,8 @@ export class WorkbenchView extends ItemView {
     });
     bar.appendChild(seg);
 
-    const prev = el("button", "tlt-dnav"); setIcon(prev, "tlt-chev-l"); prev.dataset.dnav = "-1";
-    const next = el("button", "tlt-dnav"); setIcon(next, "tlt-chev-r"); next.dataset.dnav = "1";
+    const prev = el("button", "tlt-dnav"); svgIcon(prev, "chev-l", 13); prev.dataset.dnav = "-1";
+    const next = el("button", "tlt-dnav"); svgIcon(next, "chev-r", 13); next.dataset.dnav = "1";
     const lab = el("div", "tlt-dlabel");
     if (this.calView === "d") {
       const dl = D(sel);
@@ -1737,6 +1762,15 @@ export class WorkbenchView extends ItemView {
     const scroll = el("div", "tlt-wscroll");
     p.appendChild(scroll);
     scroll.style.height = `${HOUR * hours + 8}px`;     // 先按完整时间轴给高，挂进 DOM 后再收进可用高度（内部滚）
+    // 打开时把"要看的时刻"放到视口中部偏上：今天＝现在，别的日子＝9:00（挂载后由 fitWeekHeight 应用）
+    const dnow = new Date();
+    this.renderedWeek = this.viewDate;
+    if (this.scrollToMin !== null) this.focusPending = this.scrollToMin;
+    else if (this.weekScroll && this.weekScroll.day === this.viewDate) {
+      scroll.dataset.scrollTop = String(Math.max(0, this.weekScroll.top));   // 同一天重渲：保住你滚到的位置
+      this.focusPending = null;
+    } else this.focusPending = this.viewDate === todayISO() ? dnow.getHours() * 60 + dnow.getMinutes() : 9 * 60;
+    this.scrollToMin = null;
     const inner = el("div", "tlt-winner");
     inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR}px`;
     for (let mnt = DAY_FROM; mnt < DAY_TO; mnt += 60) {
@@ -1779,7 +1813,7 @@ export class WorkbenchView extends ItemView {
     scroll.appendChild(inner);
     p.appendChild(scroll);
     void GUTTER;
-    window.setTimeout(() => this.fitWeekHeight(), 30);   // 挂进 DOM 后再量一次真实高度
+    window.setTimeout(() => this.fitCalendarHeight(), 30);   // 兜底：万一 render 那次没跑到
     return p;
   }
 
@@ -2047,14 +2081,42 @@ export class WorkbenchView extends ItemView {
    * 周视图挂进 DOM 之后：把滚动壳撑到"能用多少用多少"的高度（内部自己滚）。
    * 刻度固定 56px/小时——不再为了塞进一屏把每小时压到 30 出头（那样早晚时段全糊在一起，用户看不到）。
    */
-  private fitWeekHeight() {
+  /**
+   * 日历定位：把"要看的时刻"放到视口 42% 处（居中偏上）。
+   * 单独一拍再做——高度、滚动壳都是异步稳下来的，同步阶段算出来的位置会偏。
+   */
+  private applyCalendarFocus() {
+    const focus = this.focusPending;
+    if (focus === null) return;
+    const box = this.contentEl.querySelector<HTMLElement>(".tlt-daygrid")
+      ?? this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
+    if (!box) return;
+    const perHour = box.classList.contains("tlt-daygrid") ? HOUR_PX : HOUR_css();
+    const target = Math.max(0, ((focus - DAY_FROM) / 60) * perHour - box.clientHeight * 0.42);
+    this.focusPending = null;                    // 用掉就清：后面手动滚动/重渲都不该再被拽回去
+    if (Math.abs(box.scrollTop - target) > 2) box.scrollTop = target;
+  }
+
+  private fitCalendarHeight() {
     const work = this.contentEl.querySelector<HTMLElement>(".tlt-work");
-    const sc = this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
-    if (!work || !sc) return;
+    if (!work) return;
     if (work.clientHeight < 200) return;             // 还没布局（或环境没有真实尺寸，比如测试的 jsdom）
-    const room = work.clientHeight - (sc.getBoundingClientRect().top - work.getBoundingClientRect().top) - 32;
-    const box = Math.max(320, room);                 // 至少这么高，矮了就内部滚
-    if (Math.abs(box - sc.clientHeight) > 4) sc.style.height = `${box}px`;
+
+    // ① 周视图：滚动壳撑到可用高度，再按"要看的时刻"定位（居中偏上）
+    const sc = this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
+    if (sc) {
+      const room = work.clientHeight - (sc.getBoundingClientRect().top - work.getBoundingClientRect().top) - 32;
+      const box = Math.max(320, room);
+      if (Math.abs(box - sc.clientHeight) > 4) sc.style.height = `${box}px`;
+    }
+
+    // ② 日视图：时间轴格子也撑到可用高度（不然"视口中心"和"屏幕中心"不是一回事）
+    const day = this.contentEl.querySelector<HTMLElement>(".tlt-daygrid");
+    if (day) {
+      const room = work.clientHeight - (day.getBoundingClientRect().top - work.getBoundingClientRect().top) - 32;
+      const box = Math.max(420, room);
+      if (Math.abs(box - day.clientHeight) > 4) day.style.height = `${box}px`;
+    }
   }
 
   private paneMilestones(): HTMLElement {
@@ -2104,7 +2166,8 @@ export class WorkbenchView extends ItemView {
         // 状态是显式事实：写了 [ms::] 就听它的，没写才是"任务全勾完"的派生建议
         const doneNow = isDone(m);
         const allDone = !doneNow && this.store.milestoneTasksAllDone(m);
-        const toggler = el("button", "tlt-ms-edit tlt-ms-toggle", doneNow ? "↺" : "✓");
+        const toggler = el("button", "tlt-ms-edit tlt-ms-toggle");
+        svgIcon(toggler, doneNow ? "undo" : "check", 12);
         if (allDone) toggler.addClass("auto");         // 任务都勾完了，提醒一下"可以标完成"
         toggler.dataset.msdone = `${m.project}::${m.name}`;
         toggler.title = doneNow ? T("标记为进行中") : T("标为已完成");
@@ -2171,7 +2234,7 @@ export class WorkbenchView extends ItemView {
     if (this.railOff) {
       r.addClass("off");
       const reopen = el("button", "tlt-fold-btn");
-      setIcon(reopen, "tlt-chev-l");
+      svgIcon(reopen, "chev-l");
       reopen.title = T("展开消息栏");
       reopen.onclick = () => { void this.setPanels({ railCollapsed: false }); };
       r.appendChild(reopen);
@@ -2185,10 +2248,11 @@ export class WorkbenchView extends ItemView {
     const expand = el("button", "tlt-expand-btn");
     expand.dataset.expand = "1";
     expand.title = T("在独立页打开消息中心");
-    expand.append(el("span", "tlt-expand-i", "⤢"), el("span", "", T("消息中心")));
+    const exIco = el("span", "tlt-expand-i"); svgIcon(exIco, "expand", 12);
+    expand.append(exIco, el("span", "", T("消息中心")));
     head.appendChild(expand);
     const fold = el("button", "tlt-fold-btn");
-    setIcon(fold, "tlt-chev-r");
+    svgIcon(fold, "chev-r");
     fold.title = T("收起消息栏");
     fold.onclick = () => { void this.setPanels({ railCollapsed: true }); };
     head.appendChild(fold);
@@ -2210,7 +2274,7 @@ export class WorkbenchView extends ItemView {
       n.appendChild(dot);
       const nh = el("div", "tlt-nh");
       nh.append(el("span", "tlt-nm", m.title));
-      if (m.star) nh.appendChild(el("span", "tlt-sk", "★"));
+      if (m.star) { const sk = el("span", "tlt-sk"); svgIcon(sk, "star", 11); nh.appendChild(sk); }
       n.appendChild(nh);
       n.appendChild(el("div", "tlt-nm2",
         `${kindLabel(m.kind)}${m.place ? " · " + m.place : ""}${m.state === "ended" ? T(" · 已结束") : ""}`));

@@ -2,7 +2,7 @@ import { App, Modal, Notice, TFile } from "obsidian";
 import { Store } from "../store";
 import { t as T } from "../i18n";
 import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, workloadBreakdown, ideaFilterTags, toggleMdCheckbox } from "../data";
-import { miniMarkdown } from "./dom";
+import { miniMarkdown, svgIcon } from "./dom";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, cls?: string, text?: string
@@ -726,7 +726,8 @@ export class TaskModal extends TltModal {
       cb.onclick = () => { void (async () => { await this.store.setStepDone(this.task, i, !st.done); await this.refreshSteps(); })(); };
       const txt = el("span", "tlt-step-t", st.text);
       txt.onclick = () => this.editStep(txt, i);
-      const del = el("button", "tlt-step-del", "×");
+      const del = el("button", "tlt-step-del");
+    svgIcon(del, "close", 11);
       del.title = T("删掉这条子项");
       del.onclick = () => { new ConfirmModal(this.app, {
         title: T("删掉这条子项"),
@@ -1623,7 +1624,8 @@ export class IdeaModal extends TltModal {
         };
         lib.appendChild(one);
       });
-      const plus = el("span", "tlt-taglib-i plus", "＋");
+      const plus = el("span", "tlt-taglib-i plus");
+      svgIcon(plus, "plus", 12);
       plus.onclick = () => {
         new PromptModal(this.app, T("新建标签"), T("标签名"), async (v) => {
           const name = v.trim().replace(/^#/, "");

@@ -1,10 +1,10 @@
 import { t as T } from "../i18n";
-import { ItemView, WorkspaceLeaf, Notice, App, requestUrl, setIcon } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, App, requestUrl } from "obsidian";
 import type TLTPlugin from "../main";
 import { Store, DEFAULT_SETTINGS } from "../store";
 import { Msg, Feed, todayISO, addDays, D, cleanFeedUrl, errMsg } from "../data";
 import { el, MsgModal, buildMsgFields, popMenu, TltModal, PromptModal, ConfirmModal } from "./modals";
-import { setSvgMarkup } from "./dom";
+import { setSvgMarkup, svgIcon } from "./dom";
 
 export const VIEW_TYPE_MESSAGES = "tlt-messages";
 
@@ -173,7 +173,8 @@ export class MessagesView extends ItemView {
 
     const pgrp = el("div", "tlt-fgrp");
     pgrp.appendChild(el("span", "", T("个人")));
-    const addFeed = el("button", "tlt-fgrp-add", "＋");
+    const addFeed = el("button", "tlt-fgrp-add");
+    svgIcon(addFeed, "plus", 13);
     addFeed.title = T("新建消息源");
     addFeed.dataset.newfeed = "1";
     addFeed.onclick = (ev) => { ev.stopPropagation(); this.promptNewFeed(); };
@@ -253,8 +254,8 @@ export class MessagesView extends ItemView {
       ["bands", T("按源分带")], ["axis", T("可缩放时间轴")], ["heat", T("月度热力")], ["net", T("人物脉络")]] as const;
     const cur = MODES.find(([v]) => v === this.mode) ?? MODES[0];
     const viewBtn = el("button", "tlt-btn tlt-viewbtn");
-    const vIco = el("span", "tlt-viewbtn-i"); setIcon(vIco, "tlt-list");
-    const vCar = el("span", "tlt-viewbtn-c"); setIcon(vCar, "tlt-chev-d");
+    const vIco = el("span", "tlt-viewbtn-i"); svgIcon(vIco, "list", 13);
+    const vCar = el("span", "tlt-viewbtn-c"); svgIcon(vCar, "chev-d", 12);
     viewBtn.append(vIco, el("span", "", T(cur[1])), vCar);
     viewBtn.onclick = () => {
       popMenu(viewBtn, MODES.map(([v, label]) => ({
@@ -460,9 +461,11 @@ export class MessagesView extends ItemView {
     const [y, mo] = this.heatMonth.split("-").map(Number);
 
     const head = el("div", "tlt-heat-h");
-    const prev = el("button", "tlt-tlink", "‹");
+    const prev = el("button", "tlt-tlink");
+    svgIcon(prev, "chev-l", 12);
     prev.onclick = () => { this.heatMonth = this.shiftMonth(-1); void this.render(); };
-    const next = el("button", "tlt-tlink", "›");
+    const next = el("button", "tlt-tlink");
+    svgIcon(next, "chev-r", 12);
     next.onclick = () => { this.heatMonth = this.shiftMonth(1); void this.render(); };
     head.append(prev, el("b", "", `${y}-${String(mo).padStart(2, "0")}`), next, el("span", "tlt-spacer"),
       el("span", "tlt-heat-l", T("少")), el("span", "tlt-heat-i lv1"), el("span", "tlt-heat-i lv2"),
@@ -591,7 +594,7 @@ export class MessagesView extends ItemView {
       const body = el("div", "tlt-sbody");
       const nh = el("div", "tlt-nh");
       nh.append(el("span", "tlt-nm", x.title));
-      if (x.star) nh.appendChild(el("span", "tlt-sk", "★"));
+      if (x.star) { const sk = el("span", "tlt-sk"); svgIcon(sk, "star", 11); nh.appendChild(sk); }
       body.appendChild(nh);
       body.appendChild(el("div", "tlt-nm2",
         [feed ? feed.name : "", x.place || "", x.who.length ? x.who.join(T("、")) : "", x.until ? T("截止 {d}", { d: x.until }) : "", x.state === "ended" ? T("已结束") : ""]
@@ -661,7 +664,8 @@ export class MessagesView extends ItemView {
         // 标题可改：源名称存在 frontmatter 里，发布/取消发布都沿用这个名字
         const tw = el("div", "tlt-d-titlewrap");
         const tEl = el("div", "tlt-d-title", f.name);
-        const pen = el("button", "tlt-rename", "✎");
+        const pen = el("button", "tlt-rename");
+      svgIcon(pen, "pen", 12);
         // 订阅别人的源只能设"别名"（只改你看到的叫法），发布者的名称在对方那边
         pen.title = f.remote ? T("设置别名（只改你看到的名称）") : T("改源名称");
         pen.onclick = () => {

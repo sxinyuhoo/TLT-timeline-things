@@ -208,7 +208,7 @@ body.tlt-light {
 .tlt-sep { color: var(--tlt-ink5); }
 .tlt-spacer { flex: 1; }
 .tlt-search {
-  display: flex; align-items: center; height: 26px; flex: 0 1 220px;
+  display: flex; align-items: center; height: 26px; flex: 0 1 260px;
   padding: 0 9px; border: 1px solid var(--tlt-line); border-radius: 8px;
   background: var(--tlt-surface2);
 }
@@ -1900,15 +1900,17 @@ body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(
 
 /* ---- 日历搜索：搜索框下弹结果（点了跳过去 + 块闪两下） ---- */
 .tlt-search { position: relative; }
-.tlt-csearch { position: absolute; top: 30px; left: 0; right: 0; z-index: 40;
-  background: var(--tlt-bg2); border: 1px solid var(--tlt-line2); border-radius: 10px;
-  box-shadow: 0 10px 26px rgba(0,0,0,.28); padding: 4px; max-height: 320px; overflow-y: auto; }
-.tlt-csearch-i { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
-  background: transparent; border: 0; border-radius: 7px; padding: 6px 8px; cursor: pointer;
-  color: var(--tlt-ink2); font: inherit; }
+.tlt-csearch { position: absolute; top: 32px; left: 0; z-index: 40;
+  width: min(420px, 86vw);                                  /* 固定宽度：别跟着 220px 的输入框挤 */
+  background: var(--tlt-bg2); border: 1px solid var(--tlt-line2); border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.30); padding: 6px;
+  max-height: 340px; overflow-y: auto; overflow-x: hidden; }
+.tlt-csearch-i { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; text-align: left;
+  background: transparent; border: 0; border-radius: 8px; padding: 7px 9px; cursor: pointer;
+  color: var(--tlt-ink2); font: inherit; overflow: hidden; }
 .tlt-csearch-i:hover { background: var(--tlt-surface2); }
 /* 第一行任务名（正常色），第二行属性（灰、小一号） */
-.tlt-csearch-n { font-size: 11.5px; color: var(--tlt-ink);
+.tlt-csearch-n { font-size: 11.5px; color: var(--tlt-ink); max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tlt-csearch-m { font-size: 9.5px; color: var(--tlt-ink5); font-variant-numeric: tabular-nums; }
 .tlt-csearch-empty { font-size: 10.5px; color: var(--tlt-ink5); padding: 7px 9px; }

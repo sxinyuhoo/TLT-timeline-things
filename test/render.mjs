@@ -3181,6 +3181,29 @@ await t("日历搜索：搜索框下弹结果，点了跳到那天并把块闪�
   });
 });
 
+await t("小图标一律内联 SVG（不依赖图标注册表，避免字体/注册失败时显示成问号）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "d"; view.viewDate = D;
+  await view.render();
+  const sels = [".tlt-fold-btn", "[data-sortproj]", ".tlt-pmore", ".tlt-pedit", ".tlt-dnav", ".tlt-padd", ".tlt-stepring, .tlt-ringslot"];
+  for (const sel of sels) {
+    const e = view.contentEl.querySelector(sel);
+    if (!e) continue;
+    if (sel.includes("stepring")) continue;                 // 进度环是数据图形，不是图标
+    assert.ok(e.querySelector("svg"), `${sel} 里该有内联 svg，实际文本=${JSON.stringify(e.textContent)}`);
+    assert.equal(e.textContent.trim(), "", `${sel} 不该再靠文字符号画图标：${e.textContent}`);
+  }
+  // 里程碑卡片上的 ✓/↺ 也要是 svg
+  files["TLT/tasks/示例项目.md"] = `# 示例项目\n\n## 一期\n[ms:: 🌕]\n\n- [ ] 一条 📅 ${D} [scope:: 工作]\n`;
+  await store.load();
+  view.tab = "ms"; view.proj = "示例项目";
+  await view.render();
+  const tog = view.contentEl.querySelector(".tlt-ms-toggle");
+  assert.ok(tog && tog.querySelector("svg"), "里程碑完成按钮要用 svg，不是 ✓/↺ 字符");
+});
+
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // 现在的契约：列能缩（minmax(0,1fr)）、行跟内容长（auto），格子有 min-height 兜底

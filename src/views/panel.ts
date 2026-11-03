@@ -4,6 +4,7 @@ import { Store, DEFAULT_SETTINGS } from "../store";
 import { saturation, inPeriod, todayISO } from "../data";
 import { t as T } from "../i18n";
 import { el } from "./modals";
+import { svgIcon } from "./dom";
 import { VIEW_TYPE_WORKBENCH } from "./workbench";
 
 export const VIEW_TYPE_PANEL = "tlt-overview";
@@ -63,7 +64,8 @@ export class OverviewPanelView extends ItemView {
       scope.onclick = () => { void (async () => { await this.store.load(); await this.render(); })(); };
     }
     head.appendChild(scope);
-    const reload = el("button", "tlt-pn-icon", "⟳");
+    const reload = el("button", "tlt-pn-icon");
+    svgIcon(reload, "refresh", 13);
     reload.title = T("刷新");
     reload.onclick = () => { void (async () => { await this.store.load(); await this.render(); })(); };
     head.appendChild(reload);
