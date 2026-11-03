@@ -1045,7 +1045,7 @@ export class WorkbenchView extends ItemView {
     const head = el("div", "tlt-pane-h");
     const label = { d: T("今天"), run: T("开展中"), w: T("本周"), m: T("本月"), q: T("本季度"), all: T("全部") }[this.taskDim];
     head.append(el("span", "", this.taskDim === "run"
-      ? T("{l} · {a} 逾期 / {b} 有截止 / {c} 没截止", { l: label, a: m.late.length, b: m.todo.length, c: m.pending.length })
+      ? T("{l} · {a} 逾期 / {b} 进行中", { l: label, a: m.late.length, b: m.todo.length + m.pending.length })
       : T("{l} · {a} 逾期 / {b} 要做 / {c} 已完成 / {d} 未分配里程碑 / {e} 待排期", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.orphans.length, e: m.pending.length })));
     head.appendChild(el("span", "tlt-spacer"));
     // 归属只看 [scope::]（工作也显式写）；没标的单独一档，标完就消失
@@ -1093,8 +1093,7 @@ export class WorkbenchView extends ItemView {
     if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
     const groups: [string, Task[], string][] = this.taskDim === "run" ? [
       [T("已逾期"), m.late, "#D98B5F"],
-      [T("进行中 · 有截止"), m.todo, "#5B6CFF"],
-      [T("进行中 · 没截止"), m.pending, "#8B7CF6"],
+      [T("进行中"), [...m.todo, ...m.pending], "#5B6CFF"],
     ] : [
       [T("{l}逾期", { l: label }), m.late, "#D98B5F"],
       [T("{l}要做", { l: label }), m.todo, "#5B6CFF"],
@@ -2510,8 +2509,11 @@ export class WorkbenchView extends ItemView {
     if (pedit) {
       const name = pedit.dataset.projedit ?? "";
       new ProjectInfoModal(this.app, this.store, name, (info) => {
-        if (info?.renamed && this.proj === info.from) { this.proj = info.to; this.plugin.setActiveProject(this.proj); }
-        void this.render();
+        void (async () => {
+          if (info?.renamed) await this.store.load();      // 改名后重新读盘：置顶/描述按新名字才对得上
+          if (info?.renamed && this.proj === info.from) { this.proj = info.to; this.plugin.setActiveProject(this.proj); }
+          await this.render();
+        })();
       }).open();
       return;
     }

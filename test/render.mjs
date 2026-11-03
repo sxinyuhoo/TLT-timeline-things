@@ -3204,6 +3204,33 @@ await t("小图标一律内联 SVG（不依赖图标注册表，避免字体/注
   assert.ok(tog && tog.querySelector("svg"), "里程碑完成按钮要用 svg，不是 ✓/↺ 字符");
 });
 
+await t("置顶项目改名后仍然置顶 · 开展中只有一个「进行中」分栏", async () => {
+  document.body.empty();
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/甲项目.md"] = `---\npin: true\n---\n\n# 甲项目\n\n## 一期\n\n- [ ] 有截止的活 📅 ${D} [scope:: 工作]\n- [ ] 没截止的活 🛫 ${D} [scope:: 工作]\n`;
+  await store.load();
+  assert.equal(store.projectPins["甲项目"], true, "初始应置顶");
+  const r = await store.setProjectInfo("甲项目", "乙项目", "");
+  assert.ok(r.renamed, "应改名成功");
+  assert.equal(store.projectPins["乙项目"], true, `改名后置顶要跟着走：${JSON.stringify(store.projectPins)}`);
+  assert.equal(store.projectPins["甲项目"], undefined, "旧名字的置顶要清掉");
+  await store.load();
+  assert.equal(store.projectPins["乙项目"], true, "重新读盘后仍然置顶");
+  assert.match(files["TLT/tasks/乙项目.md"], /^---\npin: true/m, `文件里的 pin 要还在：${files["TLT/tasks/乙项目.md"].slice(0, 40)}`);
+
+  // 开展中：只该有一个「进行中」
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month"; view.taskDim = "run"; view.proj = "乙项目";
+  await view.render();
+  const names = [...view.contentEl.querySelectorAll(".tlt-mgh")].map((h) => h.textContent);
+  const inprog = names.filter((x) => x.includes("进行中"));
+  assert.equal(inprog.length, 1, `开展中只该有一个「进行中」分栏：${names.join(" / ")}`);
+  assert.ok(!names.some((x) => x.includes("有截止") || x.includes("没截止")), `不该再有"有截止/没截止"两条：${names.join(" / ")}`);
+  const rows = [...view.contentEl.querySelectorAll(".tlt-task-t")].map((e) => e.textContent.trim());
+  assert.ok(rows.includes("有截止的活") && rows.includes("没截止的活"), `两条都该在「进行中」里：${rows.join(" | ")}`);
+});
+
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // 现在的契约：列能缩（minmax(0,1fr)）、行跟内容长（auto），格子有 min-height 兜底

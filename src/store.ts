@@ -508,6 +508,9 @@ export class Store {
     });
     this.projectDescs[clean] = wantDesc;
     if (clean === from) return { ok: true, renamed: false, logs: 0 };
+    // 改名等于换了 key：描述和置顶状态都要跟着搬，否则"改完名置顶就没了"（用户报过）
+    if (this.projectPins[from]) { this.projectPins[clean] = true; delete this.projectPins[from]; }
+    if (this.projectDescs[from] !== undefined) { this.projectDescs[clean] = this.projectDescs[from]; delete this.projectDescs[from]; }
 
     // 改名：项目文件改名 + 日志里的 [proj::] 跟过来
     let target = normalizePath(`${this.settings.tasksFolder}/${clean}.md`);
