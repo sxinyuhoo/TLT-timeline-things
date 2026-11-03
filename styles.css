@@ -1370,6 +1370,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 
 /* ---- 项目卡：悬停出现「…」，右键等价 ---- */
 .tlt-pmore {
+  color: var(--tlt-ink4);
   flex: none; width: 18px; height: 18px; padding: 0; margin-left: 2px;
   display: flex; align-items: center; justify-content: center;
   background: none; border: 0; border-radius: 5px; cursor: pointer;
@@ -1387,7 +1388,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
   margin-top: 10px; color: var(--tlt-ink4);
 }
 .tlt-shead-arch:hover { color: var(--tlt-ink2); }
-.tlt-caret { font-size: 8px; width: 8px; }
+.tlt-caret { width: 12px; height: 12px; display: inline-flex; align-items: center; justify-content: center; color: var(--tlt-ink4); }
 .tlt-proj.arch { opacity: .72; }
 .tlt-proj.arch:hover { opacity: 1; }
 .tlt-proj.arch .tlt-pname { color: var(--tlt-ink3); }
@@ -1414,11 +1415,14 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-input-url:focus { user-select: all; }
 
 /* ---- 两侧栏折叠 ---- */
+/* 内联小图标：作为 flex 子项会被压扁（实测被压到 2px 宽，看着就像消失了） */
+.tlt-svg { flex: none; display: block; }
 .tlt-fold-btn {
   flex: none; width: 18px; height: 18px; padding: 0; margin-left: auto;
   display: flex; align-items: center; justify-content: center;
   background: none; border: 0; border-radius: 5px; cursor: pointer;
-  color: var(--tlt-ink5); font-size: 12px; line-height: 1;
+  color: var(--tlt-ink4); font-size: 12px; line-height: 1;
+  align-items: center; justify-content: center;
 }
 .tlt-fold-btn:hover { background: var(--tlt-surface3); color: var(--tlt-ink); }
 .tlt-side.off, .tlt-msgs.off {
@@ -1902,9 +1906,10 @@ body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(
   width: min(420px, 86vw);                                  /* 固定宽度：别跟着 220px 的输入框挤 */
   background: var(--tlt-bg2); border: 1px solid var(--tlt-line2); border-radius: 12px;
   box-shadow: 0 12px 30px rgba(0,0,0,.30); padding: 6px;
-  max-height: 340px; overflow-y: auto; overflow-x: hidden; }
-.tlt-csearch-i { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; text-align: left;
-  background: transparent; border: 0; border-radius: 8px; padding: 7px 9px; cursor: pointer;
+  max-height: min(60vh, 460px); overflow-y: auto; overflow-x: hidden; }
+.tlt-csearch-i { display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  width: 100%; min-width: 0; min-height: 42px; text-align: left;
+  background: transparent; border: 0; border-radius: 8px; padding: 8px 10px; cursor: pointer;
   color: var(--tlt-ink2); font: inherit; overflow: hidden; }
 .tlt-csearch-i:hover { background: var(--tlt-surface2); }
 /* 第一行任务名（正常色），第二行属性（灰、小一号） */

@@ -582,7 +582,10 @@ export class WorkbenchView extends ItemView {
         const pop = el("div", "tlt-csearch");
         if (!hits.length) pop.appendChild(el("div", "tlt-csearch-empty", T("没有匹配的日程")));
         hits.slice(0, 12).forEach((h) => {
-          const row = el("button", "tlt-csearch-i");
+          // 用 div 不用 button：Obsidian 给 button 定了固定高度（约 30px），两行内容会被切掉
+          const row = el("div", "tlt-csearch-i");
+          row.setAttribute("role", "button");
+          row.tabIndex = 0;
           row.dataset.calgoto = `${h.day}|${h.title}`;
           row.append(
             el("span", "tlt-csearch-n", h.title),                                  // 第一行：任务名

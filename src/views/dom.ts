@@ -122,7 +122,7 @@ export function svgIcon(parent: HTMLElement, name: string, size = 14): SVGElemen
   svg.setAttribute("height", String(size));
   svg.setAttribute("fill", "none");
   svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-width", "2.4");   // 小尺寸下细线会发虚，看着像没画出来
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
   for (const [tag, attrs] of ICON_SHAPES[name] || []) {
