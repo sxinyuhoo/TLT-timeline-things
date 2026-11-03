@@ -2005,15 +2005,12 @@ body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(
 
 /* ---- 任务页头：四行布局（维度标签 / 计数 / 归属与标签 / 维度与排序） ---- */
 .tlt-task-head {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "l1 l3" "l2 l4";
-  align-items: start; gap: 6px 16px; padding-bottom: 8px;
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 6px; padding-bottom: 8px;
 }
 .tlt-task-head > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.tlt-task-head .tlt-th-l1 { grid-area: l1; }
-.tlt-task-head .tlt-th-l2 { grid-area: l2; }
-.tlt-task-head .tlt-th-l3 { grid-area: l3; justify-content: flex-end; }
-.tlt-task-head .tlt-th-l4 { grid-area: l4; justify-content: flex-end; }
+.tlt-task-head > div { width: 100%; }
+.tlt-th-l5 { margin-top: 2px; }        /* 排序自成一行，左缘与任务行对齐 */
 .tlt-th-l1 .tlt-th-dim { font-size: 11.5px; color: var(--tlt-ink2); }
 .tlt-th-l2 { font-size: 10.5px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; }
 .tlt-th-l3, .tlt-th-l4 { gap: 6px; }
@@ -2062,13 +2059,7 @@ body.is-mobile .modal.tlt-host .tlt-modal { padding: 16px 14px 14px; }
 body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px 14px; }
 
 
-/* 手机档：任务页头回到单列（宽度真不够时，右对齐也就没意义了） */
-.tlt-root[data-tier="phone"] .tlt-task-head {
-  grid-template-columns: 1fr;
-  grid-template-areas: "l1" "l2" "l3" "l4";
-}
-.tlt-root[data-tier="phone"] .tlt-task-head .tlt-th-l3,
-.tlt-root[data-tier="phone"] .tlt-task-head .tlt-th-l4 { justify-content: flex-start; }
+
 
 /* ---- 手机档：日历排版 ---- */
 /* 日视图：时间轴拿满宽度，右侧"这天要做的/记录"挪到下面 */
@@ -2089,3 +2080,48 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-root[data-tier="phone"] .tlt-crumbs b { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tlt-root[data-tier="phone"] .tlt-newbtn { width: 40px; min-width: 40px; padding: 0; font-size: 0; }
 .tlt-root[data-tier="phone"] .tlt-newbtn::before { content: "＋"; font-size: 15px; }
+
+
+/* 标题编辑框：自动长高、可视觉换行（存盘时换行会被压成空格——文件里一条任务只能一行） */
+.tlt-title-ta {
+  resize: none; overflow: hidden; line-height: 1.45;
+  min-height: 34px; padding: 7px 10px; white-space: pre-wrap; word-break: break-word;
+}
+
+/* ==========================================================================
+   手机档：筛选组件按 iOS 的做法重排
+   · 归属（全部/工作/个人）→ 通栏分段控件（等宽、选中段抬起）
+   · 维度（今天/开展中/…）→ 横向可滑的胶囊行（Apple 的 chip 行做法）
+   · 排序 → 通栏一行、左对齐、40px 高
+   ========================================================================== */
+.tlt-root[data-tier="phone"] .tlt-th-l1 { font-size: 12px; }
+.tlt-root[data-tier="phone"] .tlt-th-l3 .tlt-tag-seg {
+  display: flex; width: 100%; max-width: none; height: auto; padding: 3px; border-radius: 10px;
+  background: var(--tlt-surface2); border: 1px solid var(--tlt-line);
+  gap: 3px; overflow: hidden;
+}
+.tlt-root[data-tier="phone"] .tlt-th-l3 .tlt-seg-b {
+  flex: 1 1 0; min-width: 0; padding: 8px 4px; text-align: center; border: 0;
+  border-radius: 7px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: none; color: var(--tlt-ink3);
+}
+.tlt-root[data-tier="phone"] .tlt-th-l3 .tlt-seg-b.on {
+  background: var(--tlt-surface3); color: var(--tlt-ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .28);
+}
+.tlt-root[data-tier="phone"] .tlt-th-l4 .tlt-dim-seg {
+  display: flex; width: 100%; max-width: none; height: auto; padding: 0 2px;
+  border: 0; background: none; flex-wrap: nowrap;
+  gap: 6px; overflow-x: auto; scrollbar-width: none;
+}
+.tlt-root[data-tier="phone"] .tlt-th-l4 .tlt-dim-seg::-webkit-scrollbar { display: none; }
+.tlt-root[data-tier="phone"] .tlt-th-l4 .tlt-seg-b {
+  flex: none; padding: 7px 13px; border-radius: 999px; font-size: 12px;
+  border: 1px solid var(--tlt-line); background: none; color: var(--tlt-ink3);
+}
+.tlt-root[data-tier="phone"] .tlt-th-l4 .tlt-seg-b.on { background: var(--tlt-acc); border-color: var(--tlt-acc); color: #fff; }
+.tlt-root[data-tier="phone"] .tlt-th-l5 .tlt-sort,
+.tlt-root[data-tier="phone"] .tlt-th-l5 button { width: 100%; min-height: 36px; justify-content: space-between; }
+.tlt-root[data-tier="phone"] .tlt-th-l1 .tlt-th-dim { font-size: 12px; }
+
+.tlt-th-cnt { color: var(--tlt-ink4); font-size: 10.5px; font-variant-numeric: tabular-nums; }

@@ -2273,7 +2273,7 @@ await t("人员详情：手上的任务能点开，直接编辑", async () => {
   await new Promise((r) => window.setTimeout(r, 150));
   const open = [...document.querySelectorAll(".tlt-host, .modal")].pop();
   assert.ok(open, "点任务行应弹出任务详情");
-  const name = open.querySelector("input");
+  const name = open.querySelector("input, textarea");     // 标题现在是会自动长高的 textarea
   assert.equal(name.value, "待改的任务", `弹的应该是这条任务：${name.value}`);
 });
 
@@ -3229,6 +3229,37 @@ await t("置顶项目改名后仍然置顶 · 开展中只有一个「进行中�
   assert.ok(!names.some((x) => x.includes("有截止") || x.includes("没截止")), `不该再有"有截止/没截止"两条：${names.join(" / ")}`);
   const rows = [...view.contentEl.querySelectorAll(".tlt-task-t")].map((e) => e.textContent.trim());
   assert.ok(rows.includes("有截止的活") && rows.includes("没截止的活"), `两条都该在「进行中」里：${rows.join(" | ")}`);
+});
+
+await t("任务页头：归属/维度/排序各自一行，全部左对齐（AAA）；标题框可视觉换行但存盘压成一行", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-task-head \{\s*display: flex; flex-direction: column; align-items: flex-start;/.test(css), "页头要竖排左对齐");
+  assert.ok(/\.tlt-title-ta \{/.test(css), "标题用可换行的 textarea 样式");
+  assert.ok(/data-tier="phone"\] \.tlt-th-l3 \.tlt-tag-seg \{[\s\S]{0,120}display: flex; width: 100%/.test(css), "手机档归属筛选＝通栏分段控件");
+  assert.ok(/data-tier="phone"\] \.tlt-th-l4 \.tlt-dim-seg \{[\s\S]{0,160}overflow-x: auto/.test(css), "手机档维度筛选＝横向可滑胶囊行");
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month"; view.taskDim = "all"; view.taskTag = null;
+  await view.render();
+  const head = view.contentEl.querySelector(".tlt-task-head");
+  const rows = [...head.children];
+  assert.equal(rows.length, 5, `页头应是 5 行（标签/计数/归属/维度/排序），实际 ${rows.length}`);
+  assert.ok(rows[4].classList.contains("tlt-th-l5"), "最后一行是排序");
+  const lefts = rows.map((r) => r.getBoundingClientRect().left);
+  assert.ok(new Set(lefts).size <= 1, `各行左缘要一致：${lefts.join(",")}`);
+  // 标题 textarea：换行被压成空格
+  const task = view.store.tasks[0];
+  if (task) {
+    const m = new TaskModal(view.app, view.store, task, () => {});
+    m.open();
+    const ta = m.contentEl.querySelector(".tlt-title-ta");
+    assert.ok(ta, "标题要渲染成 textarea");
+    ta.value = "第一行\n第二行";
+    ta.dispatchEvent(new MouseEvent("input", { bubbles: true }));
+    assert.equal(m.draft.title, "第一行 第二行", `换行该被压成空格：${JSON.stringify(m.draft.title)}`);
+    m.close();
+  }
 });
 
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {

@@ -1135,11 +1135,17 @@ export class WorkbenchView extends ItemView {
     const l1 = el("div", "tlt-th-l1");
     l1.appendChild(el("span", "tlt-th-dim", label));
     head.appendChild(l1);
-    const l2 = el("div", "tlt-th-l2");
-    l2.appendChild(el("span", "", this.taskDim === "run"
+    const counts = this.taskDim === "run"
       ? T("{a} 逾期 / {b} 进行中", { a: m.late.length, b: m.todo.length + m.pending.length })
-      : T("{a} 逾期 / {b} 要做 / {c} 已完成 / {d} 未分配里程碑 / {e} 待排期", { a: m.late.length, b: m.todo.length, c: m.done.length, d: m.orphans.length, e: m.pending.length })));
-    head.appendChild(l2);
+      : T("{a} 逾期 / {b} 要做 / {c} 已完成 / {d} 未分配里程碑 / {e} 待排期", { a: m.late.length, b: m.todo.length, c: m.done.length, d: m.orphans.length, e: m.pending.length });
+    if (this.tier === "phone") {
+      // 手机档：标签与计数并成一行（控制区已经占三行，省一行给列表）
+      l1.appendChild(el("span", "tlt-th-cnt", " · " + counts));
+    } else {
+      const l2 = el("div", "tlt-th-l2");
+      l2.appendChild(el("span", "", counts));
+      head.appendChild(l2);
+    }
     // 归属只看 [scope::]（工作也显式写）；没标的单独一档，标完就消失
     const inScope = this.store.tasks.filter((t) => t.kind === "task" && (!this.proj || t.project === this.proj));
     const realTags = Array.from(new Set(this.store.tasks.flatMap((t) => t.tags || [])))
@@ -1172,8 +1178,10 @@ export class WorkbenchView extends ItemView {
     });
     const l4 = el("div", "tlt-th-l4");
     l4.appendChild(seg);
-    l4.appendChild(this.sortControl("task"));
     head.appendChild(l4);
+    const l5 = el("div", "tlt-th-l5");
+    l5.appendChild(this.sortControl("task"));
+    head.appendChild(l5);
     p.appendChild(head);
     if (this.quick) {
       const f = el("div", "tlt-pane-h");
