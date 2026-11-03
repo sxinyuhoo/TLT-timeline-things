@@ -103,6 +103,8 @@ const ICON_SHAPES: Record<string, IconNode[]> = {
   "close": [["path", { d: "M18 6 6 18" }], ["path", { d: "M6 6l12 12" }]],
   "dots": [["circle", { cx: 5, cy: 12, r: 1 }], ["circle", { cx: 12, cy: 12, r: 1 }], ["circle", { cx: 19, cy: 12, r: 1 }]],
   "updown": [["path", { d: "M8 3v18" }], ["path", { d: "M8 3 4 7m4-4 4 4" }], ["path", { d: "M16 21V3" }], ["path", { d: "m16 21 4-4m-4 4-4-4" }]],
+  "inbox": [["path", { d: "M3 6h18v12H3z" }], ["path", { d: "m3 7 9 6 9-6" }]],
+  "menu": [["path", { d: "M4 6h16M4 12h16M4 18h16" }]],
   "list": [["path", { d: "M8 6h13M8 12h13M8 18h13" }], ["path", { d: "M3 6h.01M3 12h.01M3 18h.01" }]],
   "refresh": [["path", { d: "M21 12a9 9 0 1 1-2.6-6.4" }], ["path", { d: "M21 3v6h-6" }]],
   "expand": [["path", { d: "M15 3h6v6M9 21H3v-6" }], ["path", { d: "M21 3l-7 7M3 21l7-7" }]],

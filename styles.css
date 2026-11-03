@@ -1924,3 +1924,80 @@ body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(
   60% { box-shadow: 0 0 0 2px rgba(91,108,255,.35); }
 }
 .tlt-blk.tlt-flash { animation: tlt-flash .95s ease-in-out 2; z-index: 8; }
+
+
+/* ==========================================================================
+   断点档位（data-tier 由 JS 按"视图容器宽度"写在 .tlt-root 上）
+   宽 ≥1120：三栏常驻（和以前一模一样）
+   中 840–1120：消息栏收成 44px 图标条，点击唤出抽屉
+   窄 620–840：左栏也收成 48px 图标条
+   手机 <620（或 is-mobile 且 <900）：两栏全收，主区两行式排版，节奏条收起
+   ========================================================================== */
+
+/* ---- 图标条（收起来的栏） ---- */
+.tlt-root[data-tier="mid"] .tlt-msgs.off,
+.tlt-root[data-tier="narrow"] .tlt-msgs.off,
+.tlt-root[data-tier="phone"] .tlt-msgs.off { width: 44px; min-width: 44px; max-width: 44px; padding: 8px 4px; }
+.tlt-root[data-tier="narrow"] .tlt-side.off,
+.tlt-root[data-tier="phone"] .tlt-side.off { width: 48px; min-width: 48px; max-width: 48px; padding: 8px 4px; }
+.tlt-root[data-tier="narrow"] .tlt-side.off .tlt-fold-btn,
+.tlt-root[data-tier="phone"] .tlt-side.off .tlt-fold-btn,
+.tlt-root[data-tier="mid"] .tlt-msgs.off .tlt-fold-btn,
+.tlt-root[data-tier="narrow"] .tlt-msgs.off .tlt-fold-btn,
+.tlt-root[data-tier="phone"] .tlt-msgs.off .tlt-fold-btn { width: 36px; height: 36px; border-radius: 9px; background: var(--tlt-surface2); }
+
+/* ---- 抽屉 / 浮层 ---- */
+.tlt-shade { position: absolute; inset: 0; z-index: 60; background: rgba(0, 0, 0, .45); }
+.tlt-drawer {
+  position: absolute; top: 0; bottom: 0; left: 0; z-index: 61;
+  width: min(86%, 340px); display: flex; flex-direction: column;
+  background: var(--tlt-bg2); border-right: 1px solid var(--tlt-line2);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
+}
+.tlt-drawer.right { left: auto; right: 0; border-right: 0; border-left: 1px solid var(--tlt-line2); }
+.tlt-drawer.sheet { width: 100%; left: 0; border: 0; }
+.tlt-drawer-h {
+  height: 44px; flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 0 12px; border-bottom: 1px solid var(--tlt-line); font-size: 13.5px; color: var(--tlt-ink);
+}
+.tlt-drawer-x {
+  margin-left: auto; width: 36px; height: 36px; display: grid; place-items: center;
+  background: none; border: 0; border-radius: 9px; color: var(--tlt-ink3); cursor: pointer;
+}
+.tlt-drawer-x:hover { background: var(--tlt-surface3); color: var(--tlt-ink); }
+.tlt-drawer-b { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; }
+.tlt-drawer-b.sheet-b { padding: 0; }
+.tlt-drawer .tlt-side, .tlt-drawer .tlt-msgs { width: auto; flex: 1; border: 0; background: transparent; }
+/* 抽屉里不再重复"收起项目栏"这类按钮 */
+.tlt-side.in-drawer .tlt-fold, .tlt-msgs.in-drawer .tlt-expand-btn { display: none; }
+
+/* ---- 手机档：顶栏只留必要按钮 + 主区两行式 ---- */
+.tlt-root .tlt-phone-only { display: none; }
+.tlt-root[data-tier="phone"] .tlt-phone-only { display: grid; place-items: center; }
+/* 手机档：两栏彻底不占宽（改成顶栏抽屉入口），主区拿满宽度 */
+.tlt-root[data-tier="phone"] .tlt-side.off,
+.tlt-root[data-tier="phone"] .tlt-msgs.off { display: none; }
+.tlt-root[data-tier="phone"] .tlt-rhythm { display: none; }          /* 节奏条整块收起，星图走顶栏浮层 */
+.tlt-root[data-tier="phone"] .tlt-search { flex: 0 1 140px; }
+.tlt-root[data-tier="phone"] .tlt-top { height: 52px; padding: 0 10px; }
+.tlt-root[data-tier="phone"] .tlt-crumbs .tlt-hint2 { display: none; }
+
+/* 任务行两行式：进度环 + 时间轨挪到第二行，标题不再被挤成几个字 */
+.tlt-root[data-tier="phone"] .tlt-task { flex-wrap: wrap; row-gap: 8px; padding: 11px 12px; }
+.tlt-root[data-tier="phone"] .tlt-task-b { flex: 1 1 calc(100% - 34px); }
+.tlt-root[data-tier="phone"] .tlt-task-x { flex: 1 1 100%; order: 3; padding-left: 31px; }
+.tlt-root[data-tier="phone"] .tlt-rail { flex: 1; }
+
+/* 手机档字号抬一档（11px 在手机上太小） */
+.tlt-root[data-tier="phone"] .tlt-task-t { font-size: 13.5px; }
+.tlt-root[data-tier="phone"] .tlt-meta, .tlt-root[data-tier="phone"] .tlt-rail { font-size: 11px; }
+.tlt-root[data-tier="phone"] .tlt-pane-h { font-size: 12px; }
+
+/* 月历：手机档只显示"日期 + 条数"，细节进日视图看 */
+.tlt-root[data-tier="phone"] .tlt-mlist { display: none; }
+.tlt-root[data-tier="phone"] .tlt-mcell { min-height: 64px; }
+.tlt-root[data-tier="phone"] .tlt-mgrid { gap: 3px; }
+
+/* 人员卡：跟着档位单列（以前是按窗口宽度，现在按容器宽度） */
+.tlt-root[data-tier="narrow"] .tlt-staffgrid,
+.tlt-root[data-tier="phone"] .tlt-staffgrid { grid-template-columns: 1fr; }

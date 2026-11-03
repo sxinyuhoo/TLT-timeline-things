@@ -151,10 +151,41 @@ export class WorkbenchView extends ItemView {
   private renderedDay = "";
   /** 上一屏"确实画过周视图"的日期（重渲恢复位置要用，不能用日视图的 renderedDay 顶替） */
   private renderedWeek = "";
+  /** 当前断点档位（见 measureTier） */
+  private tier: "wide" | "mid" | "narrow" | "phone" = "wide";
+  /** 用户在哪一档手动改过收栏（那一档就不再自动收） */
+  private manualSide: string | null = null;
+  private manualRail: string | null = null;
   /** 最后点过的里程碑：新建任务时默认落在它下面 */
   private msSel: { project: string; name: string } | null = null;
   private expandedSteps = new Set<string>();
   private get sideOff() { return !!this.cfg.sideCollapsed; }
+
+  /* ---------------- 断点档位（宽 / 中 / 窄 / 手机） ----------------
+   * 判断依据是**这个视图容器**有多宽，不是窗口——Obsidian 自己的左右侧栏占多少，只有容器知道。
+   * 每档的默认收栏策略：中档收消息栏、窄档再收左栏、手机档全收（点左上角/右上角唤出抽屉）。
+   * 用户在某一档手动展开过，那一档就不再自动收（不跟人抢）。
+   */
+  private measureTier(): "wide" | "mid" | "narrow" | "phone" {
+    const w = this.contentEl.clientWidth || 1200;
+    const mobile = document.body.classList.contains("is-mobile");
+    if (w < 620) return "phone";
+    if (mobile && w < 900) return "phone";
+    if (w < 840) return "narrow";
+    if (w < 1120) return "mid";
+    return "wide";
+  }
+
+  /** 按当前宽度决定收栏策略；返回是否有变化（渲染开头调用，避免渲染完再改引起抖动） */
+  private applyTier(): void {
+    const t = this.measureTier();
+    this.tier = t;
+    this.contentEl.dataset.tier = t;
+    const wantSideCollapsed = t !== "wide" && t !== "mid";
+    const wantRailCollapsed = t !== "wide";
+    if (this.manualSide !== t && !!this.cfg.sideCollapsed !== wantSideCollapsed) this.cfg.sideCollapsed = wantSideCollapsed;
+    if (this.manualRail !== t && !!this.cfg.railCollapsed !== wantRailCollapsed) this.cfg.railCollapsed = wantRailCollapsed;
+  }
   private get railOff() { return !!this.cfg.railCollapsed; }
   private taskTag: string | null = null;
   /** 人员视图的时间窗口：本月 / 下个月 / 全部 */
@@ -264,8 +295,10 @@ export class WorkbenchView extends ItemView {
     const aliveMs = new Set(this.store.milestones().map((m) => m.name));
     [...this.expanded].forEach((k) => { if (!aliveMs.has(k)) this.expanded.delete(k); });
 
+    this.applyTier();                     // 先按当前宽度定档，再画（画完再改会抖一下）
     root.empty();
     root.addClass("tlt-root");
+    root.dataset.tier = this.tier;
 
     const app = el("div", "tlt");
     app.appendChild(this.sidebar());
@@ -390,14 +423,17 @@ export class WorkbenchView extends ItemView {
     await this.render();
   }
 
-  private sidebar(): HTMLElement {
-    const s = el("aside", "tlt-side");
-    if (this.sideOff) {
+  private sidebar(inDrawer = false): HTMLElement {
+    const s = el("aside", inDrawer ? "tlt-side in-drawer" : "tlt-side");
+    if (this.sideOff && !inDrawer) {
       s.addClass("off");
       const reopen = el("button", "tlt-fold-btn");
-      svgIcon(reopen, "chev-r");
-      reopen.title = T("展开项目栏");
-      reopen.onclick = () => { void this.setPanels({ sideCollapsed: false }); };
+      svgIcon(reopen, this.tier === "wide" || this.tier === "mid" ? "chev-r" : "menu");
+      reopen.title = this.tier === "wide" || this.tier === "mid" ? T("展开项目栏") : T("打开项目与列表");
+      reopen.onclick = () => {
+        if (this.tier === "wide" || this.tier === "mid") void this.setPanels({ sideCollapsed: false });
+        else this.openDrawer("side");
+      };
       s.appendChild(reopen);
       return s;
     }
@@ -555,6 +591,13 @@ export class WorkbenchView extends ItemView {
   private main(): HTMLElement {
     const m = el("main", "tlt-main");
     const top = el("div", "tlt-top");
+    // 手机档：两栏全收起，改由顶栏这两个按钮唤出抽屉
+    const mSide = el("button", "tlt-btn tlt-icobtn tlt-phone-only");
+    mSide.dataset.drawer = "side";
+    mSide.title = T("项目与列表");
+    svgIcon(mSide, "menu", 15);
+    top.appendChild(mSide);
+
     const crumbs = el("div", "tlt-crumbs");
     const who = this.proj
       ? el("b", "tlt-crumb-proj", this.proj)
@@ -599,6 +642,18 @@ export class WorkbenchView extends ItemView {
       }
     }
     top.appendChild(search);
+
+    // 手机档：节奏条整块收起来，星图改从这里用全屏浮层看
+    const starBtn = el("button", "tlt-btn tlt-icobtn tlt-phone-only");
+    starBtn.dataset.star = "1";
+    starBtn.title = T("星图");
+    svgIcon(starBtn, "spark", 14);
+    top.appendChild(starBtn);
+    const mRail = el("button", "tlt-btn tlt-icobtn tlt-phone-only");
+    mRail.dataset.drawer = "rail";
+    mRail.title = T("消息");
+    svgIcon(mRail, "inbox", 15);
+    top.appendChild(mRail);
 
     // 概览面板入口：放在明暗切换左边（挨着日常要用的那几个小按钮，别丢在左边的面包屑尾巴上）
     const panelBtn = el("button", "tlt-btn tlt-icobtn");
@@ -1307,7 +1362,55 @@ export class WorkbenchView extends ItemView {
   }
 
   /** 两侧栏折叠：写进设置（重开 Obsidian 也记得），然后重画 */
+  /** 窄档/手机档：收起来的栏用**抽屉**唤出（不占版面、不挤压主区） */
+  private openDrawer(kind: "side" | "rail") {
+    const root = this.contentEl;
+    root.querySelector(".tlt-shade")?.remove();
+    root.querySelector(".tlt-drawer")?.remove();
+    const shade = el("div", "tlt-shade");
+    const panel = el("div", "tlt-drawer" + (kind === "rail" ? " right" : ""));
+    const head = el("div", "tlt-drawer-h");
+    head.appendChild(el("b", "", kind === "side" ? T("项目与列表") : T("消息")));
+    const x = el("button", "tlt-drawer-x");
+    svgIcon(x, "close", 14);
+    x.title = T("关闭");
+    head.appendChild(x);
+    panel.appendChild(head);
+    const body = el("div", "tlt-drawer-b");
+    body.appendChild(kind === "side" ? this.sidebar(true) : this.rail(true));
+    panel.appendChild(body);
+    const close = () => { shade.remove(); panel.remove(); };
+    x.onclick = close;
+    shade.onclick = close;
+    root.append(shade, panel);
+  }
+
+  /** 手机档等：整块内容用全屏浮层看（星图这类"一屏大图"） */
+  private openSheet(title: string, build: () => HTMLElement) {
+    const root = this.contentEl;
+    root.querySelector(".tlt-shade")?.remove();
+    root.querySelector(".tlt-drawer")?.remove();
+    const shade = el("div", "tlt-shade");
+    const panel = el("div", "tlt-drawer sheet");
+    const head = el("div", "tlt-drawer-h");
+    head.appendChild(el("b", "", title));
+    const x = el("button", "tlt-drawer-x");
+    svgIcon(x, "close", 14);
+    x.title = T("关闭");
+    head.appendChild(x);
+    panel.appendChild(head);
+    const body = el("div", "tlt-drawer-b sheet-b");
+    body.appendChild(build());
+    panel.appendChild(body);
+    const close = () => { shade.remove(); panel.remove(); };
+    x.onclick = close;
+    shade.onclick = close;
+    root.append(shade, panel);
+  }
+
   private async setPanels(patch: { sideCollapsed?: boolean; railCollapsed?: boolean }) {
+    if (patch.sideCollapsed !== undefined) this.manualSide = this.tier;     // 记住：这一档别再自动收
+    if (patch.railCollapsed !== undefined) this.manualRail = this.tier;
     Object.assign(this.cfg, patch);
     const p = this.plugin as unknown as { saveSettings?: () => Promise<void> };
     try { await p.saveSettings?.(); } catch { /* 存不下也不影响这次折叠 */ }
@@ -2231,14 +2334,17 @@ export class WorkbenchView extends ItemView {
 
   /* ---------- 右栏：消息 ---------- */
 
-  private rail(): HTMLElement {
-    const r = el("aside", "tlt-msgs");
-    if (this.railOff) {
+  private rail(inDrawer = false): HTMLElement {
+    const r = el("aside", inDrawer ? "tlt-msgs in-drawer" : "tlt-msgs");
+    if (this.railOff && !inDrawer) {
       r.addClass("off");
       const reopen = el("button", "tlt-fold-btn");
-      svgIcon(reopen, "chev-l");
-      reopen.title = T("展开消息栏");
-      reopen.onclick = () => { void this.setPanels({ railCollapsed: false }); };
+      svgIcon(reopen, this.tier === "wide" ? "chev-l" : "menu");
+      reopen.title = this.tier === "wide" ? T("展开消息栏") : T("打开消息");
+      reopen.onclick = () => {
+        if (this.tier === "wide") void this.setPanels({ railCollapsed: false });
+        else this.openDrawer("rail");
+      };
       r.appendChild(reopen);
       return r;
     }
@@ -2420,6 +2526,10 @@ export class WorkbenchView extends ItemView {
       const hit = t.closest<HTMLElement>(sel);
       return hit && this.contentEl.contains(hit) ? hit : null;
     };
+
+    if (pick("[data-star]")) { this.openSheet(T("星图"), () => this.starMap()); return; }
+    const dr = pick("[data-drawer]");
+    if (dr) { this.openDrawer(dr.dataset.drawer === "rail" ? "rail" : "side"); return; }
 
     const calgoto = pick("[data-calgoto]");
     if (calgoto) {

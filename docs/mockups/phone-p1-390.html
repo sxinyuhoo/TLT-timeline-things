@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TLT 手机档 · 静态样张（390px）</title>
+<style>
+  :root{
+    --bg:#0E0E11; --bg2:#15151A; --surface:#1A1A20; --surface2:#202027; --surface3:#26262E;
+    --line:#26262E; --line2:#33333D; --line3:#3D3D48; --line4:#222229;
+    --ink:#E7E8F0; --ink2:#C2C3CE; --ink3:#A6A9B6; --ink4:#8A8D9A; --ink5:#6E7280;
+    --acc:#5B6CFF; --acc-ink:#A8B2FF;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#08080A;color:var(--ink);
+    font:13px/1.5 -apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+    display:flex;gap:28px;padding:28px;align-items:flex-start}
+  .phone{width:390px;height:844px;background:var(--bg);border:1px solid #2A2A32;border-radius:38px;
+    overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .cap{font-size:12px;color:#8A8D9A;text-align:center;margin-bottom:8px}
+  .wrap{display:flex;flex-direction:column;align-items:center}
+  /* ---- 主区 ---- */
+  .top{height:44px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--bg2)}
+  .ico{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--ink3);flex:none}
+  .ico.on{background:var(--surface2);color:var(--ink)}
+  .tabs{display:flex;gap:2px;flex:1;justify-content:center}
+  .tab{padding:7px 10px;border-radius:9px;font-size:13px;color:var(--ink4)}
+  .tab.on{background:var(--surface2);color:var(--ink)}
+  .body{padding:12px}
+  .seg{display:flex;gap:6px;margin-bottom:12px}
+  .seg b{font-weight:400;font-size:12px;color:var(--ink4);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+  .seg b.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  .gh{font-size:12px;color:var(--ink4);margin:14px 2px 8px;display:flex;gap:6px;align-items:center}
+  .gh i{width:7px;height:7px;border-radius:50%;background:#D98B5F}
+  .task{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+  .task .l1{display:flex;gap:9px;align-items:center}
+  .cb{width:22px;height:22px;border-radius:7px;border:1.6px solid var(--ink4);flex:none}
+  .tt{font-size:14px;color:var(--ink);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* 两行式：进度环 + 时间轨换到第二行（手机档） */
+  .l2{display:flex;align-items:center;gap:10px;margin-top:8px;padding-left:31px;color:var(--ink4);font-size:11px}
+  .ring{width:22px;height:22px;border-radius:50%;border:2.6px solid var(--acc);border-right-color:var(--line3);flex:none}
+  .rail{flex:1;height:4px;border-radius:2px;background:var(--line3);position:relative}
+  .rail i{position:absolute;left:0;top:0;height:100%;width:62%;border-radius:2px;background:var(--acc)}
+  .meta{font-size:11px;color:var(--ink4);white-space:nowrap}
+  /* ---- 抽屉 ---- */
+  .mask{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+  .drawer{position:absolute;top:0;bottom:0;left:0;width:86%;max-width:330px;background:var(--bg2);
+    border-right:1px solid var(--line2);display:flex;flex-direction:column}
+  .dhead{height:44px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);font-size:14px}
+  .dhead .x{margin-left:auto;width:36px;height:36px;display:grid;place-items:center;color:var(--ink3)}
+  .dbody{padding:10px 12px;overflow:auto;flex:1}
+  .proj{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface);margin-bottom:8px}
+  .proj .n{display:flex;align-items:center;gap:8px;font-size:13px}
+  .proj .n .dot{width:8px;height:8px;border-radius:50%;background:var(--acc)}
+  .proj .n .pin{color:#D9A05F;margin-left:auto;font-size:12px}
+  .proj .bar{height:4px;border-radius:2px;background:var(--line3);margin-top:8px}
+  .proj .bar i{display:block;height:100%;width:89%;border-radius:2px;background:var(--acc)}
+  .proj .sub{font-size:11px;color:var(--ink4);margin-top:6px}
+  /* ---- 星图浮层 ---- */
+  .sheet{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column}
+  .shead{height:44px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid var(--line);font-size:14px}
+  .sbody{flex:1;position:relative;overflow:hidden}
+  .legend{position:absolute;left:12px;bottom:12px;font-size:11px;color:var(--ink4);line-height:1.7}
+  .hint{position:absolute;right:12px;bottom:12px;font-size:11px;color:var(--ink5)}
+  svg{display:block}
+</style>
+</head>
+<body>
+
+<!-- ① 主区（手机档） -->
+<div class="wrap">
+  <div class="cap">① 主区：两行式任务行（进度环 + 时间轨挪到第二行）</div>
+  <div class="phone">
+    <div class="top">
+      <div class="ico on">☰</div>
+      <div class="tabs"><span class="tab on">任务</span><span class="tab">里程碑</span><span class="tab">人员</span><span class="tab">日历</span></div>
+      <div class="ico">☾</div>
+      <div class="ico">✉</div>
+    </div>
+    <div class="body">
+      <div class="seg"><b class="on">本月</b><b>本周</b><b>全部</b></div>
+      <div class="gh"><i></i>本月逾期 · 2</div>
+      <div class="task">
+        <div class="l1"><span class="cb"></span><span class="tt">TLT 手机端断点与抽屉方案落地</span></div>
+        <div class="l2">
+          <span class="ring"></span>
+          <span class="rail"><i></i></span>
+          <span class="meta">11-03</span><span class="meta">11-08</span><span class="meta">剩 5 天</span>
+        </div>
+      </div>
+      <div class="task">
+        <div class="l1"><span class="cb"></span><span class="tt">视觉算法：护栏板通用任务训练</span></div>
+        <div class="l2">
+          <span class="rail"><i></i></span>
+          <span class="meta">今</span><span class="meta">11-06</span><span class="meta">剩 3 天</span>
+        </div>
+      </div>
+      <div class="task">
+        <div class="l1"><span class="cb"></span><span class="tt">和南理工对执行计划书</span></div>
+        <div class="l2">
+          <span class="rail"><i style="width:12%"></i></span>
+          <span class="meta">今</span><span class="meta">11-20</span><span class="meta">剩 17 天</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ② 左抽屉 -->
+<div class="wrap">
+  <div class="cap">② 左栏 → 抽屉：点左上「☰」唤出，遮罩点击关闭</div>
+  <div class="phone">
+    <div class="top">
+      <div class="ico on">☰</div>
+      <div class="tabs"><span class="tab on">任务</span><span class="tab">里程碑</span><span class="tab">人员</span><span class="tab">日历</span></div>
+      <div class="ico">☾</div>
+      <div class="ico">✉</div>
+    </div>
+    <div class="body" style="opacity:.25"><div class="task"><div class="l1"><span class="cb"></span><span class="tt">TLT 手机端断点与抽屉方案落地</span></div></div></div>
+    <div class="mask"></div>
+    <div class="drawer">
+      <div class="dhead">项目 · 进度<span class="x">✕</span></div>
+      <div class="dbody">
+        <div class="proj"><div class="n"><span class="dot"></span>obsidian timeline 插件研发<span class="pin">★</span></div><div class="bar"><i></i></div><div class="sub">8 项未完成 · 89%</div></div>
+        <div class="proj"><div class="n"><span class="dot"></span>mvlab 运营管理工作</div><div class="bar"><i style="width:64%"></i></div><div class="sub">6 项未完成 · 64%</div></div>
+        <div class="proj"><div class="n"><span class="dot"></span>视觉算法通用任务</div><div class="bar"><i style="width:41%"></i></div><div class="sub">12 项未完成 · 41%</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ③ 星图浮层 -->
+<div class="wrap">
+  <div class="cap">③ 星图 → 全屏浮层：单指平移、双指缩放</div>
+  <div class="phone">
+    <div class="sheet">
+      <div class="shead">星图<span class="x" style="margin-left:auto;width:36px;height:36px;display:grid;place-items:center;color:var(--ink3)">✕</span></div>
+      <div class="sbody">
+        <svg width="390" height="800" viewBox="0 0 390 800">
+          <g transform="translate(195,380)">
+            <circle r="42" fill="none" stroke="#3D3D48"/>
+            <circle r="106" fill="none" stroke="#33333D"/>
+            <circle r="170" fill="none" stroke="#2C2C35"/>
+            <line x1="0" y1="-186" x2="0" y2="186" stroke="#2C2C35"/>
+            <line x1="-186" y1="0" x2="186" y2="0" stroke="#2C2C35"/>
+            <path d="M0,-106 A106,106 0 0 1 92,53 Z" fill="#5B6CFF" opacity=".22"/>
+            <path d="M0,-170 A170,170 0 0 0 -170,0 Z" fill="#D9A05F" opacity=".18"/>
+            <circle cx="46" cy="-62" r="7" fill="#5B6CFF"/>
+            <circle cx="88" cy="12" r="5" fill="#5B6CFF"/>
+            <circle cx="-70" cy="-96" r="6" fill="#D9A05F"/>
+            <circle cx="-126" cy="30" r="4.5" fill="#D9A05F"/>
+            <circle cx="14" cy="-150" r="5" fill="#4FB59A"/>
+            <circle cx="-30" cy="150" r="4" fill="#8B7CF6"/>
+            <text x="0" y="-4" fill="#8A8D9A" font-size="11" text-anchor="middle" dy="4">今天</text>
+          </g>
+        </svg>
+        <div class="legend">内圈是今天；扇区＝项目<br>点＝任务（大小≈工作量）</div>
+        <div class="hint">双指缩放 · 拖动平移</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -3231,6 +3231,35 @@ await t("置顶项目改名后仍然置顶 · 开展中只有一个「进行中�
   assert.ok(rows.includes("有截止的活") && rows.includes("没截止的活"), `两条都该在「进行中」里：${rows.join(" | ")}`);
 });
 
+await t("断点档位：宽档三栏不变；中/窄/手机档按档收栏，抽屉与浮层可用", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  // CSS 契约：四档的收栏规则都在
+  assert.ok(/\[data-tier="mid"\] \.tlt-msgs\.off/.test(css), "中档要收消息栏");
+  assert.ok(/\[data-tier="narrow"\] \.tlt-side\.off/.test(css), "窄档要收左栏");
+  assert.ok(/\[data-tier="phone"\] \.tlt-side\.off,[\s\S]{0,80}display: none/.test(css), "手机档两栏不占宽");
+  assert.ok(/\.tlt-root\[data-tier="phone"\] \.tlt-task \{ flex-wrap: wrap/.test(css), "手机档任务行要两行式");
+  assert.ok(/\.tlt-root\[data-tier="phone"\] \.tlt-list|\.tlt-root\[data-tier="phone"\] \.tlt-mlist \{ display: none/.test(css), "手机档月历格子简化");
+  assert.ok(/\.tlt-phone-only \{ display: none \}|\.tlt-root \.tlt-phone-only \{ display: none/.test(css), "手机专属按钮默认隐藏");
+  // 行为契约：渲染时把档位写到 dataset 上（jsdom 没有真实宽度 → 落到 wide）
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.render();
+  assert.equal(view.contentEl.dataset.tier, "wide", `没有布局宽度时应落到 wide：${view.contentEl.dataset.tier}`);
+  // 抽屉：打开后有遮罩、有标题、点遮罩能关
+  view.openDrawer("side");
+  const drawer = view.contentEl.querySelector(".tlt-drawer");
+  const shade = view.contentEl.querySelector(".tlt-shade");
+  assert.ok(drawer && shade, "抽屉与遮罩都要在");
+  assert.match(drawer.textContent, /项目与列表/, `抽屉标题：${drawer.textContent.slice(0, 20)}`);
+  shade.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  assert.ok(!view.contentEl.querySelector(".tlt-drawer"), "点遮罩该关掉抽屉");
+  // 浮层：星图
+  view.openSheet("星图", () => view.starMap());
+  const sheet = view.contentEl.querySelector(".tlt-drawer.sheet");
+  assert.ok(sheet && sheet.querySelector("svg"), "星图浮层里要有 svg");
+});
+
 await t("月视图：5 条时最后一行「+N 个」不会被裁掉", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // 现在的契约：列能缩（minmax(0,1fr)）、行跟内容长（auto），格子有 min-height 兜底
