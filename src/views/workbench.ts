@@ -951,6 +951,33 @@ export class WorkbenchView extends ItemView {
       redraw();
     }, { passive: false });
 
+    // 触摸屏没有滚轮 → 双指捏合缩放
+    const pts = new Map<number, { x: number; y: number }>();
+    let pinchStart = 0, pinchZoom = 1, pinching = false;
+    const dist2 = () => {
+      const v = Array.from(pts.values());
+      return v.length < 2 ? 0 : Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y);
+    };
+    box.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch") return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) { pinching = true; pinchStart = dist2(); pinchZoom = this.starZoom; }
+    }, true);
+    box.addEventListener("pointermove", (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinching && pinchStart > 8) {
+        this.starZoom = Math.max(0.6, Math.min(2.6, pinchZoom * (dist2() / pinchStart)));
+        redraw();
+      }
+    }, true);
+    const endPt = (e: PointerEvent) => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) { pinching = false; pinchStart = 0; }
+    };
+    box.addEventListener("pointerup", endPt, true);
+    box.addEventListener("pointercancel", endPt, true);
+
     let dragging = false, sx = 0, sy = 0, px = 0, py = 0;
     svg.addEventListener("pointerdown", (e) => {
       if ((e.target as Element).closest("[data-peek],[data-mspeek]")) return;
@@ -958,6 +985,7 @@ export class WorkbenchView extends ItemView {
       svg.setPointerCapture(e.pointerId);
     });
     svg.addEventListener("pointermove", (e) => {
+      if (pinching) return;          // 双指缩放时不要同时平移
       if (!dragging) return;
       this.starPan = { x: px + (e.clientX - sx), y: py + (e.clientY - sy) };
       redraw();
@@ -1097,12 +1125,18 @@ export class WorkbenchView extends ItemView {
   private paneMonth(): HTMLElement {
     const p = el("div", "tlt-pane");
     const m = this.tasksInDim();
-    const head = el("div", "tlt-pane-h");
+    // 任务页头分四行：维度标签 / 计数 / 归属与标签 / 维度与排序。
+    // 挤一行放不下（用户报过）：两种筛选各自成行，计数也单独一行。
+    const head = el("div", "tlt-pane-h tlt-task-head");
     const label = { d: T("今天"), run: T("开展中"), w: T("本周"), m: T("本月"), q: T("本季度"), all: T("全部") }[this.taskDim];
-    head.append(el("span", "", this.taskDim === "run"
-      ? T("{l} · {a} 逾期 / {b} 进行中", { l: label, a: m.late.length, b: m.todo.length + m.pending.length })
-      : T("{l} · {a} 逾期 / {b} 要做 / {c} 已完成 / {d} 未分配里程碑 / {e} 待排期", { l: label, a: m.late.length, b: m.todo.length, c: m.done.length, d: m.orphans.length, e: m.pending.length })));
-    head.appendChild(el("span", "tlt-spacer"));
+    const l1 = el("div", "tlt-th-l1");
+    l1.appendChild(el("span", "tlt-th-dim", label));
+    head.appendChild(l1);
+    const l2 = el("div", "tlt-th-l2");
+    l2.appendChild(el("span", "", this.taskDim === "run"
+      ? T("{a} 逾期 / {b} 进行中", { a: m.late.length, b: m.todo.length + m.pending.length })
+      : T("{a} 逾期 / {b} 要做 / {c} 已完成 / {d} 未分配里程碑 / {e} 待排期", { a: m.late.length, b: m.todo.length, c: m.done.length, d: m.orphans.length, e: m.pending.length })));
+    head.appendChild(l2);
     // 归属只看 [scope::]（工作也显式写）；没标的单独一档，标完就消失
     const inScope = this.store.tasks.filter((t) => t.kind === "task" && (!this.proj || t.project === this.proj));
     const realTags = Array.from(new Set(this.store.tasks.flatMap((t) => t.tags || [])))
@@ -1124,15 +1158,19 @@ export class WorkbenchView extends ItemView {
       sc === "工作" ? T("只看显式写了 [scope:: 工作] 的任务") : sc === "个人" ? T("只看显式写了 [scope:: 个人] 的任务")
         : T("还没有归属的任务（没写 [scope::]，旧任务见 tools/backfill-scope.mjs）")));
     realTags.forEach((tg) => mkChip(tg, tg));
-    head.appendChild(tf);
+    const l3 = el("div", "tlt-th-l3");
+    l3.appendChild(tf);
+    head.appendChild(l3);
     const seg = el("div", "tlt-seg tlt-dim-seg");
     ([["d", T("今天")], ["run", T("开展中")], ["w", T("本周")], ["m", T("本月")], ["q", T("本季度")], ["all", T("全部")]] as const).forEach(([k, t]) => {
       const b2 = el("button", "tlt-seg-b" + (this.taskDim === k ? " on" : ""), t);
       b2.dataset.dim = k;
       seg.appendChild(b2);
     });
-    head.appendChild(seg);
-    head.appendChild(this.sortControl("task"));
+    const l4 = el("div", "tlt-th-l4");
+    l4.appendChild(seg);
+    l4.appendChild(this.sortControl("task"));
+    head.appendChild(l4);
     p.appendChild(head);
     if (this.quick) {
       const f = el("div", "tlt-pane-h");
@@ -2808,16 +2846,44 @@ export class WorkbenchView extends ItemView {
       ev.stopPropagation();
       opts.onMenu({ x: ev.clientX, y: ev.clientY });
     });
-    blk.addEventListener("pointerdown", (ev) => {
-      if (ev.button !== 0) return;
-      mode = (ev.target as HTMLElement).classList.contains("tlt-blk-grip") ? "resize" : "move";
+    let pressTimer: number | null = null;
+    let pressAt = { x: 0, y: 0 };
+    let touchPress = false;
+    const beginDrag = (ev: PointerEvent, m: "move" | "resize") => {
+      mode = m;
       y0 = ev.clientY; a0 = curA; b0 = curB;
       blk.addClass("dragging");
       try { blk.setPointerCapture(ev.pointerId); } catch { /* 老客户端 */ }
+    };
+    blk.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0) return;
+      const m: "move" | "resize" = (ev.target as HTMLElement).classList.contains("tlt-blk-grip") ? "resize" : "move";
+      // 触摸屏：块身要**长按 200ms** 才能拖（否则手指一划就是滚动页面）；
+      // 右下角把手是专门的拖动区，按下即拖。
+      if (ev.pointerType === "touch" && m === "move") {
+        touchPress = true;
+        pressAt = { x: ev.clientX, y: ev.clientY };
+        pressTimer = window.setTimeout(() => {
+          if (!touchPress) return;
+          touchPress = false;
+          beginDrag(ev, "move");
+        }, 200);
+        ev.stopPropagation();        // 别触发"点空白新建"
+        return;                      // 不 preventDefault：留给页面滚动
+      }
+      beginDrag(ev, m);
       ev.stopPropagation();          // 别触发"点空白新建"，也别顺手打开弹窗
       ev.preventDefault();
     });
+    const cancelPress = () => {
+      if (pressTimer !== null) { window.clearTimeout(pressTimer); pressTimer = null; }
+      touchPress = false;
+    };
     blk.addEventListener("pointermove", (ev) => {
+      if (touchPress) {              // 还没到长按时长就划走了 → 当滚动，不拖
+        if (Math.abs(ev.clientX - pressAt.x) > 8 || Math.abs(ev.clientY - pressAt.y) > 8) cancelPress();
+        return;
+      }
       if (!mode) return;
       const d = snap(((ev.clientY - y0) / HOUR_PX) * 60);
       const r = mode === "move" ? clamp(a0 + d, a0 + d + (b0 - a0)) : clamp(a0, b0 + d);
@@ -2833,6 +2899,7 @@ export class WorkbenchView extends ItemView {
       ev.preventDefault();
     }, true);
     const finish = () => {
+      cancelPress();
       if (!mode) return;
       const moved = curA !== opts.a || curB !== opts.b;
       mode = null;

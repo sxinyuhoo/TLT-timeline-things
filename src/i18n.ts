@@ -97,6 +97,8 @@ export const EN: Record<string, string> = {
   "按创建时间": "By created",
   "按截止时间": "By due",
   "反向排列": "Reverse",
+  "{a} 逾期 / {b} 要做 / {c} 已完成 / {d} 未分配里程碑 / {e} 待排期": "{a} overdue / {b} to do / {c} done / {d} no milestone / {e} unscheduled",
+  "{a} 逾期 / {b} 进行中": "{a} overdue / {b} in progress",
   "打开消息": "Open messages",
   "打开项目与列表": "Open projects & lists",
   "项目与列表": "Projects & lists",

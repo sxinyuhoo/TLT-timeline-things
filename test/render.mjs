@@ -3231,6 +3231,33 @@ await t("置顶项目改名后仍然置顶 · 开展中只有一个「进行中�
   assert.ok(rows.includes("有截止的活") && rows.includes("没截止的活"), `两条都该在「进行中」里：${rows.join(" | ")}`);
 });
 
+await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/@media \(hover: none\)/.test(css), "要有 hover:none 分支");
+  for (const sel of ["tlt-pmore", "tlt-pedit", "tlt-ms-act", "tlt-row-pen", "tlt-step-del", "tlt-rename"]) {
+    assert.ok(new RegExp(`\\.${sel}[^{]*\\{[^}]*opacity: \\.85`).test(css) || new RegExp(`\\.${sel},`).test(css),
+      `${sel} 在触摸屏要常显`);
+  }
+  assert.ok(/body\.is-mobile \.modal\.tlt-host \{ width: 96vw/.test(css), "手机弹窗要给满宽度");
+  // 长按拖动：触摸 pointerdown 不能立刻进入拖动，200ms 后才算
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "day"; view.calAt = new Date(); await view.render();
+  const blk = view.contentEl.querySelector(".tlt-blk");
+  if (!blk) return;                        // 当天没块时这条只验 CSS 契约
+  const fire = (type, pointerType) => blk.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerType, clientY: 100 }));
+  fire("pointerdown", "touch");
+  assert.ok(!blk.classList.contains("dragging"), "手指刚按下不该进入拖动（要能滚动页面）");
+  await new Promise((r) => setTimeout(r, 260));
+  assert.ok(blk.classList.contains("dragging"), "长按 200ms 后该进入拖动");
+  blk.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0, pointerType: "touch", clientY: 100 }));
+  // 鼠标：按下即拖
+  const blk2 = view.contentEl.querySelector(".tlt-blk");
+  blk2.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse", clientY: 100 }));
+  assert.ok(blk2.classList.contains("dragging"), "鼠标按下就该进入拖动");
+});
+
 await t("断点档位：宽档三栏不变；中/窄/手机档按档收栏，抽屉与浮层可用", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // CSS 契约：四档的收栏规则都在

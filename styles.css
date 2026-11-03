@@ -2001,3 +2001,54 @@ body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(
 /* 人员卡：跟着档位单列（以前是按窗口宽度，现在按容器宽度） */
 .tlt-root[data-tier="narrow"] .tlt-staffgrid,
 .tlt-root[data-tier="phone"] .tlt-staffgrid { grid-template-columns: 1fr; }
+
+
+/* ---- 任务页头：四行布局（维度标签 / 计数 / 归属与标签 / 维度与排序） ---- */
+.tlt-task-head { flex-direction: column; align-items: stretch; gap: 6px; padding-bottom: 8px; }
+.tlt-task-head > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.tlt-th-l1 .tlt-th-dim { font-size: 11.5px; color: var(--tlt-ink2); }
+.tlt-th-l2 { font-size: 10.5px; color: var(--tlt-ink4); font-variant-numeric: tabular-nums; }
+.tlt-th-l3, .tlt-th-l4 { gap: 6px; }
+.tlt-task-head .tlt-seg { flex-wrap: wrap; height: auto; padding: 2px 3px; }
+.tlt-task-head .tlt-seg-b { flex: none; }
+
+
+/* ==========================================================================
+   P2：触摸适配
+   手机/平板上没有 hover —— "悬停才出现"的按钮会永远看不见，命中区也太小。
+   一律改成常显 + 命中区 ≥34px（视觉仍保持轻，只是可点区域变大）。
+   ========================================================================== */
+@media (hover: none) {
+  /* 常显（原来是 opacity: 0，靠 :hover 显形） */
+  .tlt-pmore,
+  .tlt-pedit,
+  .tlt-ms-act,
+  .tlt-row-pen,
+  .tlt-step-del,
+  .tlt-rename { opacity: .85 !important; }
+  .tlt-blk-grip::after { opacity: .45; }
+
+  /* 命中区：图标视觉不变，盒子上给够手指的余量 */
+  .tlt-pmore, .tlt-pedit, .tlt-ms-act, .tlt-row-pen { width: 34px; height: 34px; border-radius: 8px; }
+  .tlt-step-del { min-width: 34px; min-height: 30px; display: inline-flex; align-items: center; justify-content: center; }
+  .tlt-rename { min-width: 30px; min-height: 30px; }
+  /* 勾选框：13px 手指真的点不准 */
+  .tlt-cb { width: 22px; height: 22px; border-radius: 6px; }
+  /* 日历块把手做成能抓的一片 */
+  .tlt-blk-grip { height: 14px; bottom: -2px; }
+}
+
+/* 手机档：再抬一档 */
+.tlt-root[data-tier="phone"] .tlt-cb { width: 24px; height: 24px; border-radius: 7px; }
+.tlt-root[data-tier="phone"] .tlt-seg-b { padding: 7px 12px; }
+.tlt-root[data-tier="phone"] .tlt-icobtn,
+.tlt-root[data-tier="phone"] .tlt-fold-btn { width: 36px; height: 36px; }
+.tlt-root[data-tier="phone"] .tlt-task { padding-left: 10px; }
+.tlt-root[data-tier="phone"] .tlt-task-x { padding-left: 34px; }
+.tlt-root[data-tier="phone"] .tlt-blk { padding: 7px 9px; }
+.tlt-root[data-tier="phone"] .tlt-blk-t { font-size: 12.5px; }
+
+/* 手机上的弹窗：给满宽度，别留两侧窄条 */
+body.is-mobile .modal.tlt-host { width: 96vw; max-width: 96vw; }
+body.is-mobile .modal.tlt-host .tlt-modal { padding: 16px 14px 14px; }
+body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px 14px; }
