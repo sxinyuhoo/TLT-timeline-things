@@ -124,15 +124,18 @@ export class TLTPlugin extends Plugin {
    * 断了以后刷新全部落空——用户那边看到的就是"点了勾、改了日期，块里什么都没变"。
    * 现在直接按 DOM 找块、取挂在元素上的画法，谁在页面上就刷谁。
    */
-  refreshDailyBlocks() {
-    let n = 0;
-    this.app.workspace.iterateAllLeaves?.((leaf: unknown) => { void leaf; });
-    document.querySelectorAll<HTMLElement>(".block-language-tlt-daily, .tlt-daily-host").forEach((host) => {
-      const draw = (host as unknown as { __tltDraw?: () => void }).__tltDraw;
-      if (typeof draw !== "function") return;
-      try { draw(); n += 1; } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
+  refreshDailyBlocks(): Promise<void> {
+    // 先重读一遍数据再重画：日记块里的任务对象是自己那份，不重读的话
+    // 勾完重画还是旧状态，再点一下会按旧状态写盘（表现为"点了没反应/勾不上"）。
+    return this.store.load().catch(() => undefined).then(() => {
+      let n = 0;
+      document.querySelectorAll<HTMLElement>(".block-language-tlt-daily, .tlt-daily-host").forEach((host) => {
+        const draw = (host as unknown as { __tltDraw?: () => void }).__tltDraw;
+        if (typeof draw !== "function") return;
+        try { draw(); n += 1; } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
+      });
+      if (!n) console.debug("TLT: 没有找到需要重画的日记块");
     });
-    if (!n) console.debug("TLT: 没有找到需要重画的日记块");
   }
 
   /**
@@ -572,7 +575,7 @@ export class TLTPlugin extends Plugin {
     draw(VIEW_TYPE_WORKBENCH);
     draw(VIEW_TYPE_MESSAGES);
     draw(VIEW_TYPE_PANEL);
-    this.refreshDailyBlocks();
+    void this.refreshDailyBlocks();
   }
 
   /* ---------- 示例数据 ---------- */

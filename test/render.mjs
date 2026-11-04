@@ -2404,7 +2404,7 @@ await t("日记块刷新按 DOM 找人（宿主换掉也刷得到）", async () 
   const plain = document.createElement("div");       // 没有画法的块：不该炸
   plain.className = "block-language-tlt-daily";
   document.body.appendChild(plain);
-  inst.refreshDailyBlocks();
+  await inst.refreshDailyBlocks();
   assert.equal(drawn, 1, `挂在元素上的画法要被调到，实际 ${drawn}`);
 });
 

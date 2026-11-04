@@ -103,7 +103,10 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
     const cb = el("i", "tlt-daily-cb" + (t.done ? " on" : ""));
     // 在阅读视图里点代码块，Obsidian 会顺手切到源码——把事件按住，只做勾选
     const hold = (ev: Event) => { ev.preventDefault(); ev.stopPropagation(); };
+    let busy = false;                                    // 防连点：一次只放一个写盘动作过去
     const doToggle = () => {
+      if (busy) return;
+      busy = true;
       void (async () => {
         try {
           const ok = await store.toggleTask(t);
@@ -112,23 +115,18 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
           console.error("TLT: 勾选失败", e);
           new Notice(T("勾选没写进去，看看控制台里的报错"));
         } finally {
-          plugin.refreshDailyBlocks();                  // 不管成没成都要重画，免得界面停在旧状态
+          busy = false;
+          void plugin.refreshDailyBlocks();                   // 不管成没成都要重画，免得界面停在旧状态
         }
       })();
     };
     cb.addEventListener("mousedown", hold);
     cb.addEventListener("click", (ev) => { hold(ev); doToggle(); });
     r.appendChild(cb);
-    // 整行也能勾（勾选框只有 14px，点不准就觉得"勾不上"）——
-    // 但 📝 编辑键和子步骤各自管各自，别被行级处理吃掉
-    r.addClass("click");
+    // 只有勾选框能勾（用户明确要求）。
+    // 注意：行上**不能**再挂 click 做 toggle——勾选框的点击会冒泡到行，一次点击翻两次，
+    // 表现就是"点了没反应"（0.9.66 踩过）。行上只按住 mousedown，避免阅读视图顺手切源码。
     r.addEventListener("mousedown", hold);
-    r.addEventListener("click", (ev) => {
-      const e2 = ev.target as HTMLElement;
-      if (e2.closest(".tlt-daily-edit") || e2.closest(".tlt-daily-steps")) return;
-      hold(ev);
-      doToggle();
-    });
     const body = el("div", "tlt-daily-b");
     const titleLine = el("div", "tlt-daily-trow");
     titleLine.appendChild(el("div", "tlt-daily-t", t.title));
@@ -161,7 +159,7 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
           void (async () => {
             try { await store.setStepDone(t, i, !st.done); }
             catch (e) { console.error("TLT: 子项勾选失败", e); }
-            finally { plugin.refreshDailyBlocks(); }
+            finally { void plugin.refreshDailyBlocks(); }
           })();
         });
         sr.append(sc, el("span", "", st.text));

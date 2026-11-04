@@ -799,9 +799,12 @@ export class Store {
 
   async toggleTask(t: Task) {
     const today = todayISO();
-    const willBeDone = !t.done;
+    // 目标状态以**文件里那一行**为准，不看内存里的 t.done：
+    // 日记块这类"块自己重画"的入口拿到的可能是旧对象，信旧状态会导致连点两次等于没点。
+    let willBeDone = !t.done;
     // 勾上：补 [done:: 日期]；取消勾选：把 [done::] 去掉（重开就重开，别留旧完成时间）
     const ok = await this.patchLine(t.file, t.line, (raw) => {
+      willBeDone = !/^\s*[-*+]\s+\[x\]/i.test(raw);
       const next = toggleTaskLine(raw);
       return setTaskField(next, "done", willBeDone ? today : null);
     }, t.title);

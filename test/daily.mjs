@@ -198,33 +198,45 @@ await t("点方块不冒泡；任务名后面的 📝 打开任务详情", async
   assert.ok(/任务|标题/.test(modal.textContent || ""), `弹窗内容看着不对：${(modal.textContent || "").slice(0, 60)}`);
 });
 
-await t("点整行也能勾（勾选框只有 14px，点不准＝\"勾不上\"）；点 📝 不勾", async () => {
+await t("勾选框点一下＝勾上（不能被行级处理翻两次）；点正文不勾；点 📝 只开弹窗", async () => {
   fixture();
   const { app, store } = await makeStore();
   let refreshed = 0;
-  const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() { refreshed++; } };
+  let plugin;                                 // 真插件里 refreshDailyBlocks 会重画整个块（拿到新数据），stub 也照做
+  plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() { refreshed++; renderDaily(plugin, host, "", "70-生活/diary/2026/20261029.md"); } };
   const host = document.createElement("div");
   document.body.appendChild(host);
   renderDaily(plugin, host, "", "70-生活/diary/2026/20261029.md");
+  const file = "TLT/tasks/交通核心算法研发.md";
+  const rowOf = () => [...host.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("今天到期的活"));
 
-  const row = [...host.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("今天到期的活"));
-  // ① 点行里的正文（不是勾选框）→ 也该勾上
-  const body = row.querySelector(".tlt-daily-b");
-  body.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
-  await flush(60);
+  // ① 点勾选框：一次点击只能翻一次（0.9.66 的 bug 是行级 handler 又翻一次，结果勾不上）
+  rowOf().querySelector(".tlt-daily-cb").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await flush(80);
   const now = new Date();
   const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  assert.ok(fps.files["TLT/tasks/交通核心算法研发.md"].includes("[done:: " + todayLocal + "]"),
-    "点整行应该把任务勾上：" + fps.files["TLT/tasks/交通核心算法研发.md"]);
+  assert.ok(fps.files[file].includes("[done:: " + todayLocal + "]"),
+    "点勾选框应该把任务勾上（这条挂了说明一次点击被翻了两次）：\n" + fps.files[file]);
+  assert.ok(/^- \[x\]/.test((fps.files[file].split("\n").find((l) => l.includes("今天到期的活")) || "").trim()),
+    "任务行该变成 [x]：" + (fps.files[file].split("\n").find((l) => l.includes("今天到期的活")) || ""));
   assert.ok(refreshed >= 1, "勾完要重画");
 
-  // ② 点 📝 只开弹窗，不该顺手勾选
-  const before = fps.files["TLT/tasks/交通核心算法研发.md"];
-  const row2 = [...host.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("今天到期的活"))
-    || row;
-  row2.querySelector(".tlt-daily-edit").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  // ② 点行内正文：不勾（用户明确只留勾选框）
+  const before = fps.files[file];
+  rowOf().querySelector(".tlt-daily-b").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   await flush(60);
-  assert.equal(fps.files["TLT/tasks/交通核心算法研发.md"], before, "点 📝 不该改动任务状态");
+  assert.equal(fps.files[file], before, "点正文不该改动任务状态");
+
+  // ③ 点 📝：只开弹窗，不勾
+  rowOf().querySelector(".tlt-daily-edit").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await flush(60);
+  assert.equal(fps.files[file], before, "点 📝 不该改动任务状态");
+
+  // ④ 再点一次勾选框：能取消（不是被 busy 永久卡住）
+  rowOf().querySelector(".tlt-daily-cb").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await flush(80);
+  assert.ok(!fps.files[file].includes("[done:: " + todayLocal + "]"),
+    "再点一次应该取消完成：\n" + fps.files[file]);
 });
 
 await t("勾选写回文件，并触发整体重画", async () => {
