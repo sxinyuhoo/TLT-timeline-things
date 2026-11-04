@@ -3391,6 +3391,22 @@ await t("新建任务弹窗：子项加完之后还能就地改（用户报的�
   m.close();
 });
 
+await t("日历定位：记下来的\"0\"不当回事——没真滚过就照常定位到此刻", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "d";
+  view.viewDate = D;
+  view.dayScroll = { day: D, top: 0 };            // 老代码会把这种"假 0"当成用户位置，回去就停在 0 点
+  await view.render();
+  assert.ok(view.focusPending !== null, "假 0 不该被当成滚动位置，应该走\"定位到此刻\"这条路");
+  assert.ok(!view.contentEl.querySelector(".tlt-daygrid")?.dataset.scrollTop, "也不该往容器上写 dataset.scrollTop");
+  // 真滚过（top > 4）才恢复
+  view.dayScroll = { day: D, top: 300 };
+  await view.render();
+  assert.equal(view.contentEl.querySelector(".tlt-daygrid")?.scrollTop, 300, "真滚过就恢复原位置");
+});
+
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   assert.ok(/@media \(hover: none\)/.test(css), "要有 hover:none 分支");

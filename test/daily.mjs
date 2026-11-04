@@ -198,6 +198,35 @@ await t("点方块不冒泡；任务名后面的 📝 打开任务详情", async
   assert.ok(/任务|标题/.test(modal.textContent || ""), `弹窗内容看着不对：${(modal.textContent || "").slice(0, 60)}`);
 });
 
+await t("点整行也能勾（勾选框只有 14px，点不准＝\"勾不上\"）；点 📝 不勾", async () => {
+  fixture();
+  const { app, store } = await makeStore();
+  let refreshed = 0;
+  const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() { refreshed++; } };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  renderDaily(plugin, host, "", "70-生活/diary/2026/20261029.md");
+
+  const row = [...host.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("今天到期的活"));
+  // ① 点行里的正文（不是勾选框）→ 也该勾上
+  const body = row.querySelector(".tlt-daily-b");
+  body.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await flush(60);
+  const now = new Date();
+  const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  assert.ok(fps.files["TLT/tasks/交通核心算法研发.md"].includes("[done:: " + todayLocal + "]"),
+    "点整行应该把任务勾上：" + fps.files["TLT/tasks/交通核心算法研发.md"]);
+  assert.ok(refreshed >= 1, "勾完要重画");
+
+  // ② 点 📝 只开弹窗，不该顺手勾选
+  const before = fps.files["TLT/tasks/交通核心算法研发.md"];
+  const row2 = [...host.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("今天到期的活"))
+    || row;
+  row2.querySelector(".tlt-daily-edit").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await flush(60);
+  assert.equal(fps.files["TLT/tasks/交通核心算法研发.md"], before, "点 📝 不该改动任务状态");
+});
+
 await t("勾选写回文件，并触发整体重画", async () => {
   fixture();
   const { app, store } = await makeStore();

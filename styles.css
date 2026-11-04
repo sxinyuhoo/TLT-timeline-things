@@ -2181,3 +2181,10 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
   color: var(--tlt-ink5); font-variant-numeric: tabular-nums; margin-right: 6px;
 }
 .tlt-step.draft .tlt-step-t { cursor: text; }
+
+
+/* 日记块：勾选框视觉仍是 14px，但可点区域往外扩 6px（手指/触控板都容易点准） */
+.tlt-daily-cb { position: relative; }
+.tlt-daily-cb::before { content: ""; position: absolute; inset: -6px; }
+.tlt-daily-row.click, .tlt-daily-row.click .tlt-daily-b { cursor: pointer; }
+.tlt-daily-row.click .tlt-daily-steps, .tlt-daily-row.click .tlt-daily-edit { cursor: default; }

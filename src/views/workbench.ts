@@ -302,11 +302,19 @@ export class WorkbenchView extends ItemView {
     const prevGrid = root.querySelector<HTMLElement>(".tlt-daygrid");
     // 上一屏还是日视图 → 记住它滚到哪；上一屏不是（月/周/任务…）→ 缓存作废，
     // 否则"很久以前那次日视图的 0"会在下一次打开日视图时把自动居中顶掉（用户报过）
-    if (prevGrid && this.renderedDay) this.dayScroll = { day: this.renderedDay, top: prevGrid.scrollTop };
-    else this.dayScroll = null;
+    // 只在"真的滚过"或"容器确有高度"时才记：视图隐藏/还没布局时 clientHeight 是 0，
+    // 这时抓到的是假值 0，记下来之后每次回来都会"恢复"到顶部（用户报的就是这个）。
+    if (prevGrid && this.renderedDay && (prevGrid.clientHeight > 80 || prevGrid.scrollTop > 4)) {
+      this.dayScroll = { day: this.renderedDay, top: prevGrid.scrollTop };
+    } else if (!prevGrid) {
+      this.dayScroll = null;      // 上一屏压根不在日视图 → 旧位置作废；还在日视图只是没量到高度 → 留着别丢
+    }
     const prevWsc = root.querySelector<HTMLElement>(".tlt-wscroll");
-    if (prevWsc && this.renderedWeek) this.weekScroll = { day: this.renderedWeek, top: prevWsc.scrollTop };
-    else this.weekScroll = null;
+    if (prevWsc && this.renderedWeek && (prevWsc.clientHeight > 80 || prevWsc.scrollTop > 4)) {
+      this.weekScroll = { day: this.renderedWeek, top: prevWsc.scrollTop };
+    } else if (!prevWsc) {
+      this.weekScroll = null;
+    }
     this.renderedWeek = "";
     // 输入框在 render 里会被重建，先记下焦点与光标位置，建完再还回去
     const ae = document.activeElement;
@@ -885,10 +893,10 @@ export class WorkbenchView extends ItemView {
     // 真正的高度要等挂进 DOM 才知道，所以这里只记"要看的时刻"，由 fitWeekHeight 统一定位
     this.renderedDay = sel;
     if (jump !== null) this.focusPending = jump;
-    else if (this.dayScroll && this.dayScroll.day === sel) {
+    else if (this.dayScroll && this.dayScroll.day === sel && this.dayScroll.top > 4) {
       grid.dataset.scrollTop = String(Math.max(0, this.dayScroll.top));
       this.focusPending = null;                      // 同一天重渲：保住用户滚到的位置，别又居中回去
-    } else this.focusPending = sel === todayISO() ? nowMin : 9 * 60;
+    } else this.focusPending = sel === todayISO() ? nowMin : 9 * 60;   // 没滚过（或假值 0）→ 照常定位到此刻
     return p;
   }
 
@@ -969,8 +977,8 @@ export class WorkbenchView extends ItemView {
     // 之前是按数据最小~最大铺（还限 120 天），任务只要有半年前的记录，窗口就整段跑到过去，
     // 当月的任务直接被裁掉——用户看到的就是"看不到这个月的、屏幕上全是老任务"。
     const today = todayISO();
-    let from = asMs(today) - 21 * dayMs;
-    let to = asMs(today) + 75 * dayMs;
+    let from = asMs(today) - 28 * dayMs;
+    let to = asMs(today) + 70 * dayMs;
     const inWin = (t: { start?: string; created?: string; due?: string }) => {
       const v = [t.start, t.created, t.due].map((k) => (k ? D(k).getTime() : NaN)).filter((n) => !Number.isNaN(n));
       return v.some((n) => n >= from && n <= to);
@@ -2405,8 +2413,15 @@ export class WorkbenchView extends ItemView {
     this.focusTries = 0;
     const perHour = box.classList.contains("tlt-daygrid") ? HOUR_PX : HOUR_css();
     const target = Math.max(0, ((focus - DAY_FROM) / 60) * perHour - box.clientHeight * 0.42);
-    this.focusPending = null;                    // 用掉就清：后面手动滚动/重渲都不该再被拽回去
     if (Math.abs(box.scrollTop - target) > 2) box.scrollTop = target;
+    // 回读校验：写进去被夹回 0（容器其实还没可见）→ 目标留着，稍后再试，别停 0 点
+    if (target > 40 && box.scrollTop < 8) {
+      if (this.focusTries++ < 20) window.setTimeout(() => this.applyCalendarFocus(), 150);
+      else this.focusTries = 0;
+      return;
+    }
+    this.focusTries = 0;
+    this.focusPending = null;                    // 真的写进去了才清：后面手动滚动/重渲都不该再被拽回去
   }
 
   /** 视图拿到/换掉真实尺寸时（Obsidian 会调）：高度重算 + 补做一次"定位到现在" */

@@ -103,9 +103,7 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
     const cb = el("i", "tlt-daily-cb" + (t.done ? " on" : ""));
     // 在阅读视图里点代码块，Obsidian 会顺手切到源码——把事件按住，只做勾选
     const hold = (ev: Event) => { ev.preventDefault(); ev.stopPropagation(); };
-    cb.addEventListener("mousedown", hold);
-    cb.addEventListener("click", (ev) => {
-      hold(ev);
+    const doToggle = () => {
       void (async () => {
         try {
           const ok = await store.toggleTask(t);
@@ -117,8 +115,20 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
           plugin.refreshDailyBlocks();                  // 不管成没成都要重画，免得界面停在旧状态
         }
       })();
-    });
+    };
+    cb.addEventListener("mousedown", hold);
+    cb.addEventListener("click", (ev) => { hold(ev); doToggle(); });
     r.appendChild(cb);
+    // 整行也能勾（勾选框只有 14px，点不准就觉得"勾不上"）——
+    // 但 📝 编辑键和子步骤各自管各自，别被行级处理吃掉
+    r.addClass("click");
+    r.addEventListener("mousedown", hold);
+    r.addEventListener("click", (ev) => {
+      const e2 = ev.target as HTMLElement;
+      if (e2.closest(".tlt-daily-edit") || e2.closest(".tlt-daily-steps")) return;
+      hold(ev);
+      doToggle();
+    });
     const body = el("div", "tlt-daily-b");
     const titleLine = el("div", "tlt-daily-trow");
     titleLine.appendChild(el("div", "tlt-daily-t", t.title));
