@@ -637,14 +637,16 @@ export class TaskModal extends TltModal {
   /** 就地改子项文字（回车保存，Esc 取消） */
   private editStep(span: HTMLElement, index: number) {
     const input = el("input", "tlt-step-edit");
-    input.value = span.textContent ?? "";
+    const original = span.textContent ?? "";
+    input.value = original;
     span.replaceWith(input);
     input.focus(); input.select();
     let done = false;
     const commit = (save: boolean) => { void (async () => {
       if (done) return;
       done = true;
-      if (save) await this.store.setStepText(this.task, index, input.value);
+      // 文字没动：当成取消，别白写一次盘（也避免焦点闪一下就把编辑关了的感觉）
+      if (save && input.value !== original) await this.store.setStepText(this.task, index, input.value);
       await this.refreshSteps();
     })(); };
     input.addEventListener("keydown", (e) => {
@@ -726,6 +728,7 @@ export class TaskModal extends TltModal {
       const cb = el("i", "tlt-scb" + (st.done ? " on" : ""));
       cb.onclick = () => { void (async () => { await this.store.setStepDone(this.task, i, !st.done); await this.refreshSteps(); })(); };
       const txt = el("span", "tlt-step-t", st.text);
+      txt.title = T("点一下改文字");
       txt.onclick = () => this.editStep(txt, i);
       const del = el("button", "tlt-step-del");
     svgIcon(del, "close", 11);
@@ -736,6 +739,12 @@ export class TaskModal extends TltModal {
         ok: T("删除"),
       }, async (ok) => { if (ok) { await this.store.deleteStep(this.task, i); await this.refreshSteps(); } }).open(); };
       line.append(cb, txt, del);
+      line.onclick = (ev) => {
+        const el2 = ev.target as HTMLElement;
+        if (el2.closest(".tlt-scb") || el2.closest(".tlt-step-del")) return;   // 勾选、删除各管各的
+        if (el2.closest(".tlt-step-edit")) return;                             // 已经在编辑就别重开
+        this.editStep(txt, i);
+      };
       stepBox.appendChild(line);
     });
     const stepAdd = el("input", "tlt-step-add");

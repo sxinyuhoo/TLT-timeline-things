@@ -143,7 +143,7 @@ export class WorkbenchView extends ItemView {
   private proj: string | null = null;
   private q = "";
   private expanded = new Set<string>();
-  private rhythmView: "bars" | "star" = "star";
+  private rhythmView: "bars" | "star" | "lanes" = "star";
   private taskDim: TaskDim = "m";
   private showArchived = false;
   /** 日历时间轴滚到哪了（按日期记）：同一天重渲要保住，换天才自动定位 */
@@ -915,7 +915,7 @@ export class WorkbenchView extends ItemView {
     head.appendChild(el("span", "tlt-rhythm-s", T("{a} 个到期 · {b} 个里程碑 · 最挤 {c}（{d} 件）", { a: dueN, b: msN, c: `${D(busy).getMonth() + 1}/${D(busy).getDate()}`, d: bn })));
     head.appendChild(el("span", "tlt-spacer"));
     const seg = el("div", "tlt-seg tlt-rhythm-seg");
-    ([["bars", T("条带")], ["star", T("星图")]] as const).forEach(([k, t]) => {
+    ([["bars", T("条带")], ["star", T("星图")], ["lanes", T("泳道")]] as const).forEach(([k, t]) => {
       const b = el("button", "tlt-seg-b" + (this.rhythmView === k ? " on" : ""), t);
       b.dataset.rhythm = k;
       seg.appendChild(b);
@@ -925,6 +925,10 @@ export class WorkbenchView extends ItemView {
 
     if (this.rhythmView === "star") {
       wrap.appendChild(this.starMap());
+      return wrap;
+    }
+    if (this.rhythmView === "lanes") {
+      wrap.appendChild(this.laneChart());       // 纵轴＝项目，横轴＝天
       return wrap;
     }
 
@@ -945,6 +949,102 @@ export class WorkbenchView extends ItemView {
   }
 
   /** 极坐标时间线：半径=时间，扇区=项目，连线=同一个人 */
+  /**
+   * 泳道图：纵轴＝项目（一条泳道一个项目），横轴＝天（一天一格）。
+   * 每个任务一根小条：左端＝开始日（没写就用创建日），右端＝截止日（没写就一个小点）。
+   * 颜色：进行中＝主色、逾期＝橙、已完成＝灰。点一下开任务详情。
+   */
+  private laneChart(): HTMLElement {
+    const box = el("div", "tlt-lanes");
+    const dayMs = 86400000;
+    const asMs = (k?: string) => (k ? D(k).getTime() : NaN);
+    const tasks = this.store.tasks.filter((t) => t.kind === "task" && (t.start || t.created || t.due));
+    const pts: number[] = [];
+    tasks.forEach((t) => [t.start, t.created, t.due].forEach((k) => { const v = asMs(k); if (!Number.isNaN(v)) pts.push(v); }));
+    if (!pts.length) {
+      box.appendChild(el("div", "tlt-hint", T("还没有带日期的任务：给任务写上 🛫（开始）/ 📅（截止）就会出现在这里。")));
+      return box;
+    }
+    const pad = 3 * dayMs;
+    const from = Math.min(...pts) - pad;
+    const DAYS_MAX = 120;                                        // 太长就只看前 120 天，别把一天压成一个像素
+    const to = Math.min(Math.max(...pts) + pad, from + DAYS_MAX * dayMs);
+    const span = Math.max(1, Math.round((to - from) / dayMs));
+    const pos = (v: number) => ((v - from) / (span * dayMs)) * 100;
+
+    // 每个项目一条泳道，任务多的排上面
+    const byProj = new Map<string, Task[]>();
+    tasks.forEach((t) => {
+      const k = t.project || T("未归项目");
+      const arr = byProj.get(k);
+      if (arr) arr.push(t); else byProj.set(k, [t]);
+    });
+    const rows = Array.from(byProj.entries()).sort((x, y) => y[1].length - x[1].length);
+
+    // 月份刻度：每月 1 号一条淡线 + 标一个月名
+    const ticks = el("div", "tlt-lane-ticks");
+    ticks.appendChild(el("span", "tlt-lane-gut"));
+    const track = el("div", "tlt-lane-track");
+    let cur = D(new Date(from).toISOString().slice(0, 10));
+    cur = new Date(cur.getFullYear(), cur.getMonth(), 1);
+    const end = new Date(to);
+    while (cur.getTime() <= end.getTime()) {
+      const x = pos(cur.getTime());
+      if (x >= 0 && x <= 100) {
+        const t = el("span", "tlt-lane-tick");
+        t.setCssProps({ left: `${x}%` });
+        t.textContent = `${cur.getMonth() + 1}月`;
+        track.appendChild(t);
+      }
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    }
+    const nowX = pos(asMs(todayISO()));
+    if (nowX >= 0 && nowX <= 100) {
+      const n = el("span", "tlt-lane-today");
+      n.setCssProps({ left: `${nowX}%` });
+      n.title = T("今天");
+      track.appendChild(n);
+    }
+    ticks.appendChild(track);
+    box.appendChild(ticks);
+
+    const body = el("div", "tlt-lane-body");
+    rows.forEach(([proj, list]) => {
+      const row = el("div", "tlt-lane");
+      const name = el("div", "tlt-lane-n");
+      name.appendChild(el("span", "tlt-lane-pn", proj));
+      name.appendChild(el("span", "tlt-lane-pc", String(list.length)));
+      const lane = el("div", "tlt-lane-track");
+      list
+        .slice()
+        .sort((a2, b2) => String(a2.start || a2.created || a2.due).localeCompare(String(b2.start || b2.created || b2.due)))
+        .forEach((t) => {
+          const sMs = asMs(t.start || t.created || t.due);
+          const eMs = asMs(t.due);
+          const a = Number.isNaN(sMs) ? (Number.isNaN(eMs) ? from : eMs) : sMs;
+          const b = Number.isNaN(eMs) ? a : Math.max(a, eMs);
+          const left = pos(a);
+          const width = Math.max(0.7, pos(b + dayMs) - left);
+          if (left > 100 || left + width < 0) return;            // 窗口外的就不画
+          const bar = el("span", "tlt-lane-b" + (t.done ? " done" : "")
+            + (!t.due && !t.done ? " open" : "")
+            + (t.due && t.due < todayISO() && !t.done ? " late" : ""));
+          bar.setCssProps({ left: `${Math.max(0, left)}%`, width: `${Math.min(100 - Math.max(0, left), width)}%` });
+          bar.dataset.task = t.id;
+          bar.title = `${t.title}\n${t.start || t.created || "—"} → ${t.due || T("无截止")}`;
+          lane.appendChild(bar);
+        });
+      const nowMk = el("span", "tlt-lane-today soft");
+      nowMk.setCssProps({ left: `${Math.max(0, Math.min(100, nowX))}%` });
+      lane.appendChild(nowMk);
+      row.append(name, lane);
+      body.appendChild(row);
+    });
+    box.appendChild(body);
+    box.appendChild(el("div", "tlt-lane-foot", T("纵轴＝项目，横轴＝天（一天一格，最多看 {a} 天）；点一条开任务详情。", { a: span })));
+    return box;
+  }
+
   private starMap(): HTMLElement {
     const box = el("div", "tlt-star-box");
     const wrap = el("div", "tlt-star-wrap");
@@ -1383,6 +1483,7 @@ export class WorkbenchView extends ItemView {
       cb.dataset.step = `${t.id}|${i}`;
       const txt = el("span", "tlt-step-t", st.text);
       txt.dataset.steptext = `${t.id}|${i}`;
+      txt.title = T("点一下改文字");
       const del = el("button", "tlt-step-del", "×");
       del.dataset.stepdel = `${t.id}|${i}`;
       del.title = T("删掉这条子项");
@@ -2706,7 +2807,7 @@ export class WorkbenchView extends ItemView {
     if (dim) { this.taskDim = dim.dataset.dim as TaskDim; await this.render(); return; }
 
     const rv = pick("[data-rhythm]");
-    if (rv) { this.rhythmView = rv.dataset.rhythm as "bars" | "star"; await this.render(); return; }
+    if (rv) { this.rhythmView = rv.dataset.rhythm as "bars" | "star" | "lanes"; await this.render(); return; }
 
     const period = pick("[data-period]");
     if (period) { this.period = period.dataset.period as Period; await this.render(); return; }
@@ -3087,7 +3188,8 @@ export class WorkbenchView extends ItemView {
     if (!task) return;
     const idx = Number(idxRaw);
     const input = el("input", "tlt-step-edit");
-    input.value = span.textContent ?? "";
+    const original = span.textContent ?? "";
+    input.value = original;
     span.replaceWith(input);
     input.focus();
     input.select();
@@ -3095,7 +3197,7 @@ export class WorkbenchView extends ItemView {
     const commit = (save: boolean) => { void (async () => {
       if (done) return;
       done = true;
-      if (save) await this.store.setStepText(task, idx, input.value);
+      if (save && input.value !== original) await this.store.setStepText(task, idx, input.value);   // 没改动＝取消
       await this.refresh();
     })(); };
     input.addEventListener("keydown", (e) => {

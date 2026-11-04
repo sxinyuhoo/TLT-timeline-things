@@ -2149,3 +2149,26 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 /* 任务页的维度筛选：自适应宽度、留出够读的内边距（原来套了人员页的 210px/9px，挤得看不清） */
 .tlt-tdim { width: auto; flex-wrap: wrap; min-width: 0; }
 .tlt-tdim .tlt-seg-b { font-size: 10.5px; padding: 4px 11px; }
+
+
+/* ==========================================================================
+   泳道图：纵轴＝项目，横轴＝天。每根小条＝一个任务（左端开始日、右端截止日）
+   ========================================================================== */
+.tlt-lanes { display: flex; flex-direction: column; gap: 2px; }
+.tlt-lane-ticks, .tlt-lane { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 8px; }
+.tlt-lane-ticks { font-size: 9px; color: var(--tlt-ink5); }
+.tlt-lane-track { position: relative; height: 18px; }
+.tlt-lane-ticks .tlt-lane-track { height: 12px; }
+.tlt-lane-tick { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.tlt-lane-today { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--tlt-acc); opacity: .5; pointer-events: none; }
+.tlt-lane-today.soft { top: 2px; bottom: 2px; opacity: .28; }
+.tlt-lane-body { max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.tlt-lane-n { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 10.5px; color: var(--tlt-ink3); }
+.tlt-lane-pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlt-lane-pc { flex: none; font-size: 9px; color: var(--tlt-ink5); }
+.tlt-lane-b { position: absolute; top: 4px; height: 10px; border-radius: 5px; background: var(--tlt-acc); opacity: .78; cursor: pointer; }
+.tlt-lane-b:hover { opacity: 1; }
+.tlt-lane-b.done { background: var(--tlt-ink4); opacity: .38; }
+.tlt-lane-b.open { background: var(--tlt-ink4); opacity: .32; }
+.tlt-lane-b.late { background: #D98B5F; }
+.tlt-lane-foot { font-size: 9px; color: var(--tlt-ink5); margin-top: 5px; }

@@ -3283,6 +3283,91 @@ await t("日历定位：容器还没高度时不能把「定位到现在」用�
   assert.equal(view.focusPending, 10 * 60, "查不到容器时也要留着 focus，等挂载后再定位");
 });
 
+await t("任务弹窗：点子项文字能就地编辑（不用删了重加）", async () => {
+  document.body.empty();
+  files["TLT/tasks/示例项目.md"] = `# 示例项目
+
+## 一期
+
+- [ ] 带子项的任务 📅 ${D} [created:: ${D}]
+  - [ ] 第一步
+  - [x] 第二步
+`;
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.store.load();                    // 夹具是刚写进去的：要重读一次才拿得到
+  const task = view.store.tasks.find((x) => x.title.includes("带子项"));
+  assert.ok(task && task.steps.length === 2, `夹具要有两条子项，实际 ${task?.steps?.length}`);
+  const m = new TaskModal(view.app, view.store, task, () => {});
+  m.open();
+  const span = m.contentEl.querySelector(".tlt-step-t");
+  assert.ok(span, "弹窗里要渲染出子项文字");
+  span.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 80));
+  const input = m.contentEl.querySelector(".tlt-step-edit");
+  assert.ok(input, "点子项文字应换成输入框（就地编辑）");
+  assert.equal(input.value, "第一步", `输入框该带上原文：${input.value}`);
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+
+  // 用户报的场景：**新加**一条子项之后，再点它还能不能编辑
+  const add = m.contentEl.querySelector(".tlt-step-add");
+  assert.ok(add, "要有「加一条子项」输入框");
+  add.value = "刚敲的一条";
+  add.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 120));
+  const spans = [...m.contentEl.querySelectorAll(".tlt-step-t")];
+  const fresh = spans.find((x) => x.textContent === "刚敲的一条");
+  assert.ok(fresh, `新加的子项要出现在弹窗里：${spans.map((x) => x.textContent).join(" / ")}`);
+  fresh.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 80));
+  const input2 = m.contentEl.querySelector(".tlt-step-edit");
+  assert.ok(input2, "新加的子项也必须能点开编辑（用户报的就是这条）");
+  assert.equal(input2.value, "刚敲的一条", `编辑框要带上新子项的文字：${input2.value}`);
+  m.close();
+});
+
+await t("泳道图：纵轴项目、横轴天，任务条带状态、可点开详情", async () => {
+  document.body.empty();
+  const d = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+  files["TLT/tasks/甲项目.md"] = `# 甲项目
+
+## 一期
+
+- [ ] 甲逾期 🛫 ${d(-20)} 📅 ${d(-3)} [created:: ${d(-25)}]
+- [ ] 甲进行 🛫 ${d(-2)} 📅 ${d(9)} [created:: ${d(-2)}]
+- [x] 甲完成 🛫 ${d(-40)} 📅 ${d(-30)} [created:: ${d(-45)}] [done:: ${d(-29)}]
+`;
+  files["TLT/tasks/乙项目.md"] = `# 乙项目
+
+## 一期
+
+- [ ] 乙无截止 [created:: ${d(-1)}]
+`;
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.store.load();
+  view.tab = "today"; view.calView = "m"; view.rhythmView = "lanes";
+  await view.render();
+  const box = view.contentEl.querySelector(".tlt-lanes");
+  assert.ok(box, "节奏区要能切到泳道图");
+  const rows = [...view.contentEl.querySelectorAll(".tlt-lane")];
+  const names = rows.map((r) => r.querySelector(".tlt-lane-pn")?.textContent);
+  assert.ok(names.includes("甲项目") && names.includes("乙项目"), `每条泳道是一个项目：${names.join(",")}`);
+  const bars = [...view.contentEl.querySelectorAll(".tlt-lane-b")];
+  assert.ok(bars.length >= 4, `任务要画成条：${bars.length} 根`);
+  assert.ok(bars.some((b) => b.classList.contains("late")), "逾期的条要有 late 标记");
+  assert.ok(bars.some((b) => b.classList.contains("done")), "已完成的条要有 done 标记");
+  assert.ok(bars.some((b) => b.classList.contains("open")), "没截止日的条要有 open 标记");
+  assert.ok(bars.every((b) => b.dataset.task), "每根条都要能点开任务");
+  assert.ok(view.contentEl.querySelector(".tlt-lane-today"), "要有今天竖线");
+  assert.match(view.contentEl.querySelector(".tlt-lane-foot")?.textContent || "", /纵轴＝项目/, "要有怎么读的说明");
+  // 点一根条：走 [data-task] 委托 → 开任务详情
+  bars[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 120));
+  assert.ok(document.querySelector(".tlt-host"), "点任务条应打开任务详情");
+});
+
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   assert.ok(/@media \(hover: none\)/.test(css), "要有 hover:none 分支");
