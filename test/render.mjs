@@ -3327,22 +3327,18 @@ await t("任务弹窗：点子项文字能就地编辑（不用删了重加）",
   m.close();
 });
 
-await t("泳道图：纵轴项目、横轴天，任务条带状态、可点开详情", async () => {
+await t("泳道图：以今天为中心取窗口（看不到的才裁掉）、跨天是长条、只写截止日是圆点", async () => {
   document.body.empty();
   const d = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
   files["TLT/tasks/甲项目.md"] = `# 甲项目
 
 ## 一期
 
-- [ ] 甲逾期 🛫 ${d(-20)} 📅 ${d(-3)} [created:: ${d(-25)}]
-- [ ] 甲进行 🛫 ${d(-2)} 📅 ${d(9)} [created:: ${d(-2)}]
-- [x] 甲完成 🛫 ${d(-40)} 📅 ${d(-30)} [created:: ${d(-45)}] [done:: ${d(-29)}]
-`;
-  files["TLT/tasks/乙项目.md"] = `# 乙项目
-
-## 一期
-
-- [ ] 乙无截止 [created:: ${d(-1)}]
+- [ ] 甲逾期 🛫 ${d(-15)} 📅 ${d(-3)} [created:: ${d(-20)}]
+- [ ] 甲跨天 🛫 ${d(-2)} 📅 ${d(9)} [created:: ${d(-2)}]
+- [x] 甲完成 🛫 ${d(-12)} 📅 ${d(-5)} [created:: ${d(-18)}] [done:: ${d(-4)}]
+- [ ] 甲只有截止 📅 ${d(6)} [created:: ${d(-1)}]
+- [ ] 甲很久以前 🛫 ${d(-200)} 📅 ${d(-190)} [created:: ${d(-210)}]
 `;
   const view = mount(WorkbenchView);
   await view.onOpen();
@@ -3351,21 +3347,48 @@ await t("泳道图：纵轴项目、横轴天，任务条带状态、可点开�
   await view.render();
   const box = view.contentEl.querySelector(".tlt-lanes");
   assert.ok(box, "节奏区要能切到泳道图");
-  const rows = [...view.contentEl.querySelectorAll(".tlt-lane")];
-  const names = rows.map((r) => r.querySelector(".tlt-lane-pn")?.textContent);
-  assert.ok(names.includes("甲项目") && names.includes("乙项目"), `每条泳道是一个项目：${names.join(",")}`);
   const bars = [...view.contentEl.querySelectorAll(".tlt-lane-b")];
-  assert.ok(bars.length >= 4, `任务要画成条：${bars.length} 根`);
+  const titles = bars.map((b) => b.title.split("\n")[0]);
+  assert.ok(titles.some((x) => x.includes("甲跨天")), `窗口内的任务要画出来：${titles.join(" / ")}`);
+  assert.ok(!titles.some((x) => x.includes("甲很久以前")), `窗口外的老任务不该占屏幕（这就是"只看到老任务"的根因）：${titles.join(" / ")}`);
   assert.ok(bars.some((b) => b.classList.contains("late")), "逾期的条要有 late 标记");
   assert.ok(bars.some((b) => b.classList.contains("done")), "已完成的条要有 done 标记");
-  assert.ok(bars.some((b) => b.classList.contains("open")), "没截止日的条要有 open 标记");
+  assert.ok(bars.some((b) => b.classList.contains("dot")), "只写截止日的画成圆点");
+  const span = bars.find((b) => (b.title || "").includes("甲跨天"));
+  assert.ok(parseFloat(span.style.width) > 5, `跨天任务该是一条长条，实际宽 ${span.style.width}`);
   assert.ok(bars.every((b) => b.dataset.task), "每根条都要能点开任务");
-  assert.ok(view.contentEl.querySelector(".tlt-lane-today"), "要有今天竖线");
   assert.match(view.contentEl.querySelector(".tlt-lane-foot")?.textContent || "", /纵轴＝项目/, "要有怎么读的说明");
-  // 点一根条：走 [data-task] 委托 → 开任务详情
   bars[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => setTimeout(r, 120));
   assert.ok(document.querySelector(".tlt-host"), "点任务条应打开任务详情");
+});
+
+await t("新建任务弹窗：子项加完之后还能就地改（用户报的就是这条）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const m = new QuickTaskModal(view.app, view.store, "示例项目", null, () => {});
+  m.open();
+  await new Promise((r) => setTimeout(r, 80));      // 等弹窗自己的"聚焦标题"定时器先跑完，别来抢焦点
+  const add = m.contentEl.querySelector(".tlt-step-add");
+  add.value = "第一条";
+  add.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  add.value = "第二条";
+  add.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  const spans = [...m.contentEl.querySelectorAll(".tlt-step-t")];
+  assert.equal(spans.length, 2, `应有两步子项，实际 ${spans.length}`);
+  assert.ok(m.contentEl.querySelectorAll(".tlt-step-no").length === 2, "新建弹窗里子项该有序号（不是没意义的勾选框）");
+  spans[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  const input = m.contentEl.querySelector(".tlt-step-edit");
+  assert.ok(input, "新加的子项要能点开编辑");
+  assert.equal(input.value, "第一条", `编辑框该带上原文：${input.value}`);
+  input.value = "第一条改过";
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 80));
+  const after = [...m.contentEl.querySelectorAll(".tlt-step-t")].map((x) => x.textContent);
+  assert.deepEqual(after, ["第一条改过", "第二条"], `改完该留在草稿里：${after.join(" / ")}`);
+  m.close();
 });
 
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {

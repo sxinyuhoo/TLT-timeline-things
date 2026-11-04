@@ -965,10 +965,22 @@ export class WorkbenchView extends ItemView {
       box.appendChild(el("div", "tlt-hint", T("还没有带日期的任务：给任务写上 🛫（开始）/ 📅（截止）就会出现在这里。")));
       return box;
     }
-    const pad = 3 * dayMs;
-    const from = Math.min(...pts) - pad;
-    const DAYS_MAX = 120;                                        // 太长就只看前 120 天，别把一天压成一个像素
-    const to = Math.min(Math.max(...pts) + pad, from + DAYS_MAX * dayMs);
+    // 窗口以**今天**为中心：左 21 天、右 75 天。
+    // 之前是按数据最小~最大铺（还限 120 天），任务只要有半年前的记录，窗口就整段跑到过去，
+    // 当月的任务直接被裁掉——用户看到的就是"看不到这个月的、屏幕上全是老任务"。
+    const today = todayISO();
+    let from = asMs(today) - 21 * dayMs;
+    let to = asMs(today) + 75 * dayMs;
+    const inWin = (t: { start?: string; created?: string; due?: string }) => {
+      const v = [t.start, t.created, t.due].map((k) => (k ? D(k).getTime() : NaN)).filter((n) => !Number.isNaN(n));
+      return v.some((n) => n >= from && n <= to);
+    };
+    if (!tasks.some(inWin)) {
+      // 窗口里一个都没有：退回"按数据铺满"，别给一张空图
+      const pad = 3 * dayMs;
+      from = Math.min(...pts) - pad;
+      to = Math.min(Math.max(...pts) + pad, from + 120 * dayMs);
+    }
     const span = Math.max(1, Math.round((to - from) / dayMs));
     const pos = (v: number) => ((v - from) / (span * dayMs)) * 100;
 
@@ -1026,12 +1038,16 @@ export class WorkbenchView extends ItemView {
           const left = pos(a);
           const width = Math.max(0.7, pos(b + dayMs) - left);
           if (left > 100 || left + width < 0) return;            // 窗口外的就不画
+          const onlyDue = !t.start;                              // 只有截止日（没写开始）→ 画成点，别假装出了个跨度
           const bar = el("span", "tlt-lane-b" + (t.done ? " done" : "")
             + (!t.due && !t.done ? " open" : "")
+            + (onlyDue ? " dot" : "")
             + (t.due && t.due < todayISO() && !t.done ? " late" : ""));
-          bar.setCssProps({ left: `${Math.max(0, left)}%`, width: `${Math.min(100 - Math.max(0, left), width)}%` });
+          bar.setCssProps({ left: `${Math.max(0, left + (onlyDue ? width / 2 : 0))}%`, width: `${Math.min(100 - Math.max(0, left), width)}%` });
           bar.dataset.task = t.id;
-          bar.title = `${t.title}\n${t.start || t.created || "—"} → ${t.due || T("无截止")}`;
+          bar.title = onlyDue
+            ? `${t.title}\n${T("只有截止日")}：${t.due}\n${T("写个 🛫 开始日就画成跨天的条")}`
+            : `${t.title}\n${t.start} → ${t.due || T("无截止")}`;
           lane.appendChild(bar);
         });
       const nowMk = el("span", "tlt-lane-today soft");
@@ -1041,7 +1057,7 @@ export class WorkbenchView extends ItemView {
       body.appendChild(row);
     });
     box.appendChild(body);
-    box.appendChild(el("div", "tlt-lane-foot", T("纵轴＝项目，横轴＝天（一天一格，最多看 {a} 天）；点一条开任务详情。", { a: span })));
+    box.appendChild(el("div", "tlt-lane-foot", T("纵轴＝项目，横轴＝天；实线长条＝跨天任务（🛫 开始日 → 📅 截止日），圆点＝只写了截止日的任务；点一下开任务详情。窗口＝今天前后 {a} 天。", { a: span })));
     return box;
   }
 

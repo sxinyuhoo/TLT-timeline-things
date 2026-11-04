@@ -1147,12 +1147,47 @@ export class QuickTaskModal extends TltModal {
     const paintSteps = () => {
       stepBox.empty();
       this.draft.steps.forEach((txt, i) => {
-        const line = el("div", "tlt-step");
-        line.append(el("i", "tlt-scb"), el("span", "tlt-step-t", txt));
+        const line = el("div", "tlt-step draft");
+        line.appendChild(el("span", "tlt-step-no", String(i + 1)));     // 序号：比一个没意义的勾选框清楚
+        const span = el("span", "tlt-step-t", txt);
+        span.title = T("点一下改文字");
+        line.appendChild(span);
         const del = el("button", "tlt-step-del", "×");
         del.title = T("去掉这条子项");
         del.onclick = () => { this.draft.steps.splice(i, 1); paintSteps(); };
         line.appendChild(del);
+        // 还没建任务也能改：就地换成输入框，改的是草稿（不写盘），回车/失焦保存、Esc 取消
+        const startEdit = () => {
+          if (line.querySelector(".tlt-step-edit")) return;
+          const input = el("input", "tlt-step-edit");
+          input.value = this.draft.steps[i] ?? "";
+          input.title = T("回车保存，Esc 取消");
+          span.replaceWith(input);
+          input.focus();
+          input.select();
+          let done = false;
+          const commit = (save: boolean) => {
+            if (done) return;
+            done = true;
+            if (save) {
+              const v = input.value.trim();
+              if (v) this.draft.steps[i] = v;                            // 清空＝不改（要删点 ×）
+            }
+            paintSteps();
+          };
+          input.addEventListener("keydown", (e) => {
+            if (e.isComposing || e.key === "Process") return;
+            if (e.key === "Enter") { e.preventDefault(); commit(true); }
+            if (e.key === "Escape") { e.preventDefault(); commit(false); }
+          });
+          input.addEventListener("blur", () => commit(true));
+        };
+        span.onclick = startEdit;
+        line.onclick = (ev) => {
+          const el2 = ev.target as HTMLElement;
+          if (el2.closest(".tlt-step-del") || el2.closest(".tlt-step-edit")) return;
+          startEdit();
+        };
         stepBox.appendChild(line);
       });
       stepBox.appendChild(addStep());
@@ -1182,7 +1217,13 @@ export class QuickTaskModal extends TltModal {
     })(); };
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
-    window.setTimeout(() => title.focus(), 50);
+    window.setTimeout(() => {
+      // 只在这 50ms 里用户什么都没点的时候才抢焦点：
+      // 否则会把用户刚点开的（子项）编辑框顶掉，表现就是"点了没用/闪一下没了"。
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && ae !== document.body && this.contentEl.contains(ae)) return;
+      title.focus();
+    }, 50);
     title.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ok.click(); });
   }
   onClose() { this.contentEl.empty(); }
@@ -1234,7 +1275,13 @@ export class QuickLogModal extends TltModal {
     cancel.onclick = () => this.close();
     foot.append(cancel, ok);
     contentEl.appendChild(foot);
-    window.setTimeout(() => title.focus(), 50);
+    window.setTimeout(() => {
+      // 只在这 50ms 里用户什么都没点的时候才抢焦点：
+      // 否则会把用户刚点开的（子项）编辑框顶掉，表现就是"点了没用/闪一下没了"。
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && ae !== document.body && this.contentEl.contains(ae)) return;
+      title.focus();
+    }, 50);
   }
   onClose() { this.contentEl.empty(); }
 }
@@ -1720,7 +1767,13 @@ export class IdeaModal extends TltModal {
       })(); };
       foot.insertBefore(toTask, cancel);
     }
-    window.setTimeout(() => title.focus(), 50);
+    window.setTimeout(() => {
+      // 只在这 50ms 里用户什么都没点的时候才抢焦点：
+      // 否则会把用户刚点开的（子项）编辑框顶掉，表现就是"点了没用/闪一下没了"。
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && ae !== document.body && this.contentEl.contains(ae)) return;
+      title.focus();
+    }, 50);
   }
   onClose() { this.contentEl.empty(); }
 }

@@ -2172,3 +2172,12 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-lane-b.open { background: var(--tlt-ink4); opacity: .32; }
 .tlt-lane-b.late { background: #D98B5F; }
 .tlt-lane-foot { font-size: 9px; color: var(--tlt-ink5); margin-top: 5px; }
+
+
+/* 泳道：只写截止日的任务画成圆点（一眼区分"跨天"与"某天到期"）；新建弹窗里的子项用序号 */
+.tlt-lane-b.dot { width: 6px !important; min-width: 6px; height: 6px; top: 6px; border-radius: 50%; transform: translateX(-50%); }
+.tlt-step-no {
+  flex: none; width: 14px; text-align: right; font-size: 9.5px;
+  color: var(--tlt-ink5); font-variant-numeric: tabular-nums; margin-right: 6px;
+}
+.tlt-step.draft .tlt-step-t { cursor: text; }
