@@ -242,14 +242,37 @@ export class WorkbenchView extends ItemView {
     ev.stopPropagation();
   }
 
+  private ro: ResizeObserver | null = null;
+  private roRaf = 0;
+
+  /** 视图区域尺寸一变（插件刚装完/刚更新、叶子刚开、拖分隔条）就重算高度并补做一次定位 */
+  private onViewSized() {
+    if (this.roRaf) return;                       // 一帧只做一次，避免和 fitCalendarHeight 互相触发
+    this.roRaf = window.requestAnimationFrame(() => {
+      this.roRaf = 0;
+      try { this.fitCalendarHeight(); } catch { /* 布局还没稳，下一帧再说 */ }
+      this.applyCalendarFocus();
+    });
+  }
+
   async onOpen() {
     // 本视图里按 Esc：先收掉自己的浮层，然后吃掉这个键——别让 Obsidian 把活动标签页切走
     this.registerDomEvent(window, "keydown", (ev) => this.guardEscape(ev), true);
     this.contentEl.addEventListener("click", (ev) => { void this.onClick(ev); });
     await this.ensureData();
+    // 挂 ResizeObserver：视图从"没有尺寸"变成"有尺寸"的那一刻补做定位。
+    // 只靠 setTimeout 重试不够——插件刚更新完，第一屏可能好几秒都没有真实高度。
+    if (typeof ResizeObserver !== "undefined") {
+      this.ro = new ResizeObserver(() => this.onViewSized());
+      this.ro.observe(this.contentEl);
+    }
     await this.render();
   }
-  async onClose() { this.contentEl.empty(); }
+  async onClose() {
+    this.ro?.disconnect();
+    this.ro = null;
+    this.contentEl.empty();
+  }
 
   async refresh() {
     await this.ensureData(true);
@@ -1172,7 +1195,7 @@ export class WorkbenchView extends ItemView {
     const l3 = el("div", "tlt-th-l3");
     l3.appendChild(tf);
     head.appendChild(l3);
-    const seg = el("div", "tlt-seg tlt-dim-seg");
+    const seg = el("div", "tlt-seg tlt-tdim");     // 任务页自己的类名：人员页那套 .tlt-dim-seg 是 210px/9px，套这里会挤成一团
     ([["d", T("今天")], ["run", T("开展中")], ["w", T("本周")], ["m", T("本月")], ["q", T("本季度")], ["all", T("全部")]] as const).forEach(([k, t]) => {
       const b2 = el("button", "tlt-seg-b" + (this.taskDim === k ? " on" : ""), t);
       b2.dataset.dim = k;
@@ -2248,7 +2271,13 @@ export class WorkbenchView extends ItemView {
     if (focus === null) return;
     const box = this.contentEl.querySelector<HTMLElement>(".tlt-daygrid")
       ?? this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
-    if (!box) return;
+    // 视图还没挂进 DOM（插件刚更新完、第一屏还没出来）时会查不到容器：
+    // 这时候**不能把 focus 丢掉**——丢了就永远停在 0 点（点别的视图再回来才会重新算）。
+    if (!box) {
+      if (this.focusTries++ < 20) window.setTimeout(() => this.applyCalendarFocus(), 150);
+      else this.focusTries = 0;
+      return;
+    }
     // 容器还没拿到真实高度时（插件刚更新完、视图刚开、叶子还没布局）**不要**定位，也不要把 focus 用掉：
     // 这时候写 scrollTop 会被浏览器夹成 0，表现就是"每次更新后第一次打开日历都停在 0 点"。
     if (box.clientHeight < 80) {

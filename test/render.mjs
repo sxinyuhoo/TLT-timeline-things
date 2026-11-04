@@ -3275,6 +3275,12 @@ await t("日历定位：容器还没高度时不能把「定位到现在」用�
   view.applyCalendarFocus();
   assert.equal(view.focusPending, 9 * 60, "该等容器有高度再定位，不能提前把 focus 用掉");
   assert.ok(typeof view.onResize === "function", "要有 onResize：拿到真实尺寸时补做一次定位");
+  // 视图还没挂进 DOM（查不到时间轴容器）时同理：focus 不能被丢掉
+  view.tab = "month"; view.calView = "d";
+  await view.render();
+  view.focusPending = 10 * 60;
+  view.applyCalendarFocus();
+  assert.equal(view.focusPending, 10 * 60, "查不到容器时也要留着 focus，等挂载后再定位");
 });
 
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {

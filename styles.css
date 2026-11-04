@@ -2128,12 +2128,12 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
   background: var(--tlt-surface3); color: var(--tlt-ink);
   box-shadow: 0 1px 2px rgba(0, 0, 0, .28);
 }
-.tlt-root[data-tier="phone"] .tlt-th-l4 .tlt-dim-seg {
-  display: flex; width: 100%; max-width: none; height: auto; padding: 0 2px;
+.tlt-root[data-tier="phone"] .tlt-th-l4 .tlt-tdim {
+  display: flex; width: 100%; max-width: none; min-width: 0; height: auto; padding: 0 2px;
   border: 0; background: none; flex-wrap: nowrap;
   gap: 6px; overflow-x: auto; scrollbar-width: none;
 }
-.tlt-root[data-tier="phone"] .tlt-th-l4 .tlt-dim-seg::-webkit-scrollbar { display: none; }
+.tlt-root[data-tier="phone"] .tlt-th-l4 .tlt-tdim::-webkit-scrollbar { display: none; }
 .tlt-root[data-tier="phone"] .tlt-th-l4 .tlt-seg-b {
   flex: none; padding: 7px 13px; border-radius: 999px; font-size: 12px;
   border: 1px solid var(--tlt-line); background: none; color: var(--tlt-ink3);
@@ -2144,3 +2144,8 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-root[data-tier="phone"] .tlt-th-l1 .tlt-th-dim { font-size: 12px; }
 
 .tlt-th-cnt { color: var(--tlt-ink4); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+
+
+/* 任务页的维度筛选：自适应宽度、留出够读的内边距（原来套了人员页的 210px/9px，挤得看不清） */
+.tlt-tdim { width: auto; flex-wrap: wrap; min-width: 0; }
+.tlt-tdim .tlt-seg-b { font-size: 10.5px; padding: 4px 11px; }
