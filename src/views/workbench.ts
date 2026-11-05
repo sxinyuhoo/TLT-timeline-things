@@ -730,7 +730,7 @@ export class WorkbenchView extends ItemView {
     m.appendChild(top);
 
     const tabs = el("div", "tlt-tabs");
-    [["today", T("日历")], ["month", T("任务")], ["ms", T("里程碑")], ["staff", T("人员")], ["ideas", T("随手记")], ["draw", T("随手画")]].forEach(([k, label]) => {
+    [["today", T("日历")], ["ms", T("里程碑")], ["month", T("任务")], ["staff", T("人员")], ["ideas", T("随手记")], ["draw", T("随手画")]].forEach(([k, label]) => {
       const b = el("button", "tlt-tab" + (this.tab === k ? " on" : ""), T(label));
       b.dataset.tab = k;
       tabs.appendChild(b);

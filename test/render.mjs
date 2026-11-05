@@ -346,12 +346,12 @@ await t("任务视图：工作/个人 标签筛选", async () => {
   assert.ok(document.body.textContent.includes("示例任务：画图"), "个人任务没出现");
 });
 
-await t("页签顺序：任务后是里程碑，随手记后是随手画", async () => {
+await t("页签顺序：里程碑在任务前面，随手记后是随手画", async () => {
   document.body.empty();
   const v = mount(WorkbenchView);
   await v.onOpen();
   const labels = [...document.querySelectorAll(".tlt-tab")].map((b) => b.textContent);
-  assert.equal(labels.join("/"), "日历/任务/里程碑/人员/随手记/随手画");
+  assert.equal(labels.join("/"), "日历/里程碑/任务/人员/随手记/随手画");
   v.tab = "draw";
   await v.render();
   assert.ok(document.body.textContent.includes("功能预留"), "随手画没有预留说明");
@@ -3592,6 +3592,34 @@ await t("日程块：有备注带 ✎ 标记、菜单有「写备注…」；悬
   await new Promise((r) => setTimeout(r, 60));
   const menu = [...document.querySelectorAll(".tlt-menu-i")].map((b) => b.textContent);
   assert.ok(menu.some((x) => x.includes("写备注")), `块菜单要有写备注：${menu.join(" / ")}`);
+});
+
+await t("任务详情：备注排在子项下面", async () => {
+  document.body.empty();
+  files["TLT/tasks/顺序项目.md"] = `# 顺序项目
+
+## 一期
+
+- [ ] 带子项和备注的任务 📅 ${D} [created:: ${D}]
+  - [ ] 第一步
+  > 通用说明：写在下面就对
+`;
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.store.load();
+  const task = view.store.tasks.find((x) => x.title === "带子项和备注的任务");
+  assert.ok(task, "夹具没读出来");
+  const m = new TaskModal(view.app, view.store, task, () => {});
+  m.open();
+  const steps = m.contentEl.querySelector(".tlt-steps");
+  const note = m.contentEl.querySelector(".tlt-note-ta");
+  assert.ok(steps, "弹窗里要有子项区");
+  assert.ok(note, "弹窗里要有备注框");
+  // 用 DOM 位置判断先后：可见的「备注」在「子项」下面
+  const after = !!(steps.compareDocumentPosition(note) & window.Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.ok(after, "备注框应该排在子项区之后");
+  assert.equal(m.draft.noteGeneral, "通用说明：写在下面就对", "备注要预填通用说明");
+  m.close();
 });
 
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {

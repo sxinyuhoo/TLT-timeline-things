@@ -720,13 +720,6 @@ export class TaskModal extends TltModal {
     ownerSelect(this.app, this.store, whoRowD, this.draft);
 
     // 子项：只有内容与完成态；改动即时写回，不参与"保存"
-    const noteRow = row(contentEl, T("备注"));
-    const noteArea = el("textarea", "tlt-input tlt-textarea tlt-note-ta");
-    noteArea.value = this.draft.noteGeneral;
-    noteArea.placeholder = T("备注（可留空，支持 [[双链]] 与 markdown；按天条目写成 `日期：内容`）");
-    noteArea.oninput = () => { this.draft.noteGeneral = noteArea.value; };
-    noteRow.appendChild(noteArea);
-
     const stepRow = row(contentEl, T("子项"));
     const stepBox = el("div", "tlt-steps in-modal");
     if (!this.task.steps.length) {
@@ -766,6 +759,13 @@ export class TaskModal extends TltModal {
     });
     stepBox.appendChild(stepAdd);
     stepRow.appendChild(stepBox);
+
+    const noteRow = row(contentEl, T("备注"));
+    const noteArea = el("textarea", "tlt-input tlt-textarea tlt-note-ta");
+    noteArea.value = this.draft.noteGeneral;
+    noteArea.placeholder = T("备注（可留空，支持 [[双链]] 与 markdown；按天条目写成 `日期：内容`）");
+    noteArea.oninput = () => { this.draft.noteGeneral = noteArea.value; };
+    noteRow.appendChild(noteArea);
 
     // 时间线：创建 / 完成 / 子项进度。默认收着，想看再点开
     const tlRow = row(contentEl, T("时间线"));
