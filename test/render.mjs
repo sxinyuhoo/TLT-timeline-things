@@ -3470,8 +3470,9 @@ await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够�
 await t("断点档位：宽档三栏不变；中/窄/手机档按档收栏，抽屉与浮层可用", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // CSS 契约：四档的收栏规则都在
-  assert.ok(/\[data-tier="mid"\] \.tlt-msgs\.off/.test(css), "中档收起来时是 44px 图标条");
-  assert.ok(/\[data-tier="narrow"\] \.tlt-side\.off/.test(css), "窄档收起来时是 48px 图标条");
+  // 两侧收起后同宽（48px），宽度不再随档位变来变去
+  assert.ok(/\.tlt-side\.off, \.tlt-msgs\.off \{[^}]*width: 48px/.test(css), "两侧收起后该同宽 48px");
+  assert.ok(/\.tlt-msgs \{[\s\S]{0,120}width: 232px/.test(css), "消息栏要跟项目栏同宽 232px");
   assert.ok(/\[data-tier="phone"\] \.tlt-side\.off,[\s\S]{0,80}display: none/.test(css), "手机档两栏不占宽");
   assert.ok(/\.tlt-root\[data-tier="phone"\] \.tlt-task \{ flex-wrap: wrap/.test(css), "手机档任务行要两行式");
   assert.ok(/\.tlt-root\[data-tier="phone"\] \.tlt-list|\.tlt-root\[data-tier="phone"\] \.tlt-mlist \{ display: none/.test(css), "手机档月历格子简化");

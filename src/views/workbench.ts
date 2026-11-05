@@ -2588,11 +2588,13 @@ export class WorkbenchView extends ItemView {
     head.append(el("b", "", T("消息")));
     const badge = el("span", "tlt-badge", String(unread));
     head.appendChild(badge);
+    // 只留图标（和左栏头部同一种"标题 + 小图标键"的观感），文字挪进 tooltip
     const expand = el("button", "tlt-expand-btn");
     expand.dataset.expand = "1";
     expand.title = T("在独立页打开消息中心");
+    expand.setAttribute("aria-label", T("在独立页打开消息中心"));
     const exIco = el("span", "tlt-expand-i"); svgIcon(exIco, "expand", 12);
-    expand.append(exIco, el("span", "", T("消息中心")));
+    expand.appendChild(exIco);
     head.appendChild(expand);
     const fold = el("button", "tlt-fold-btn");
     svgIcon(fold, "chev-r");

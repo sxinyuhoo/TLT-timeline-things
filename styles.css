@@ -458,7 +458,7 @@ body.tlt-light {
 
 /* ================= 消息栏 ================= */
 .tlt-msgs {
-  width: 290px; flex: none; border-left: 1px solid var(--tlt-line);
+  width: 232px; flex: none; border-left: 1px solid var(--tlt-line);   /* 和左侧项目栏同宽 */
   background: var(--tlt-bg2); display: flex; flex-direction: column; min-height: 0;
 }
 .tlt-msgs-h {
@@ -1426,7 +1426,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 }
 .tlt-fold-btn:hover { background: var(--tlt-surface3); color: var(--tlt-ink); }
 .tlt-side.off, .tlt-msgs.off {
-  width: 26px; min-width: 26px; max-width: 26px; padding: 6px 3px;
+  width: 48px; min-width: 48px; max-width: 48px; padding: 8px 4px;    /* 两侧收起后同宽 */
   display: flex; flex-direction: column; align-items: center;
 }
 .tlt-side.off .tlt-fold-btn, .tlt-msgs.off .tlt-fold-btn { margin: 0; }
@@ -1935,16 +1935,17 @@ body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(
    ========================================================================== */
 
 /* ---- 图标条（收起来的栏） ---- */
-.tlt-root[data-tier="mid"] .tlt-msgs.off,
 .tlt-root[data-tier="narrow"] .tlt-msgs.off,
-.tlt-root[data-tier="phone"] .tlt-msgs.off { width: 44px; min-width: 44px; max-width: 44px; padding: 8px 4px; }
+.tlt-root[data-tier="phone"] .tlt-msgs.off,
 .tlt-root[data-tier="narrow"] .tlt-side.off,
 .tlt-root[data-tier="phone"] .tlt-side.off { width: 48px; min-width: 48px; max-width: 48px; padding: 8px 4px; }
-.tlt-root[data-tier="narrow"] .tlt-side.off .tlt-fold-btn,
-.tlt-root[data-tier="phone"] .tlt-side.off .tlt-fold-btn,
-.tlt-root[data-tier="mid"] .tlt-msgs.off .tlt-fold-btn,
-.tlt-root[data-tier="narrow"] .tlt-msgs.off .tlt-fold-btn,
-.tlt-root[data-tier="phone"] .tlt-msgs.off .tlt-fold-btn { width: 36px; height: 36px; border-radius: 9px; background: var(--tlt-surface2); }
+.tlt-side.off .tlt-fold-btn,
+.tlt-msgs.off .tlt-fold-btn { width: 36px; height: 36px; border-radius: 9px; background: var(--tlt-surface2); }
+
+/* 右栏头部的"在独立页打开"改图标按钮：和左栏"TLT + 折叠键"的观感一致 */
+.tlt-msgs-h .tlt-expand-btn { width: 24px; height: 24px; padding: 0; border: 0; background: none; display: grid; place-items: center; color: var(--tlt-ink4); }
+.tlt-msgs-h .tlt-expand-btn:hover { background: var(--tlt-surface3); color: var(--tlt-ink); }
+.tlt-msgs-h .tlt-expand-btn .tlt-expand-i { display: grid; place-items: center; }
 
 /* ---- 抽屉 / 浮层 ---- */
 .tlt-shade { position: absolute; inset: 0; z-index: 60; background: rgba(0, 0, 0, .45); }
