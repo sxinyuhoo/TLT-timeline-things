@@ -10,6 +10,7 @@
 }
 
 .tlt-root {
+  position: relative;          /* 浮层（消息中心、星图、抽屉）都以它为定位基准 */
   height: 100%;
   font-family: var(--font-interface, -apple-system, "PingFang SC", sans-serif);
   -webkit-font-smoothing: antialiased;
@@ -2189,3 +2190,29 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-daily-cb::before { content: ""; position: absolute; inset: -6px; }
 .tlt-daily-row.click, .tlt-daily-row.click .tlt-daily-b { cursor: pointer; }
 .tlt-daily-row.click .tlt-daily-steps, .tlt-daily-row.click .tlt-daily-edit { cursor: default; }
+
+
+/* ==========================================================================
+   消息中心 → 浮层：贴右边缘盖在工作台上，**不占布局宽度**（不挤压中间的工作台）
+   打开：点顶栏「消息」；关闭：点面板右上角 ✕ 或点工作台任意处
+   ========================================================================== */
+.tlt-msgs-float {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 232px; z-index: 35;
+  display: flex; box-shadow: -14px 0 36px rgba(0, 0, 0, .26);
+  animation: tlt-msgs-in .16s ease-out;
+}
+.tlt-msgs-float .tlt-msgs {
+  width: 100%; height: 100%; border-left: 1px solid var(--tlt-line2);
+  background: var(--tlt-bg2);
+}
+@keyframes tlt-msgs-in { from { transform: translateX(12px); opacity: .35; } to { transform: none; opacity: 1; } }
+.tlt-root[data-tier="phone"] .tlt-msgs-float { width: min(86%, 340px); }
+
+/* 顶栏入口：小图标 + 未读角标 */
+.tlt-msgs-entry { position: relative; }
+.tlt-msgs-entry.on { color: var(--tlt-ink); background: var(--tlt-surface3); }
+.tlt-entry-badge {
+  position: absolute; top: -5px; right: -5px; min-width: 14px; height: 14px;
+  padding: 0 3px; border-radius: 7px; background: var(--tlt-acc); color: #fff;
+  font-size: 8.5px; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums;
+}

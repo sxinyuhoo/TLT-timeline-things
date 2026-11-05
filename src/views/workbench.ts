@@ -202,6 +202,8 @@ export class WorkbenchView extends ItemView {
   private focusPending: number | null = null;
   /** "定位到现在"重试次数：容器还没真实高度时不能写 scrollTop，等它稳 */
   private focusTries = 0;
+  /** 消息中心浮层是否展开（纯界面状态，不落盘） */
+  private msgsOpen = false;
   /** 上一次自动居中的"视图+日期"，用来判断这次要不要重新居中 */
   private calFocusKey = "";
   /** 周视图同一天重渲时恢复的滚动位置（上一屏还是周视图才作数） */
@@ -261,6 +263,16 @@ export class WorkbenchView extends ItemView {
     // 本视图里按 Esc：先收掉自己的浮层，然后吃掉这个键——别让 Obsidian 把活动标签页切走
     this.registerDomEvent(window, "keydown", (ev) => this.guardEscape(ev), true);
     this.contentEl.addEventListener("click", (ev) => { void this.onClick(ev); });
+    // 浮层开着时：点工作台任意处＝收起（捕获阶段吃掉这一下，别让它顺手又触发一次操作）
+    this.contentEl.addEventListener("pointerdown", (ev) => {
+      if (!this.msgsOpen) return;
+      const t = ev.target as HTMLElement | null;
+      if (!t) return;
+      if (t.closest(".tlt-msgs-float") || t.closest("[data-msgs]")) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      void this.closeMsgs();
+    }, true);
     await this.ensureData();
     // 挂 ResizeObserver：视图从"没有尺寸"变成"有尺寸"的那一刻补做定位。
     // 只靠 setTimeout 重试不够——插件刚更新完，第一屏可能好几秒都没有真实高度。
@@ -341,8 +353,10 @@ export class WorkbenchView extends ItemView {
     const app = el("div", "tlt");
     app.appendChild(this.sidebar());
     app.appendChild(this.main());
-    app.appendChild(this.rail());
     root.appendChild(app);
+    // 消息中心：**浮层**，不占布局宽度（不再挤压中间的工作台）。
+    // 点顶栏「消息」才出现；点右上角 ✕ 或点工作台任意处就收起。
+    if (this.msgsOpen) root.appendChild(this.msgsFloat());
 
     this.bindInputs(app);
     const work = app.querySelector<HTMLElement>(".tlt-work");
@@ -691,10 +705,13 @@ export class WorkbenchView extends ItemView {
     starBtn.title = T("星图");
     svgIcon(starBtn, "spark", 14);
     top.appendChild(starBtn);
-    const mRail = el("button", "tlt-btn tlt-icobtn tlt-phone-only");
-    mRail.dataset.drawer = "rail";
+    const mRail = el("button", "tlt-btn tlt-icobtn tlt-msgs-entry" + (this.msgsOpen ? " on" : ""));
+    mRail.dataset.msgs = "1";
     mRail.title = T("消息");
+    mRail.setAttribute("aria-label", T("消息"));
     svgIcon(mRail, "inbox", 15);
+    const unreadAll = this.allMsgs().filter((mm) => !mm.read_ && mm.state !== "ended").length;
+    if (unreadAll) mRail.appendChild(el("span", "tlt-entry-badge", unreadAll > 99 ? "99+" : String(unreadAll)));
     top.appendChild(mRail);
 
     // 概览面板入口：放在明暗切换左边（挨着日常要用的那几个小按钮，别丢在左边的面包屑尾巴上）
@@ -2568,6 +2585,22 @@ export class WorkbenchView extends ItemView {
 
   /* ---------- 右栏：消息 ---------- */
 
+  /** 消息中心浮层：外壳负责定位与滑入，内容仍是 rail()（样式一点不动） */
+  private msgsFloat(): HTMLElement {
+    const wrap = el("div", "tlt-msgs-float");
+    const r = this.rail(true);
+    r.addClass("in-float");
+    wrap.appendChild(r);
+    return wrap;
+  }
+
+  /** 关掉消息中心浮层（点 ✕ 或点工作台都会走这里） */
+  private async closeMsgs() {
+    if (!this.msgsOpen) return;
+    this.msgsOpen = false;
+    await this.render();
+  }
+
   private rail(inDrawer = false): HTMLElement {
     const r = el("aside", inDrawer ? "tlt-msgs in-drawer" : "tlt-msgs");
     if (this.railOff && !inDrawer) {
@@ -2597,9 +2630,10 @@ export class WorkbenchView extends ItemView {
     expand.appendChild(exIco);
     head.appendChild(expand);
     const fold = el("button", "tlt-fold-btn");
-    svgIcon(fold, "chev-r");
-    fold.title = T("收起消息栏");
-    fold.onclick = () => { void this.setPanels({ railCollapsed: true }); };
+    svgIcon(fold, "close");
+    fold.title = T("收起消息");
+    fold.dataset.msgsclose = "1";
+    fold.onclick = () => { void this.closeMsgs(); };
     head.appendChild(fold);
     r.appendChild(head);
 
@@ -2764,6 +2798,8 @@ export class WorkbenchView extends ItemView {
       return hit && this.contentEl.contains(hit) ? hit : null;
     };
 
+    if (pick("[data-msgs]")) { this.msgsOpen = !this.msgsOpen; await this.render(); return; }
+    if (pick("[data-msgsclose]")) { await this.closeMsgs(); return; }
     if (pick("[data-star]")) { this.openSheet(T("星图"), () => this.starMap()); return; }
     const dr = pick("[data-drawer]");
     if (dr) { this.openDrawer(dr.dataset.drawer === "rail" ? "rail" : "side"); return; }

@@ -314,7 +314,15 @@ await t("工作台渲染：六页签 + 项目 + 记录块 + 消息", async () =>
   assert.equal(document.querySelectorAll(".tlt-tab").length, 6);
   assert.equal(document.querySelectorAll(".tlt-proj").length, 2);
   assert.ok(document.querySelectorAll(".tlt-blk").length >= 2, "时间轴里应有记录块");
-  assert.ok(document.querySelectorAll(".tlt-mnode").length >= 3, "消息栏应渲染");
+  assert.ok(!document.querySelector(".tlt-msgs"), "消息中心默认不占版面（浮层，点开才出现）");
+  const entry = document.querySelector("[data-msgs]");
+  assert.ok(entry, "顶栏要有「消息」入口");
+  entry.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  assert.ok(document.querySelector(".tlt-msgs-float"), "点入口该弹出消息中心浮层");
+  assert.ok(document.querySelectorAll(".tlt-mnode").length >= 3, "浮层里要渲染消息");
+  assert.ok(!document.querySelector(".tlt-main")?.nextElementSibling?.classList.contains("tlt-msgs"),
+    "浮层不该夹在工作台布局里挤压内容");
   assert.ok(document.querySelector(".tlt-star"), "节奏里应有星图");
   assert.ok(document.querySelectorAll(".tlt-star .tlt-node").length >= 3, "星图里应有任务节点");
   assert.ok(document.querySelectorAll(".tlt-star .tlt-ring").length === 4, "应有 4 圈时间环");
@@ -1353,12 +1361,29 @@ await t("日程块：拖拽改时间 + 右键菜单（删记录 / 取消排期�
   assert.ok(menu.some((x) => x.includes("删除") || x.includes("取消排期")), `菜单应有删除/取消排期，实际：${menu.join(" / ")}`);
 });
 
-await t("两侧栏可折叠，折叠状态写进设置", async () => {
+await t("左栏可折叠写进设置；消息中心是浮层（点 ✕ 关、点工作台也关）", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
   await view.onOpen();
   assert.ok(document.querySelector(".tlt-side .tlt-fold-btn"), "左栏应有折叠按钮");
-  assert.ok(document.querySelector(".tlt-msgs .tlt-fold-btn"), "右栏应有折叠按钮");
+  // 消息中心：点入口出现 → 点 ✕ 关掉
+  document.querySelector("[data-msgs]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  const float = document.querySelector(".tlt-msgs-float");
+  assert.ok(float, "消息中心应作为浮层出现");
+  assert.ok(float.querySelector(".tlt-msgs"), "浮层里是原来的消息面板");
+  assert.ok(float.querySelector("[data-msgsclose]"), "浮层右上角要有 ✕");
+  float.querySelector("[data-msgsclose]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  assert.ok(!document.querySelector(".tlt-msgs-float"), "点 ✕ 应收起");
+  // 再打开 → 点工作台收起
+  document.querySelector("[data-msgs]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  assert.ok(document.querySelector(".tlt-msgs-float"), "再点入口应重新打开");
+  const main = document.querySelector(".tlt-main");
+  main.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 80));
+  assert.ok(!document.querySelector(".tlt-msgs-float"), "点工作台该收起浮层");
   document.querySelector(".tlt-side .tlt-fold-btn").click();
   await new Promise((r) => setTimeout(r, 40));
   assert.ok(document.querySelector(".tlt-side.off"), "左栏应收起成竖条");
