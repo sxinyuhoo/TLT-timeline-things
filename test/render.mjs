@@ -1373,6 +1373,13 @@ await t("左栏可折叠写进设置；消息中心是浮层（点 ✕ 关、点
   assert.ok(float, "消息中心应作为浮层出现");
   assert.ok(float.querySelector(".tlt-msgs"), "浮层里是原来的消息面板");
   assert.ok(float.querySelector("[data-msgsclose]"), "浮层右上角要有 ✕");
+  // 两个键都要在且可见：在独立页打开（tlt-expand-btn）+ 收起（tlt-fold-btn）
+  const exp = float.querySelector(".tlt-expand-btn");
+  const clo = float.querySelector(".tlt-fold-btn");
+  assert.ok(exp && clo, "浮层头部要有「在独立页打开」和「收起」两个键");
+  assert.ok(!exp.classList.contains("tlt-hidden"), "「在独立页打开」不能被 in-drawer 那类规则藏掉");
+  // 顶栏入口不带未读数字（用户明确要求）
+  assert.ok(!document.querySelector("[data-msgs] .tlt-entry-badge"), "消息入口不该显示未读数");
   float.querySelector("[data-msgsclose]").dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => setTimeout(r, 60));
   assert.ok(!document.querySelector(".tlt-msgs-float"), "点 ✕ 应收起");

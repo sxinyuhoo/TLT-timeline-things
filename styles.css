@@ -1944,7 +1944,9 @@ body.theme-light .tlt-ycell.l3, body.tlt-light .tlt-ycell.l3 { background: rgba(
 .tlt-msgs.off .tlt-fold-btn { width: 36px; height: 36px; border-radius: 9px; background: var(--tlt-surface2); }
 
 /* 右栏头部的"在独立页打开"改图标按钮：和左栏"TLT + 折叠键"的观感一致 */
-.tlt-msgs-h .tlt-expand-btn { width: 24px; height: 24px; padding: 0; border: 0; background: none; display: grid; place-items: center; color: var(--tlt-ink4); }
+.tlt-msgs-h .tlt-expand-btn { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; display: grid; place-items: center; color: var(--tlt-ink3); }
+.tlt-msgs-h .tlt-expand-btn + .tlt-fold-btn { margin-left: 0; }
+.tlt-msgs-h .tlt-badge { margin-right: auto; }
 .tlt-msgs-h .tlt-expand-btn:hover { background: var(--tlt-surface3); color: var(--tlt-ink); }
 .tlt-msgs-h .tlt-expand-btn .tlt-expand-i { display: grid; place-items: center; }
 

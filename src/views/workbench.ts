@@ -710,8 +710,6 @@ export class WorkbenchView extends ItemView {
     mRail.title = T("消息");
     mRail.setAttribute("aria-label", T("消息"));
     svgIcon(mRail, "inbox", 15);
-    const unreadAll = this.allMsgs().filter((mm) => !mm.read_ && mm.state !== "ended").length;
-    if (unreadAll) mRail.appendChild(el("span", "tlt-entry-badge", unreadAll > 99 ? "99+" : String(unreadAll)));
     top.appendChild(mRail);
 
     // 概览面板入口：放在明暗切换左边（挨着日常要用的那几个小按钮，别丢在左边的面包屑尾巴上）
@@ -2589,6 +2587,8 @@ export class WorkbenchView extends ItemView {
   private msgsFloat(): HTMLElement {
     const wrap = el("div", "tlt-msgs-float");
     const r = this.rail(true);
+    // in-drawer 那条规则会藏掉「在独立页打开消息中心」按钮；浮层里两个键都要留（打开独立页 + 收起）
+    r.removeClass("in-drawer");
     r.addClass("in-float");
     wrap.appendChild(r);
     return wrap;
