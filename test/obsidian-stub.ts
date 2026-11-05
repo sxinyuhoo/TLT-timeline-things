@@ -236,3 +236,12 @@ export async function requestUrl(req: any): Promise<any> {
     json: text ? JSON.parse(text) : null,
   };
 }
+
+
+/** 测试用的 Markdown 渲染桩：只把原文塞进容器，够断言"备注有没有渲染出来"就行 */
+export const MarkdownRenderer = {
+  render: (_app: unknown, md: string, el: HTMLElement, _path?: string, _comp?: unknown) => {
+    el.textContent = md;
+    return Promise.resolve();
+  },
+};

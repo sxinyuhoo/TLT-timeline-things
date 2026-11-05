@@ -1,7 +1,8 @@
-import { App, TAbstractFile, TFile, normalizePath, requestUrl } from "obsidian";
+import {
+  App, TAbstractFile, TFile, normalizePath, requestUrl } from "obsidian";
 import {
   Task, Staff, Feed, Idea, Msg, Period,
-  parseTaskLine, parseStaff, parseMsgLine, parseLogMonth, parseIdeaLine,
+  parseTaskLine, parseStaff, parseMsgLine, parseLogMonth, parseIdeaLine, upsertNoteEntry, setNoteGeneral,
   newTaskLine, newMsgLine, newLogLine, toggleTaskLine, setTaskDue, setTaskField, stripFields,
   todayISO, monthBounds, asText, msgKeyOf,
 } from "./data";
@@ -27,6 +28,8 @@ export interface TLTSettings {
   feedsFolder: string;
   logsFolder: string;
   ideasFile: string;
+  /** "这天要做的"按什么收：due＝只看截止日（默认）；span＝跨天任务在区间内每天都算 */
+  dayTaskScope?: "due" | "span";
   tagsFile: string;
   defaultPeriod: Period;
   mineFeed: string;
@@ -255,15 +258,23 @@ export class Store {
         }
         const t = parseTaskLine(line, { file: file.path, line: i, project, milestone });
         if (!t) continue;
-        // 步骤：紧随其后的缩进 checklist
+        // 任务下面的整个缩进子块：缩进 checklist ＝ 子项；缩进引用行（>）＝ 备注
+        // （备注和子项可以穿插；只认形态，不认位置，所以互不干扰）
         const steps: { done: boolean; text: string }[] = [];
+        const noteLines: string[] = [];
         let j = i + 1;
-        while (j < lines.length && /^\s{2,}[-*+]\s+\[.\]/.test(lines[j])) {
-          const s = /^\s{2,}[-*+]\s+\[(.)\]\s+(.*)$/.exec(lines[j]);
+        while (j < lines.length && /^\s{2,}/.test(lines[j])) {
+          const ln = lines[j];
+          const s = /^\s{2,}[-*+]\s+\[(.)\]\s+(.*)$/.exec(ln);
           if (s) steps.push({ done: s[1].toLowerCase() === "x", text: s[2].replace(/\[[a-zA-Z\u4e00-\u9fa5]+::[^\]]*\]/g, "").trim() });
+          else {
+            const q = /^\s{2,}>\s?(.*)$/.exec(ln);
+            if (q) noteLines.push(q[1]);
+          }
           j++;
         }
         if (steps.length) t.steps = steps;
+        if (noteLines.length) t.note = noteLines.join("\n");
         this.tasks.push(t);
         i = j - 1;
       }
@@ -1473,6 +1484,74 @@ export class Store {
       return lines.join("\n");
     });
     return true;
+  }
+
+  /**
+   * 找到"这条任务/记录自己的缩进子块"的起止行，以及其中 `  > ` 备注行的行号。
+   * 任务版和记录版的区别：任务的备注上面可能夹着子项，所以要扫**整个子块**，不能只看紧邻的行。
+   */
+  private locateBlock(lines: string[], t: { line: number; title: string }): { start: number; end: number; noteAt: number[] } | null {
+    const isItem = (l?: string) => /^\s*[-*+]\s+/.test(l || "");
+    let start = t.line >= 0 && lines[t.line] && isItem(lines[t.line]) ? t.line : -1;
+    if (start < 0 || !lines[start].includes(t.title)) {
+      const byTitle = lines.findIndex((l) => isItem(l) && l.includes(t.title));
+      start = byTitle;
+    }
+    if (start < 0) return null;
+    let end = start + 1;
+    while (end < lines.length && /^\s{2,}\S/.test(lines[end])) end++;
+    const noteAt: number[] = [];
+    for (let i = start + 1; i < end; i++) if (/^\s{2,}>/.test(lines[i])) noteAt.push(i);
+    return { start, end, noteAt };
+  }
+
+  /** 把备注原文写成缩进引用行 */
+  private noteToLines(note: string): string[] {
+    const body = note.replace(/\s+$/, "");
+    return body ? body.split(/\r?\n/).map((l) => `  > ${l}`) : [];
+  }
+
+  /**
+   * 写任务的**整段**备注（通用说明 + 所有按天条目一起换掉）。
+   * 只动 `  > ` 那些行：子项、你自己的其它缩进行一律不碰。
+   */
+  async setTaskNote(t: Task, note: string): Promise<boolean> {
+    const file = await this.fileByPath(t.file);
+    if (!file) return false;
+    let ok = false;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split(/\r?\n/);
+      const loc = this.locateBlock(lines, t);
+      if (!loc) return data;
+      const fresh = this.noteToLines(note);
+      // 统一安放：先把这条任务子块里**所有**旧的备注行摘掉，再把新备注插在“最后一个子项之后”。
+      // 不做“原地替换”——一遇到子项/手写内容交错，索引就会算错（踩过）。
+      const drop = new Set<number>();
+      let anchor = loc.start;                       // 没有子项就紧跟任务行
+      for (let i = loc.start + 1; i < loc.end; i++) {
+        if (/^\s{2,}>/.test(lines[i])) drop.add(i);
+        else if (/^\s{2,}[-*+]\s+\[[ xX]\]/.test(lines[i])) anchor = i;
+      }
+      const out: string[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        if (!drop.has(i)) out.push(lines[i]);
+        if (i === anchor) out.push(...fresh);
+      }
+      ok = true;
+      return out.join("\n");
+    });
+    if (ok) await this.appendEvent({ kind: "task.note", project: t.project, milestone: t.milestone, task: t.title });
+    return ok;
+  }
+
+  /** 只换"通用说明"，按天条目原样保留 */
+  async setTaskGeneralNote(t: Task, text: string): Promise<boolean> {
+    return this.setTaskNote(t, setNoteGeneral(t.note || "", text));
+  }
+
+  /** 写某一天的条目（text 为空＝删掉这天）；不动通用说明与别的日子 */
+  async setTaskNoteEntry(t: Task, date: string, text: string): Promise<boolean> {
+    return this.setTaskNote(t, upsertNoteEntry(t.note || "", date, text));
   }
 
   async updateLogBody(log: Task, body: string) {

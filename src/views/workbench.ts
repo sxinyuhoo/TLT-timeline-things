@@ -5,11 +5,11 @@ import { Store, DEFAULT_SETTINGS, SORT_KEYS, DEFAULT_SORT, SORT_DEFAULT_DIR } fr
 import type { SortCfg, SortKey } from "../store";
 import type { Idea } from "../data";
 import {
-  Task, Msg, Period, todayISO, addDays,
+  Task, Msg, Period, todayISO, addDays, noteGeneralText,
   hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox, floorToHalfHour, nowHalfHour,
 } from "../data";
 import type { StaffDim } from "../data";
-import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, popMenu, el } from "./modals";
+import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, NoteEntryModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
 import { setSvgMarkup, miniMarkdown, svgIcon } from "./dom";
@@ -847,7 +847,14 @@ export class WorkbenchView extends ItemView {
       blk.style.setProperty("--hue", this.hueFor(x.id, usedHues));
       blk.title = `${x.title}\n${x.meta}`;
       const c = el("div", "tlt-blk-c");
-      c.append(el("div", "tlt-blk-t", x.title), el("div", "tlt-blk-m", x.meta));
+      const titleEl = el("div", "tlt-blk-t", x.title);
+      const noteText = x.item.note || "";
+      if (noteText) {                     // 有备注：标题后一个小记号，悬停能看首行
+        const pen = el("span", "tlt-blk-note", "✎");
+        pen.title = noteGeneralText(noteText).split("\n")[0] || noteText.split("\n")[0];
+        titleEl.appendChild(pen);
+      }
+      c.append(titleEl, el("div", "tlt-blk-m", x.meta));
       blk.appendChild(c);
       this.wireDrag(blk, c, {
         kind: x.kind, id: x.id, a: x.a, b: x.b,
@@ -925,7 +932,12 @@ export class WorkbenchView extends ItemView {
     return this.store.logs.filter((l) => l.due === k).sort((a, b) => (hhmmToMin(a.st) || 0) - (hhmmToMin(b.st) || 0));
   }
   private unscheduled(k: string) {
-    return this.store.tasks.filter((t) => !t.done && t.due === k && !t.st);
+    const span = (this.store.settings as { dayTaskScope?: string }).dayTaskScope === "span";
+    return this.store.tasks.filter((t) => {
+      if (t.done || t.st) return false;
+      if (t.due === k) return true;
+      return span && !!t.start && !!t.due && t.start <= k && t.due >= k;   // 跨天任务：区间内每天都算
+    });
   }
 
   private rhythm(): HTMLElement {
@@ -3182,6 +3194,10 @@ export class WorkbenchView extends ItemView {
           }, `${item.st || "09:00"}–${item.en || "10:00"}`).open();
         },
       });
+      items.push({ label: T("写备注…"), onClick: () => {
+        const day = item.plan || todayISO();
+        new NoteEntryModal(this.app, this.store, item, day, () => this.refresh()).open();
+      } });
       items.push({ label: T("取消排期"), danger: true, onClick: async () => {
         await this.store.setField(item, "plan", null);
         await this.store.setField(item, "st", null);

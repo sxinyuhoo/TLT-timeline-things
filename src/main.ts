@@ -977,6 +977,19 @@ export class TLTSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName(t("「这天要做的」怎么收任务"))
+      .setDesc(t("日视图右侧那个清单的口径。默认只看截止日；换成「跨天任务每天出现」后，🛫 开始日到 📅 截止日之间的每一天都会列出它。"))
+      .addDropdown((dd) => {
+        dd.addOption("due", t("只按截止日（默认）"))
+          .addOption("span", t("跨天任务每天都算"))
+          .setValue(p.settings.dayTaskScope ?? "due")
+          .onChange((v) => {
+            p.settings.dayTaskScope = v === "span" ? "span" : "due";
+            void p.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
       .setName(t("主题"))
       .setDesc(T("跟随 Obsidian，或强制深色/浅色。主界面右上角的按钮也能切。"))
       .addDropdown((d) =>

@@ -68,7 +68,7 @@ await esbuild.build({
       export { TLTSettingTab, TLTPlugin } from "./src/main";
       export { attachFolderSuggest } from "./src/views/folder-suggest";
       export { TFolder } from "obsidian";
-      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal, LogModal, StaffModal, MsgModal, QuickLogModal, MilestoneModal } from "./src/views/modals";
+      export { TaskModal, QuickTaskModal, ProjectInfoModal, IdeaModal, LogModal, StaffModal, MsgModal, QuickLogModal, MilestoneModal, TaskPeekModal } from "./src/views/modals";
       export { SORT_KEYS, DEFAULT_SORT } from "./src/store";
       export { registerTltIcons, refreshTabHeaders, reviveTltLeaves } from "./src/main";
       export { registeredIcons } from "obsidian";
@@ -87,7 +87,7 @@ await esbuild.build({
   alias: { obsidian: "./test/obsidian-stub.ts" },
   logLevel: "error",
 });
-const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, LogModal, StaffModal, MsgModal, QuickLogModal, MilestoneModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
+const { WorkbenchView, MessagesView, Store, TFile, TFolder, TLTSettingTab, TLTPlugin, setLanguage, tr, attachFolderSuggest, TaskModal, QuickTaskModal, ProjectInfoModal, OverviewPanelView, IdeaModal, LogModal, StaffModal, MsgModal, QuickLogModal, MilestoneModal, TaskPeekModal, SORT_KEYS, newLogLine, registerTltIcons, refreshTabHeaders, reviveTltLeaves, registeredIcons, parseIdeaText: dlibParse } = await import("./bundle.mjs?" + Date.now());
 const dlib = { parseIdeaText: dlibParse };
 /** 和 src/data.ts 的 ideaFilterTags 同一套规则：type 也算标签，但「想法」不算 */
 const ideaTagsOf = (it) => {
@@ -473,7 +473,12 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   const el2 = tab.containerEl;
   assert.equal(el2.querySelectorAll("h1, h2, h3").length, 0, "不该手写标题元素");
   const names = [...el2.querySelectorAll(".setting-item-name")].map((e) => e.textContent);
-  assert.deepEqual(names.slice(0, 3), ["界面语言", "每周从哪天开始", "主题"], `通用项应排在最前，实际 ${names.slice(0, 3)}`);
+  assert.deepEqual(names.slice(0, 4), ["界面语言", "每周从哪天开始", "「这天要做的」怎么收任务", "主题"], `通用项应排在最前，实际 ${names.slice(0, 4)}`);
+  // 「这天要做的」口径：默认只按截止日，可切到跨天
+  const scopeRow = [...el2.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "「这天要做的」怎么收任务");
+  assert.ok(scopeRow && scopeRow.querySelector("select"), "口径设置应是个下拉");
+  const opts = [...scopeRow.querySelectorAll("option")].map((o) => o.textContent);
+  assert.deepEqual(opts, ["只按截止日（默认）", "跨天任务每天都算"], `下拉选项：${opts}`);
   const heads = [...el2.querySelectorAll(".setting-item-heading .setting-item-name")].map((e) => e.textContent);
   assert.deepEqual(heads, ["目录", "口径", "消息服务", "维护"], `分节：${heads}`);
   const buttons = [...el2.querySelectorAll("button")].map((b) => b.textContent);
@@ -3470,6 +3475,123 @@ await t("折叠面板：收起再展开内容不丢（读盘期间不重画，�
   view.store.tasks = saved;
   view.store.loading = false;
   assert.equal(sideText(), before, `读盘期间的重画该被跳过，不该清空界面：${sideText().slice(0, 40)}`);
+});
+
+await t("任务备注：解析（通用说明 + 按天条目多行）、写入不碰子项、加子项后不丢", async () => {
+  document.body.empty();
+  const d = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+  files["TLT/tasks/备注项目.md"] = `# 备注项目
+
+## 一期
+
+- [ ] 带备注的任务 📅 ${d(5)} [created:: ${d(-1)}]
+  > 通用说明：找 [[老周]] 拿进门条
+  > ${d(0)}：带备用电源
+  >   - 先测 A2 点位
+  >   - 拍杆件编号的照片
+- [ ] 没备注的任务 📅 ${d(6)} [created:: ${d(-1)}]
+`;
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.store.load();
+  const t1 = view.store.tasks.find((x) => x.title === "带备注的任务");
+  assert.ok(t1, "要有带备注的任务");
+  assert.match(t1.note || "", /通用说明：找 \[\[老周\]\] 拿进门条/, `备注要读到：${t1.note}`);
+  assert.match(t1.note || "", new RegExp(`${d(0)}：带备用电源`), "按天条目要读到");
+  assert.match(t1.note || "", /先测 A2 点位/, "条目里的续行也要算进同一条");
+
+  // ① 写"今天"这条：只动这一天，通用说明与别的日子不动
+  await view.store.setTaskNoteEntry(t1, d(0), "带备用电源\n改到 10:00 再到");
+  await view.store.load();
+  const after1 = view.store.tasks.find((x) => x.title === "带备注的任务").note || "";
+  assert.match(after1, /通用说明：找 \[\[老周\]\] 拿进门条/, "通用说明不能被动");
+  assert.match(after1, new RegExp(`${d(0)}：带备用电源\\n改到 10:00 再到`), `当天条目要整体替换成两行：${after1}`);
+
+  // ② 加一天的新条目：按日期升序插进去
+  await view.store.setTaskNoteEntry(t1, d(-3), "提前一天踩点");
+  await view.store.load();
+  const after2 = view.store.tasks.find((x) => x.title === "带备注的任务").note || "";
+  const lines = after2.split("\n").filter((l) => /^\d{4}-\d{2}-\d{2}：/.test(l));
+  assert.deepEqual(lines.map((l) => l.slice(0, 10)), [d(-3), d(0)], `日期条目要升序：${lines.join(" | ")}`);
+
+  // ③ 关键：备注之后又加子项，两边都不受影响
+  const t2 = view.store.tasks.find((x) => x.title === "带备注的任务");
+  await view.store.addStep(t2, "后来加的子项");
+  await view.store.load();
+  const t3 = view.store.tasks.find((x) => x.title === "带备注的任务");
+  assert.equal(t3.steps.length, 1, `子项要写进去：${JSON.stringify(t3.steps)}`);
+  assert.match(t3.note || "", new RegExp(`${d(0)}：带备用电源`), "加子项后备注不能丢");
+  const raw = files["TLT/tasks/备注项目.md"];
+  const noteLines = raw.split("\n").filter((l) => /^\s{2}>/.test(l));
+  assert.ok(noteLines.some((l) => l.includes("老周")), `文件里备注行应包含通用说明：\n${noteLines.join("\n")}`);
+  assert.ok(/^\s{2}- \[ \] 后来加的子项/m.test(raw), `文件里应有新加的子项：…${raw.slice(-200)}`);
+  // ④ 再改一次备注：不会写出重复的引用行
+  await view.store.setTaskGeneralNote(t3, "通用说明：改过了");
+  await view.store.load();
+  const t4 = view.store.tasks.find((x) => x.title === "带备注的任务");
+  const gcount = (t4.note || "").split("\n").filter((l) => l.includes("通用说明")).length;
+  if (gcount !== 1) console.log("  调试·文件内容 >>>\n" + files["TLT/tasks/备注项目.md"].split("\n").map((l) => "  | " + l).join("\n") + "\n  <<<");
+  assert.equal(gcount, 1, `通用说明只该有一条（实际 ${gcount}）`);
+  assert.match(t4.note || "", new RegExp(`${d(0)}：带备用电源`), "改通用说明后备注条目还在");
+  assert.equal(t4.steps.length, 1, "子项也还在");
+});
+
+await t("「这天要做的」口径设置：默认只看截止日，可切到跨天每天出现", async () => {
+  document.body.empty();
+  const d = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+  files["TLT/tasks/跨天项目.md"] = `# 跨天项目
+
+## 一期
+
+- [ ] 跨三天的活 🛫 ${d(-1)} 📅 ${d(1)} [created:: ${d(-2)}]
+`;
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.store.load();
+  view.tab = "today"; view.calView = "d"; view.viewDate = d(0);      // 今天（区间中间）
+  await view.render();
+  const listText = () => view.contentEl.querySelector(".tlt-dayside")?.textContent || "";
+  assert.ok(!listText().includes("跨三天的活"), `默认只按截止日：今天不该出现它\n${listText().slice(0, 80)}`);
+  view.store.settings.dayTaskScope = "span";
+  await view.render();
+  assert.ok(listText().includes("跨三天的活"), `切到跨天后今天要出现\n${listText().slice(0, 80)}`);
+  view.store.settings.dayTaskScope = "due";
+});
+
+await t("日程块：有备注带 ✎ 标记、菜单有「写备注…」；悬浮预览把备注渲染出来", async () => {
+  document.body.empty();
+  const d0 = "2026-11-04";
+  files["TLT/tasks/备注项目.md"] = `# 备注项目
+
+## 一期
+
+- [ ] 排进日历的活 📅 ${d0} [st:: 09:00] [en:: 10:00] [plan:: ${d0}] [created:: ${d0}]
+  > 通用说明：记得带 [[老周]] 的进门条
+  > ${d0}：今天先测 A2
+`;
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.store.load();
+  view.tab = "today"; view.calView = "d"; view.viewDate = d0;
+  await view.render();
+  const blk = [...view.contentEl.querySelectorAll(".tlt-blk")].find((b) => b.textContent.includes("排进日历的活"));
+  assert.ok(blk, "日历里要有这个块");
+  assert.ok(blk.querySelector(".tlt-blk-note"), "有备注的块要带 ✎ 标记");
+  // 悬浮预览：备注渲染进 .tlt-peek-note
+  const task = view.store.tasks.find((x) => x.title === "排进日历的活");
+  const peek = new TaskPeekModal(view.app, view.store, task, () => {});
+  peek.open();
+  await new Promise((r) => setTimeout(r, 60));
+  const noteBox = peek.contentEl.querySelector(".tlt-peek-note");
+  assert.ok(noteBox, "预览里要有备注区");
+  assert.match(noteBox.textContent || "", /老周/, `备注该被渲染出来：${noteBox?.textContent}`);
+  assert.match(noteBox.textContent || "", /今天先测 A2/, `按天条目也要出现在预览里：${noteBox?.textContent}`);
+  peek.close();
+  // 菜单里应该有「写备注…」
+  blk.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+  await new Promise((r) => setTimeout(r, 60));
+  const menu = [...document.querySelectorAll(".tlt-menu-i")].map((b) => b.textContent);
+  assert.ok(menu.some((x) => x.includes("写备注")), `块菜单要有写备注：${menu.join(" / ")}`);
 });
 
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {

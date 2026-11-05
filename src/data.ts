@@ -34,6 +34,56 @@ export type Period = "w" | "m" | "q";
 
 export interface Step { done: boolean; text: string; }
 
+/** 备注里"按天条目"的一条：date 为空表示不带日期的通用说明 */
+export type NoteEntry = { date?: string; text: string };
+
+/** 把整段备注拆成条目：**只有 `日期：` 开头的行算新条目**，其余行归属上一条 */
+export function splitNoteEntries(note: string): NoteEntry[] {
+  const out: NoteEntry[] = [];
+  let cur: NoteEntry | null = null;
+  for (const raw of note.split(/\r?\n/)) {
+    const m = /^\s*(\d{4}-\d{2}-\d{2})\s*[：:]\s?(.*)$/.exec(raw);
+    if (m) { cur = { date: m[1], text: m[2] }; out.push(cur); }
+    else if (cur) cur.text += (cur.text ? "\n" : "") + raw;      // 续行：同一段内容
+    else if (raw.trim()) { cur = { text: raw }; out.push(cur); } // 开头没日期的那段＝通用说明
+  }
+  return out;
+}
+
+/** 取某天的条目正文（没有就空串） */
+export function noteEntryText(note: string, date: string): string {
+  return splitNoteEntries(note).find((e) => e.date === date)?.text ?? "";
+}
+
+/** 取"通用说明"（不带日期的那条） */
+export function noteGeneralText(note: string): string {
+  return splitNoteEntries(note).filter((e) => !e.date).map((e) => e.text).join("\n");
+}
+
+/** 换掉"通用说明"（不带日期的那条），按天条目原样保留 */
+export function setNoteGeneral(note: string, text: string): string {
+  const entries = splitNoteEntries(note).filter((e) => !!e.date);
+  const body = text.replace(/\s+$/, "");
+  const out: NoteEntry[] = body.trim() ? [{ text: body }, ...entries] : entries;
+  return out.map((e) => (e.date ? `${e.date}：${e.text}` : e.text)).join("\n");
+}
+
+/** 写回某天的条目：text 为空＝删掉这条；插入时按日期升序。返回新的整段备注 */
+export function upsertNoteEntry(note: string, date: string, text: string): string {
+  const entries = splitNoteEntries(note);
+  const i = entries.findIndex((e) => e.date === date);
+  const body = text.replace(/\s+$/, "");
+  if (i >= 0) {
+    if (body.trim()) entries[i] = { date, text: body };
+    else entries.splice(i, 1);
+  } else if (body.trim()) {
+    entries.push({ date, text: body });
+  }
+  // **通用说明必须排在最前**：它没有日期，若排在某个日期条目之后，解析会把它当成那一条的续行吞掉
+  entries.sort((a, b) => (a.date && b.date ? a.date.localeCompare(b.date) : a.date ? 1 : -1));
+  return entries.map((e) => (e.date ? `${e.date}：${e.text}` : e.text)).join("\n");
+}
+
 export interface Task {
   id: string;
   file: string;
@@ -67,7 +117,11 @@ export interface Task {
   extra?: boolean;
   kind: "task" | "log";
   files: string[];
-  /** 记录的正文（kind === "log" 时从续行读到） */
+  /**
+   * 块下面的正文：
+   * - kind === "log"：记录正文（续行的 `  > ` 行）
+   * - kind === "task"：任务备注，支持 [[双链]] 与 markdown；按天条目写成 `日期：内容` 的引用行
+   */
   note?: string;
 }
 

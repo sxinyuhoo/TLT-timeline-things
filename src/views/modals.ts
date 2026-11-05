@@ -1,7 +1,7 @@
-import { App, Modal, Notice, TFile } from "obsidian";
+import { App, Component, Modal, Notice, TFile, MarkdownRenderer } from "obsidian";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, workloadBreakdown, ideaFilterTags, toggleMdCheckbox } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, workloadBreakdown, ideaFilterTags, toggleMdCheckbox, noteGeneralText, noteEntryText, splitNoteEntries } from "../data";
 import { miniMarkdown, svgIcon } from "./dom";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -600,6 +600,7 @@ export class TaskModal extends TltModal {
     title: string; project?: string; milestone?: string; tags: string[];
     scope: "工作" | "个人";
     start?: string; due?: string; est?: number; wl: number; pw: Period; pri: Pri; owners: string[];
+    noteGeneral: string;
   };
 
   constructor(app: App, store: Store, task: Task, onChange: () => void | Promise<void>) {
@@ -617,6 +618,7 @@ export class TaskModal extends TltModal {
       pw: task.pw,
       pri: task.pri,
       owners: [...task.owners],
+      noteGeneral: noteGeneralText(task.note || ""),
     };
   }
 
@@ -718,6 +720,13 @@ export class TaskModal extends TltModal {
     ownerSelect(this.app, this.store, whoRowD, this.draft);
 
     // 子项：只有内容与完成态；改动即时写回，不参与"保存"
+    const noteRow = row(contentEl, T("备注"));
+    const noteArea = el("textarea", "tlt-input tlt-textarea tlt-note-ta");
+    noteArea.value = this.draft.noteGeneral;
+    noteArea.placeholder = T("备注（可留空，支持 [[双链]] 与 markdown；按天条目写成 `日期：内容`）");
+    noteArea.oninput = () => { this.draft.noteGeneral = noteArea.value; };
+    noteRow.appendChild(noteArea);
+
     const stepRow = row(contentEl, T("子项"));
     const stepBox = el("div", "tlt-steps in-modal");
     if (!this.task.steps.length) {
@@ -797,6 +806,7 @@ export class TaskModal extends TltModal {
       // 先就地改字段（行号不变），最后再改标题/搬文件——搬完行号就失效了
       if (d.due !== t.due) await this.store.setDue(t, d.due || "");
       if ((d.start || "") !== (t.start || "")) await this.store.setStart(t, d.start || "");
+      if ((d.noteGeneral || "") !== noteGeneralText(t.note || "")) await this.store.setTaskGeneralNote(t, d.noteGeneral || "");
       if (d.wl !== t.wl) await this.store.setField(t, "wl", d.wl ?? 0);
       if (d.pw !== t.pw) await this.store.setField(t, "pw", d.pw ?? "m");
       if (d.pri !== t.pri) await this.store.setField(t, "pri", d.pri ?? 1);
@@ -1417,11 +1427,62 @@ export class TaskPeekModal extends TltModal {
       r.append(el("span", "tlt-peek-k", k), el("span", "tlt-peek-v", v));
       contentEl.appendChild(r);
     });
+    if (t.note) {
+      contentEl.appendChild(el("div", "tlt-peek-sec", T("备注")));
+      const box = el("div", "tlt-peek-note markdown-rendered");
+      contentEl.appendChild(box);
+      const parts: string[] = [];
+      parts.push(noteGeneralText(t.note));
+      splitNoteEntries(t.note).filter((e) => e.date).forEach((e) => parts.push(`**${e.date}**：${e.text}`));
+      // sourcePath 传任务所在文件：相对链接 / 图片嵌入才能正确解析
+      void MarkdownRenderer.render(this.app, parts.filter(Boolean).join("\n\n"), box, t.file, this as unknown as Component);
+    }
     const foot = el("div", "tlt-m-foot");
     const open = el("button", "tlt-btn pri", T("打开任务 →"));
     open.onclick = () => { this.close(); void this.onJump(); };
     foot.appendChild(open);
     contentEl.appendChild(foot);
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
+/**
+ * 写某一天的备注条目（从日历日程块进来）。
+ * 只改这一天：任务下面若已有别的日期条目，一个字都不动。
+ */
+export class NoteEntryModal extends TltModal {
+  store: Store;
+  task: Task;
+  date: string;
+  onChange: () => void | Promise<void>;
+
+  constructor(app: App, store: Store, task: Task, date: string, onChange: () => void | Promise<void>) {
+    super(app); this.store = store; this.task = task; this.date = date; this.onChange = onChange;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", T("备注 · {d}", { d: this.date })));
+    contentEl.appendChild(el("div", "tlt-hint", T("记在这一天名下：支持 [[双链]] 与 markdown，可写多行。清空＝删掉这一天的备注。")));
+    const area = el("textarea", "tlt-input tlt-textarea tlt-note-ta");
+    area.value = noteEntryText(this.task.note || "", this.date);
+    area.placeholder = T("今天要带什么 / 找谁 / 注意什么…");
+    contentEl.appendChild(area);
+    const foot = el("div", "tlt-m-foot");
+    const clear = el("button", "tlt-btn danger", T("清空这天"));
+    clear.onclick = () => { void (async () => {
+      await this.store.setTaskNoteEntry(this.task, this.date, "");
+      this.close(); void this.onChange(); new Notice(T("已清空 {d} 的备注", { d: this.date }));
+    })(); };
+    const save = el("button", "tlt-btn pri", T("保存"));
+    save.onclick = () => { void (async () => {
+      await this.store.setTaskNoteEntry(this.task, this.date, area.value);
+      this.close(); void this.onChange(); new Notice(T("已写进 {d} 的备注", { d: this.date }));
+    })(); };
+    foot.append(clear, save);
+    contentEl.appendChild(foot);
+    window.setTimeout(() => area.focus(), 40);
   }
   onClose() { this.contentEl.empty(); }
 }
