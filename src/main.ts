@@ -389,6 +389,15 @@ export class TLTPlugin extends Plugin {
     this.refreshAll();
   }
 
+  /**
+   * 只存设置、**不动数据**。给"折叠面板/换排序"这类纯界面状态用：
+   * 它们没必要重读整个库（重读期间数据是空的，界面会闪成空列表，用户报过"折叠再展开全空"）。
+   */
+  async saveUiState() {
+    await this.saveData(this.settings);
+    this.store.settings = this.settings;
+  }
+
   /** 库名：发布者名的默认值（拿不到就退回插件名） */
   vaultName(): string {
     const v = this.app.vault as unknown as { getName?: () => string };

@@ -181,8 +181,10 @@ export class WorkbenchView extends ItemView {
     const t = this.measureTier();
     this.tier = t;
     this.contentEl.dataset.tier = t;
-    const wantSideCollapsed = t !== "wide" && t !== "mid";
-    const wantRailCollapsed = t !== "wide";
+    // 只在真正的手机档自动收栏：桌面窗口开着侧栏时（约 900px）不该被收起来——
+    // 那会让"折叠/展开"看起来像手机端的抽屉逻辑（用户报过：消息栏图标变了、再打开变成悬浮的）
+    const wantSideCollapsed = t === "phone";
+    const wantRailCollapsed = t === "phone";
     if (this.manualSide !== t && !!this.cfg.sideCollapsed !== wantSideCollapsed) this.cfg.sideCollapsed = wantSideCollapsed;
     if (this.manualRail !== t && !!this.cfg.railCollapsed !== wantRailCollapsed) this.cfg.railCollapsed = wantRailCollapsed;
   }
@@ -296,6 +298,9 @@ export class WorkbenchView extends ItemView {
   /* ================= 渲染 ================= */
 
   async render() {
+    // 读盘还没完成就别重画：此刻 store 里的数组是清空状态，画出来就是"还没有项目 / 随手记 0"
+    const st0 = (this.plugin as { store?: { loading?: boolean; tasks?: unknown[] } } | undefined)?.store;
+    if (st0?.loading && !(st0.tasks || []).length) return;
     const root = this.contentEl;
     const prevScroll = root.querySelector<HTMLElement>(".tlt-work")?.scrollTop || 0;
     const prevSide = root.querySelector<HTMLElement>(".tlt-side-scroll")?.scrollTop || 0;
@@ -461,11 +466,12 @@ export class WorkbenchView extends ItemView {
     if (this.sideOff && !inDrawer) {
       s.addClass("off");
       const reopen = el("button", "tlt-fold-btn");
-      svgIcon(reopen, this.tier === "wide" || this.tier === "mid" ? "chev-r" : "menu");
-      reopen.title = this.tier === "wide" || this.tier === "mid" ? T("展开项目栏") : T("打开项目与列表");
+      const phone = this.tier === "phone";
+      svgIcon(reopen, phone ? "menu" : "chev-r");
+      reopen.title = phone ? T("打开项目与列表") : T("展开项目栏");
       reopen.onclick = () => {
-        if (this.tier === "wide" || this.tier === "mid") void this.setPanels({ sideCollapsed: false });
-        else this.openDrawer("side");
+        if (phone) this.openDrawer("side");
+        else void this.setPanels({ sideCollapsed: false });
       };
       s.appendChild(reopen);
       return s;
@@ -1611,8 +1617,8 @@ export class WorkbenchView extends ItemView {
     if (patch.sideCollapsed !== undefined) this.manualSide = this.tier;     // 记住：这一档别再自动收
     if (patch.railCollapsed !== undefined) this.manualRail = this.tier;
     Object.assign(this.cfg, patch);
-    const p = this.plugin as unknown as { saveSettings?: () => Promise<void> };
-    try { await p.saveSettings?.(); } catch { /* 存不下也不影响这次折叠 */ }
+    const p = this.plugin as unknown as { saveUiState?: () => Promise<void>; saveSettings?: () => Promise<void> };
+    try { await (p.saveUiState ?? p.saveSettings)?.(); } catch { /* 存不下也不影响这次折叠 */ }
     await this.render();
   }
 
@@ -2567,11 +2573,12 @@ export class WorkbenchView extends ItemView {
     if (this.railOff && !inDrawer) {
       r.addClass("off");
       const reopen = el("button", "tlt-fold-btn");
-      svgIcon(reopen, this.tier === "wide" ? "chev-l" : "menu");
-      reopen.title = this.tier === "wide" ? T("展开消息栏") : T("打开消息");
+      const phone = this.tier === "phone";
+      svgIcon(reopen, phone ? "menu" : "chev-l");
+      reopen.title = phone ? T("打开消息") : T("展开消息栏");
       reopen.onclick = () => {
-        if (this.tier === "wide") void this.setPanels({ railCollapsed: false });
-        else this.openDrawer("rail");
+        if (phone) this.openDrawer("rail");
+        else void this.setPanels({ railCollapsed: false });
       };
       r.appendChild(reopen);
       return r;

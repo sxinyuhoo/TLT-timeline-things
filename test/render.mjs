@@ -3407,6 +3407,39 @@ await t("日历定位：记下来的\"0\"不当回事——没真滚过就照常
   assert.equal(view.contentEl.querySelector(".tlt-daygrid")?.scrollTop, 300, "真滚过就恢复原位置");
 });
 
+await t("折叠面板：收起再展开内容不丢（读盘期间不重画，不闪成空列表）", async () => {
+  document.body.empty();
+  files["TLT/tasks/示例项目.md"] = `# 示例项目
+
+## 一期
+
+- [ ] 还在的任务 📅 ${D} [created:: ${D}]
+`;
+  files["TLT/ideas.md"] = `- 一条随手记 [at:: ${D}]\n`;
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.store.load();
+  view.tab = "month"; view.taskDim = "m";
+  await view.render();
+  const sideText = () => view.contentEl.querySelector(".tlt-side")?.textContent || "";
+  assert.match(sideText(), /示例项目/, `收缩前该有项目卡：${sideText().slice(0, 40)}`);
+  // ① 收起 → 展开，内容还在
+  await view.setPanels({ sideCollapsed: true });
+  assert.equal(view.contentEl.querySelectorAll(".tlt-proj").length, 0, "收起后就该看不到列表");
+  await view.setPanels({ sideCollapsed: false });
+  assert.match(sideText(), /示例项目/, `展开后项目卡必须回来：${sideText().slice(0, 40)}`);
+  assert.ok(/随手记/.test(view.contentEl.querySelector(".tlt-side")?.textContent || ""), "随手记那一块也要在");
+  // ② 读盘中重画：不许把列表冲掉（store 一加载就清空数组，纯属中间态）
+  const before = sideText();
+  view.store.loading = true;
+  const saved = view.store.tasks;
+  view.store.tasks = [];
+  await view.render();
+  view.store.tasks = saved;
+  view.store.loading = false;
+  assert.equal(sideText(), before, `读盘期间的重画该被跳过，不该清空界面：${sideText().slice(0, 40)}`);
+});
+
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   assert.ok(/@media \(hover: none\)/.test(css), "要有 hover:none 分支");
@@ -3437,8 +3470,8 @@ await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够�
 await t("断点档位：宽档三栏不变；中/窄/手机档按档收栏，抽屉与浮层可用", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   // CSS 契约：四档的收栏规则都在
-  assert.ok(/\[data-tier="mid"\] \.tlt-msgs\.off/.test(css), "中档要收消息栏");
-  assert.ok(/\[data-tier="narrow"\] \.tlt-side\.off/.test(css), "窄档要收左栏");
+  assert.ok(/\[data-tier="mid"\] \.tlt-msgs\.off/.test(css), "中档收起来时是 44px 图标条");
+  assert.ok(/\[data-tier="narrow"\] \.tlt-side\.off/.test(css), "窄档收起来时是 48px 图标条");
   assert.ok(/\[data-tier="phone"\] \.tlt-side\.off,[\s\S]{0,80}display: none/.test(css), "手机档两栏不占宽");
   assert.ok(/\.tlt-root\[data-tier="phone"\] \.tlt-task \{ flex-wrap: wrap/.test(css), "手机档任务行要两行式");
   assert.ok(/\.tlt-root\[data-tier="phone"\] \.tlt-list|\.tlt-root\[data-tier="phone"\] \.tlt-mlist \{ display: none/.test(css), "手机档月历格子简化");
@@ -3449,6 +3482,10 @@ await t("断点档位：宽档三栏不变；中/窄/手机档按档收栏，抽
   await view.onOpen();
   await view.render();
   assert.equal(view.contentEl.dataset.tier, "wide", `没有布局宽度时应落到 wide：${view.contentEl.dataset.tier}`);
+  // 桌面档（宽/中/窄）默认**不收栏**：自动收栏只在手机档，
+  // 否则开着两侧栏的桌面窗口会被收成图标条，看起来像手机端逻辑（用户报过）
+  assert.ok(!view.cfg.sideCollapsed, "桌面档不该自动收起项目栏");
+  assert.ok(!view.cfg.railCollapsed, "桌面档不该自动收起消息栏");
   // 抽屉：打开后有遮罩、有标题、点遮罩能关
   view.openDrawer("side");
   const drawer = view.contentEl.querySelector(".tlt-drawer");

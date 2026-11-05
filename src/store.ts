@@ -126,6 +126,8 @@ export class Store {
   feeds: Feed[] = [];
   ideas: Idea[] = [];
   loaded = false;
+  /** 正在读盘：这期间视图不要重画（数据是空的，重画会闪成空列表） */
+  loading = false;
 
   constructor(app: App, settings: TLTSettings) {
     this.app = app;
@@ -209,6 +211,10 @@ export class Store {
   }
 
   private async doLoad() {
+    // 读盘期间数组是空的：这段时间**不能让视图重画**，否则侧栏会闪一下"还没有项目/0 条随手记"
+    // （用户报过：折叠再展开后项目与随手记全空）。
+    this.loading = true;
+    try {
     this.tasks = [];
     this.logs = [];
     this.staff = [];
@@ -342,6 +348,9 @@ export class Store {
     this.staff = uniqBy(this.staff, (s) => s.file);
 
     this.loaded = true;
+    } finally {
+      this.loading = false;
+    }
   }
 
   /* ---------------- 快捷命令用的读写 ---------------- */
