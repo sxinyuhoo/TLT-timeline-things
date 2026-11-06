@@ -790,6 +790,25 @@ export class MessagesView extends ItemView {
         } else {
           const st = this.plugin.hubState();
           if (f.remote) s.appendChild(el("div", "tlt-d-body", f.remote));
+          // 立即同步：不用等设置里的固定同步间隔（只拉这一个源）
+          const syncOne = el("button", "tlt-btn pri", T("立即同步"));
+          syncOne.dataset.syncnow = f.id;
+          syncOne.onclick = () => { void (async () => {
+            const st = this.plugin.hubState();
+            const btn = syncOne;
+            btn.disabled = true;
+            btn.setText(T("同步中…"));
+            try {
+              const r = await this.store.pullFromHub(st.sync, f.remote || "");
+              await this.store.load();
+              await this.refresh();
+              new Notice(T("已同步「{n}」：新增 {a} · 更新 {b}", { n: f.name, a: r.added, b: r.updated }), 3000);
+            } catch (e) {
+              btn.disabled = false;
+              btn.setText(T("立即同步"));
+              new Notice(T("同步失败（服务连不上？）：{e}", { e: String(e).slice(0, 80) }), 6000);
+            }
+          })(); };
           const un = el("button", "tlt-btn danger", T("取消订阅"));
           un.onclick = () => { void (async () => {
             try { await this.store.unsubscribeRemote(st.sync, f.remote || ""); } catch { /* 服务没起就只清本地 */ }
@@ -798,7 +817,7 @@ export class MessagesView extends ItemView {
             await this.refresh();
             new Notice(gone ? T("已取消订阅「{n}」，本地文件已进回收站", { n: f.name }) : T("已取消订阅「{n}」", { n: f.name }));
           })(); };
-          act.appendChild(un);
+          act.append(syncOne, un);
         }
         s.appendChild(act);
         s.appendChild(el("div", "tlt-hint", T("左栏可多选源来过滤时间线；这里只管理当前这一个源。")));

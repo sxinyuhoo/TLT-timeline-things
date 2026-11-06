@@ -3622,6 +3622,45 @@ await t("任务详情：备注排在子项下面", async () => {
   m.close();
 });
 
+await t("消息中心：订阅来的源右栏有「立即同步」，点了只拉这一个源", async () => {
+  document.body.empty();
+  files["TLT/feeds/远程-示例订阅.md"] = `---
+title: 示例订阅
+remote: http://127.0.0.1:8788/feed/demo
+owner: 示例同事
+own: false
+---
+
+# 示例订阅
+
+- ${D} 订阅来的消息 [kind:: note]
+`;
+  const view = mount(MessagesView);
+  await view.onOpen();
+  await view.store.load();          // 夹具是刚写进去的：确保重读（store 可能已 loaded）
+  await view.render();
+  const feed = view.store.feeds.find((f) => f.remote);
+  assert.ok(feed, `夹具里应有订阅来的源：${view.store.feeds.map((f) => f.name).join(",")}`);
+  const row = [...view.contentEl.querySelectorAll(".tlt-fr")].find((r) => r.textContent.includes("示例订阅"));
+  assert.ok(row, `左栏应有这个源：${[...view.contentEl.querySelectorAll(".tlt-fr")].map((r) => r.textContent.trim().slice(0, 8)).join(" / ")}`);
+  row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 80));
+  const btn = view.contentEl.querySelector("[data-syncnow]");
+  assert.ok(btn, "右栏要有「立即同步」");
+  assert.match(btn.textContent, /立即同步/);
+  // 点它：只拉这一个源（用桩替掉真实网络请求）
+  const calls = [];
+  const orig = view.store.pullFromHub.bind(view.store);
+  view.store.pullFromHub = async (sync, only) => { calls.push({ sync, only }); return { added: 2, updated: 1, at: D }; };
+  globalThis.__notices.length = 0;
+  btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 160));
+  assert.equal(calls.length, 1, "点一次应只触发一次同步");
+  assert.equal(calls[0].only, feed.remote, `应只同步这一个源：${JSON.stringify(calls[0])}`);
+  assert.ok(globalThis.__notices.some((n) => /已同步/.test(n)), `应有已同步提示：${globalThis.__notices.slice(-3).join(" | ")}`);
+  view.store.pullFromHub = orig;
+});
+
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   assert.ok(/@media \(hover: none\)/.test(css), "要有 hover:none 分支");

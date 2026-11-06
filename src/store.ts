@@ -2000,9 +2000,11 @@ export class Store {
     return out;
   }
 
-  async pullFromHub(syncUrl: string) {
+  async pullFromHub(syncUrl: string, onlyRemote?: string) {
     const base = syncUrl.replace(/\/$/, "");
-    const mine = this.mySubs();
+    let mine = this.mySubs();
+    // 只同步某一个订阅（右栏「立即同步」用）：按 remote 地址精确匹配
+    if (onlyRemote) mine = mine.filter((u) => u === onlyRemote);
     if (!mine.length) return { added: 0, updated: 0, at: new Date().toISOString() };   // 没订阅就什么都不拉
     const norm = (u: string) => {
       try { const x = new URL(u); return `${x.origin}${x.pathname}?${decodeURIComponent(x.search.replace(/^\?/, ""))}`; }
