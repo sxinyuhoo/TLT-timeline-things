@@ -449,8 +449,8 @@ export class TLTPlugin extends Plugin {
 
   hubState() {
     return {
-      publish: this.settings.hubPublish,
-      sync: this.settings.hubSync,
+      publish: this.settings.lastHub ?? "",
+      sync: "",
       lastSync: this.hub.lastSync,
       lastResult: this.hub.lastResult,
       lastError: this.hub.lastError,
@@ -465,7 +465,14 @@ export class TLTPlugin extends Plugin {
     if (!mine.length) { new Notice(T("没有我发布的源")); return; }
     try {
       let total = 0;
-      for (const f of mine) { const r = await this.store.publishFeed(f, this.settings.hubPublish); total += r.count || 0; }
+      let skipped = 0;
+      for (const f of mine) {
+        const hub = f.hub || this.settings.lastHub || "";
+        if (!hub) { skipped += 1; continue; }          // 没填过地址的源跳过（在右栏手动推一次即可记住）
+        const r = await this.store.publishFeed(f, hub);
+        total += r.count || 0;
+      }
+      if (skipped) new Notice(T("{n} 个源还没记住发布地址：在右栏手动推一次就会记住", { n: skipped }), 5000);
       this.setHubState({ lastResult: `推送 ${mine.length} 个源 / ${total} 条`, lastError: "" });
       if (!silent) new Notice(`已推送 ${mine.length} 个源（${total} 条）`);
       this.refreshAll();
@@ -478,10 +485,10 @@ export class TLTPlugin extends Plugin {
 
   async syncAll(silent = false) {
     try {
-      const r = await this.store.pullFromHub(this.settings.hubSync);
+      const r = await this.store.syncSubscriptions();
       const stamp = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-      this.setHubState({ lastSync: stamp, lastResult: `新增 ${r.added} 条`, lastError: "" });
-      if (!silent) new Notice(`同步完成：新增 ${r.added} 条`);
+      this.setHubState({ lastSync: stamp, lastResult: `新增 ${r.added} 条`, lastError: r.failed.length ? `${r.failed.length} 个源拉取失败` : "" });
+      if (!silent) new Notice(`同步完成：新增 ${r.added} 条${r.failed.length ? `，${r.failed.length} 个源没拉到` : ""}`);
       this.refreshAll();
     } catch (e) {
       const msg = errMsg(e);
@@ -590,10 +597,12 @@ export class TLTPlugin extends Plugin {
   /* ---------- 示例数据 ---------- */
 
   /** 测一下消息服务能不能通（发布端看 /feeds，订阅端看 /subscriptions） */
-  async pingHub(kind: "publish" | "sync", silent = false) {
-    const base = (kind === "publish" ? this.settings.hubPublish : this.settings.hubSync).replace(/\/$/, "");
-    const label = kind === "publish" ? "发布服务" : "拉取服务";
-    if (!base) { if (!silent) new Notice(`还没填${label}地址`); return false; }
+  /** 探一下某个发布服务地址通不通（地址现在由发布弹窗给，不再来自设置） */
+  async pingHubUrl(hubUrl: string, silent = false) {
+    const kind = "publish" as const;
+    const base = (hubUrl || "").trim().replace(/\/$/, "");
+    const label = "发布服务";
+    if (!base) { if (!silent) new Notice(T("还没填发布服务地址")); return false; }
     try {
       const res = await requestUrl({
         url: `${base}${kind === "publish" ? "/feeds" : "/subscriptions"}`,
@@ -873,8 +882,7 @@ export class TLTSettingTab extends PluginSettingTab {
       {
         type: "group", heading: t("消息服务"),
         items: [
-          text("hubPublish", T("发布服务地址"), T("把「我发布的源」推到这里。发布端与订阅端可以是同一个地址。"), d.hubPublish),
-          text("hubSync", T("拉取服务地址"), T("从这里同步订阅的源。留空则完全离线，只用库内 Markdown。"), d.hubSync),
+
           pick("autoSyncMin", T("自动同步间隔"), T("按这个间隔自动拉取订阅的源。"), every),
           pick("autoPushMin", T("自动推送间隔"), T("按这个间隔把我发布的源推上去。"), every),
         ],
@@ -1083,8 +1091,7 @@ export class TLTSettingTab extends PluginSettingTab {
       text: T("服务是可选的：不填就完全离线，只用库内的 Markdown。发布端与订阅端可以是同一个地址（仓库里的 services-py 就是同进程同端口）。"),
     });
     const intervals = { "0": T("关闭"), "5": T("5 分钟"), "15": T("15 分钟"), "30": T("30 分钟"), "60": T("1 小时") };
-    folder("hubPublish", t("发布服务地址"), t("把「我发布的源」推到这里。"), d.hubPublish);
-    folder("hubSync", t("拉取服务地址"), t("从这里同步订阅的源。"), d.hubSync);
+
     new Setting(containerEl)
       .setName(t("自动同步间隔"))
       .setDesc(t("按这个间隔自动拉取订阅的源。"))
@@ -1131,11 +1138,12 @@ export class TLTSettingTab extends PluginSettingTab {
     new Setting(this.containerEl).setName(t("版本")).setDesc(`TLT v${this.plugin.manifest.version} · Obsidian ${(this.app as unknown as { appVersion?: string }).appVersion ?? "?"}`);
   }
 
-  /** 一次性把两个地址都测一遍，结果合并成一条提示 */
+  /** 测最近一次用的发布服务（地址不再来自设置，所以只测记住的那个） */
   private async testBoth(): Promise<void> {
-    const okPublish = await this.plugin.pingHub("publish", true);
-    const okSync = await this.plugin.pingHub("sync", true);
-    new Notice(`发布服务${okPublish ? "正常" : "连不上"} · 拉取服务${okSync ? "正常" : "连不上"}`);
+    const hub = this.plugin.settings.lastHub || "";
+    if (!hub) { new Notice(T("还没有发布过：地址在「发布消息源…」弹窗里填一次就记住了")); return; }
+    const okPublish = await this.plugin.pingHubUrl(hub, true);
+    new Notice(T("发布服务 {u}：{s}", { u: hub, s: okPublish ? T("正常") : T("连不上") }));
   }
 }
 

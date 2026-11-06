@@ -150,7 +150,7 @@ export interface Feed {
   /** 界面显示用：有本地别名就用别名，否则用（发布者给的）名字 */
   name: string;
   desc: string; cadence: string;
-  owner: string; mine: boolean; items: Msg[]; remote?: string; personal?: boolean;
+  owner: string; mine: boolean; items: Msg[]; remote?: string; personal?: boolean; hub?: string;
   /** 订阅别人的源时：只改自己看到的叫法，不动对方的名称 */
   alias?: string;
   /** 发布者给的原始名称（本地有别名时用来对照显示） */

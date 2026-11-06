@@ -14,10 +14,8 @@ interface WireItem {
 }
 interface WireFeed {
   url?: string; ok?: boolean; error?: string; id?: string; title?: string; owner?: string; items?: WireItem[];
+  fetchedAt?: string;
 }
-interface PullResponse { feeds?: WireFeed[]; pulledAt?: string }
-interface SubsResponse { subs?: { url?: string }[] }
-interface SubscribeResult { ok?: boolean; count?: number; existed?: boolean; reason?: string }
 interface PublishResult { ok?: boolean; count?: number; id?: string }
 
 export interface TLTSettings {
@@ -30,6 +28,8 @@ export interface TLTSettings {
   ideasFile: string;
   /** "这天要做的"按什么收：due＝只看截止日（默认）；span＝跨天任务在区间内每天都算 */
   dayTaskScope?: "due" | "span";
+  /** 最近一次用的发布服务地址（只在发布弹窗里填，设置界面不显示；用来预填和推送） */
+  lastHub?: string;
   tagsFile: string;
   defaultPeriod: Period;
   mineFeed: string;
@@ -319,6 +319,7 @@ export class Store {
         owner: asText(fm["owner"]),
         mine: fm["mine"] === true || fm["owner"] === "me",
         remote: asText(fm["remote"]),
+        hub: asText(fm["hub"]),
         personal: fm["personal"] === true,
         items,
       });
@@ -1127,7 +1128,12 @@ export class Store {
     return target;
   }
 
-  async publishSource(from: Feed, opts: { name: string; desc?: string; cadence?: string }) {
+  async publishSource(from: Feed, opts: { name: string; desc?: string; cadence?: string; hub?: string }) {
+    // 发布目标只在这里给（消息中心的发布弹窗），不在设置里配；记住了下次自动填
+    if (opts.hub && opts.hub.trim()) {
+      this.settings.lastHub = opts.hub.trim().replace(/\/$/, "");
+      await this.saveSettingsSafe();
+    }
     const name = (opts.name || "").trim();
     if (!name) return { ok: false as const, reason: "empty" };
 
@@ -1423,11 +1429,11 @@ export class Store {
    */
   async syncPublishedFeed(feedId: string): Promise<boolean> {
     const pid = (this.settings.feedIds || {})[feedId];
-    const hub = (this.settings as unknown as { hubPublish?: string }).hubPublish || "";
-    if (!pid || !hub) return false;
     await this.load();
     const feed = this.feeds.find((f) => f.id === feedId) || this.feeds.find((f) => f.file.endsWith(`/${pid}.md`));
     if (!feed) return false;
+    const hub = feed.hub || this.settings.lastHub || "";
+    if (!pid || !hub) return false;
     try {
       await this.publishFeed(feed, hub, pid);
       return true;
@@ -1939,46 +1945,109 @@ export class Store {
 
   /** 给拉取服务加一个订阅地址 */
   /** 订阅（按规范化 URL 去重，返回 { ok, count, existed }） */
-  async subscribeRemote(syncUrl: string, feedUrl: string, name?: string) {
-    const base = syncUrl.replace(/\/$/, "");
-    const norm = (u: string) => {
-      try { const x = new URL(u); return `${x.origin}${x.pathname}?${decodeURIComponent(x.search.replace(/^\?/, ""))}`; }
-      catch { return u; }
-    };
-    // 「这是不是我自己发布的」要比发布用的 ID，不能比本地文件名：
-    // 别人发布的源也可能起同样的名字，ID 不同但文件名可能一样
+  /**
+   * 订阅一个源：**直接抓这个地址**，不再要求先配一个"同步服务"。
+   * 传进来的就是源本身的 URL（TLT feed JSON 或 RSS/Atom），多少不同 IP 都可以。
+   */
+  async subscribeRemote(feedUrl: string, name?: string) {
+    const url = feedUrl.trim();
+    if (!url) return { ok: false as const, count: 0, reason: "empty" as const };
+    // 「这是不是我自己发布的」要比发布用的 ID，不能比本地文件名
     const myIds = new Set(Object.values(this.settings.feedIds || {}));
     this.feeds.filter((f) => f.mine).forEach((f) => myIds.add(f.id));
-    const inUrl = /[?&]id=([^&]+)/.exec(decodeURIComponent(norm(feedUrl)))?.[1] ?? "";
-    if (inUrl && myIds.has(inUrl)) {
-      return { ok: false, count: 0, existed: true, reason: "self" as const };
+    const inUrl = /[?&]id=([^&]+)/.exec(url)?.[1] ?? "";
+    if (inUrl && myIds.has(inUrl)) return { ok: false as const, count: 0, existed: true, reason: "self" as const };
+    // 已经在订阅里了
+    const list0 = this.settings.subs || [];
+    if (list0.some((u) => u === url)) return { ok: true as const, count: list0.length, existed: true };
+    let remote: { title: string; owner: string; items: WireItem[] };
+    try {
+      remote = await this.fetchFeedRemote(url);
+    } catch (e) {
+      return { ok: false as const, count: 0, reason: "fetch" as const, error: String(e) };
     }
-    const cur = await this.httpJson<SubsResponse>(`${base}/subscriptions`).catch((): SubsResponse => ({ subs: [] }));
-    const subs = cur.subs ?? [];
-    if (subs.some((sub) => norm(sub.url ?? "") === norm(feedUrl))) {
-      return { ok: true, count: subs.length, existed: true };
-    }
-    const res = await this.httpJson<SubscribeResult>(`${base}/subscribe`, { method: "POST", body: { url: feedUrl, name } });
-    // 本地记一笔：拉取时以这份为准（服务端那张表是所有人共用的）
-    const list = this.settings.subs || [];
-    const key = norm(feedUrl);
-    if (!list.some((u) => norm(u) === key)) {
-      this.settings.subs = [...list, feedUrl];
-      await this.saveSettingsSafe();
-    }
-    return { ...res, existed: false };
+    const r = await this.applyRemoteFeed({
+      url, ok: true, title: name?.trim() || remote.title, owner: remote.owner,
+      items: remote.items, fetchedAt: new Date().toISOString(),
+    });
+    this.settings.subs = [...list0, url];
+    await this.saveSettingsSafe();
+    await this.load();
+    return { ok: true as const, count: r.added, existed: false };
   }
 
-  async unsubscribeRemote(syncUrl: string, feedUrl: string) {
-    const base = syncUrl.replace(/\/$/, "");
-    const norm = (u: string) => {
-      try { const x = new URL(u); return `${x.origin}${x.pathname}?${decodeURIComponent(x.search.replace(/^\?/, ""))}`; }
-      catch { return u; }
-    };
-    this.settings.subs = (this.settings.subs || []).filter((u) => norm(u) !== norm(feedUrl));
+  /** 把这个源的发布目标记进文件（frontmatter 的 hub:），下次推送/展示订阅地址都用它 */
+  async setFeedHub(feed: Feed, hub: string) {
+    const file = await this.fileByPath(feed.file);
+    if (!file || !hub) return false;
+    const clean = hub.trim().replace(/\/$/, "");
+    await this.app.vault.process(file, (text) => {
+      if (/^hub:\s*/m.test(text)) return text.replace(/^hub:\s*.*$/m, `hub: ${clean}`);
+      if (/^---\r?\n/.test(text)) return text.replace(/^---\r?\n/, `---\nhub: ${clean}\n`);
+      return `---\nhub: ${clean}\n---\n\n${text}`;
+    });
+    feed.hub = clean;
+    return true;
+  }
+
+  /** 忘掉一个订阅（本地记录）：文件由调用方决定删还是留 */
+  async forgetSub(feedUrl: string) {
+    this.settings.subs = (this.settings.subs || []).filter((u) => u !== feedUrl);
     await this.saveSettingsSafe();
-    try { await this.httpJson<unknown>(`${base}/subscribe?url=${encodeURIComponent(feedUrl)}`, { method: "DELETE" }); return true; }
-    catch { return false; }
+    return true;
+  }
+
+  /** 兼容旧调用：现在只清本地那条订阅记录（服务端订阅表不再参与拉取） */
+  async unsubscribeRemote(syncUrl: string, feedUrl: string) {
+    void syncUrl;
+    return this.forgetSub(feedUrl);
+  }
+
+  /**
+   * 直接抓一个订阅地址——**不经过任何"同步服务"**。
+   * 支持两种：TLT 的源 JSON（{title, owner, items[]}）和 RSS / Atom（XML）。
+   * 这样订阅多少个不同 IP 的源都行，每个源只管自己的地址。
+   */
+  async fetchFeedRemote(url: string): Promise<{ title: string; owner: string; items: WireItem[]; at?: string }> {
+    const res = await requestUrl({ url, method: "GET", throw: false });
+    const text = res.text ?? "";
+    if (/^\s*</.test(text)) return this.parseFeedXml(text);
+    const data = JSON.parse(text) as { title?: string; owner?: string; items?: WireItem[]; updated?: string };
+    return {
+      title: asText(data.title) || this.hostOf(url),
+      owner: asText(data.owner),
+      items: Array.isArray(data.items) ? data.items : [],
+      at: asText(data.updated) || new Date().toISOString(),
+    };
+  }
+
+  /** RSS / Atom → 统一的消息条目（尽量宽松：取得到就取，取不到就跳过） */
+  private parseFeedXml(xml: string): { title: string; owner: string; items: WireItem[]; at?: string } {
+    const doc = new DOMParser().parseFromString(xml, "text/xml");
+    const isAtom = !!doc.querySelector("feed");
+    const feedEl = doc.querySelector(isAtom ? "feed" : "channel");
+    const title = asText(feedEl?.querySelector(isAtom ? ":scope > title" : "title")?.textContent).trim();
+    const owner = asText(feedEl?.querySelector(isAtom ? "author > name" : "managingEditor")?.textContent).trim();
+    const iso = (raw?: string) => {
+      const t = Date.parse(asText(raw));
+      if (Number.isNaN(t)) return "";
+      const d = new Date(t);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+    const items: WireItem[] = [];
+    doc.querySelectorAll(isAtom ? "entry" : "item").forEach((el) => {
+      const t = asText(el.querySelector(isAtom ? "title" : "title")?.textContent).trim();
+      if (!t) return;
+      const date = iso(el.querySelector(isAtom ? "updated" : "pubDate")?.textContent);
+      const link = asText(el.querySelector(isAtom ? "id" : "guid")?.textContent) || asText(el.querySelector(isAtom ? "link" : "link")?.textContent);
+      const body = asText(el.querySelector(isAtom ? "summary" : "description")?.textContent).trim();
+      items.push({ mid: link || undefined, date, title: t, kind: "note", body: body || undefined });
+    });
+    return { title: title || "订阅源", owner, items };
+  }
+
+  private hostOf(url: string) {
+    try { return new URL(url).host; } catch { return url; }
   }
 
   /** 从拉取服务同步：把远端消息写进 TLT/feeds/<id>.md（按 mid 去重） */
@@ -2000,28 +2069,15 @@ export class Store {
     return out;
   }
 
-  async pullFromHub(syncUrl: string, onlyRemote?: string) {
-    const base = syncUrl.replace(/\/$/, "");
-    let mine = this.mySubs();
-    // 只同步某一个订阅（右栏「立即同步」用）：按 remote 地址精确匹配
-    if (onlyRemote) mine = mine.filter((u) => u === onlyRemote);
-    if (!mine.length) return { added: 0, updated: 0, at: new Date().toISOString() };   // 没订阅就什么都不拉
-    const norm = (u: string) => {
-      try { const x = new URL(u); return `${x.origin}${x.pathname}?${decodeURIComponent(x.search.replace(/^\?/, ""))}`; }
-      catch { return u; }
-    };
-    // 让服务端只回我订阅的那几个；老服务端不认这个参数时会回全量，所以下面还要再筛一遍
-    const qs = mine.map((u) => `urls=${encodeURIComponent(u)}`).join("&");
-    const data = await this.httpJson<PullResponse>(`${base}/pull?${qs}`);
+  /**
+   * 把"一个远端源的整份清单"落进本地 feeds/<id>.md（按 mid 去重、服务端没有的就删）。
+   * 订阅（首次）与同步（每次）都走这里，保证两条路径行为一致。
+   */
+  async applyRemoteFeed(feed: WireFeed & { url?: string }) {
     let added = 0, updated = 0, removed = 0;
-    const want = new Set(mine.map(norm));
-
-    for (const feed of data.feeds ?? []) {
-      if (feed.url && !want.has(norm(asText(feed.url)))) continue;      // 不是自己订的，跳过
-
       const items = feed.items ?? [];
       // 注意：items 为空但 ok=true 是有意义的（发布者把源清空了），下面照样会走"删本地多余的"那一步
-      if (!feed.ok) continue;
+      if (!feed.ok) return { added, updated, removed };
       const title = asText(feed.title) || asText(feed.id) || "远程源";
       const rawId = title;
       const id = rawId.replace(/[\\/:*?"<>|]/g, "-");
@@ -2091,8 +2147,36 @@ export class Store {
         }
         return keep.join("\n");
       });
+    return { added, updated, removed };
+  }
+
+  /**
+   * 同步订阅：**逐个直接抓每个源自己的地址**（不再经过一个统一的"拉取服务"）。
+   * onlyRemote 传了就只同步那一个（右栏「立即同步」）。
+   */
+  async syncSubscriptions(onlyRemote?: string) {
+    let mine = this.mySubs();
+    if (onlyRemote) mine = mine.filter((u) => u === onlyRemote);
+    const failed: string[] = [];
+    let added = 0, updated = 0, removed = 0;
+    for (const url of mine) {
+      try {
+        const remote = await this.fetchFeedRemote(url);
+        const r = await this.applyRemoteFeed({
+          url, ok: true, title: remote.title, owner: remote.owner,
+          items: remote.items, fetchedAt: new Date().toISOString(),
+        });
+        added += r.added; updated += r.updated; removed += r.removed;
+      } catch {
+        failed.push(url);
+      }
     }
-    return { added, updated, removed, at: data.pulledAt };
+    return { added, updated, removed, failed, at: new Date().toISOString() };
+  }
+
+  /** 兼容旧名字：内部就是同步订阅 */
+  async pullFromHub(_syncUrl?: string, onlyRemote?: string) {
+    return this.syncSubscriptions(onlyRemote);
   }
 
   /* ---------------- 派生 ---------------- */

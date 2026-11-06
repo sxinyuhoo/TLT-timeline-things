@@ -369,11 +369,11 @@ await t("订阅判定：别人的同名源不算「我自己的」", async () =>
   const { store } = await NEW();
   store.settings.feedIds = { "个人": "mine-abc123" };
   // 别人发的源（ID 不同、名字相同）
-  store.httpJson = async () => ({ subs: [] });     // 只测判定，别真发请求
-  const other = await store.subscribeRemote("http://hub", "http://hub/feed?id=someone-else-999", "个人");
+  store.fetchFeedRemote = async () => { throw new Error("这里不该真去抓"); };   // 只测判定
+  const other = await store.subscribeRemote("http://hub/feed?id=someone-else-999", "个人");
   assert.notEqual(other.reason, "self", "别人发布的同名源不该被当成自己的");
   // 自己发布的（ID 命中）
-  const mine = await store.subscribeRemote("http://hub", "http://hub/feed?id=mine-abc123", "我的动态");
+  const mine = await store.subscribeRemote("http://hub/feed?id=mine-abc123", "我的动态");
   assert.equal(mine.reason, "self", "自己发布的源应被识别出来");
 });
 
@@ -616,16 +616,16 @@ await t("拉取只写自己订阅的源，别人订的不进本库", async () =>
   const { store } = await NEW();
   fps.files["TLT/feeds/远程-甲.md"] = `---\ntitle: 甲\nremote: http://hub/feed?id=aaa\nown: false\n---\n\n# 甲\n\n`;
   await store.load();
-  // 服务端老版本：不认 urls=，照样回全量（含别人订的乙）
-  store.httpJson = async () => ({
-    feeds: [
-      { url: "http://hub/feed?id=aaa", ok: true, id: "aaa", title: "甲", owner: "小王",
-        items: [{ mid: "a1", date: "2026-10-29", title: "甲的消息", kind: "note", place: "", who: [], star: false, state: "live", until: "", body: "" }] },
-      { url: "http://hub/feed?id=bbb", ok: true, id: "bbb", title: "乙", owner: "小李",
-        items: [{ mid: "b1", date: "2026-10-29", title: "别人的消息", kind: "note", place: "", who: [], star: false, state: "live", until: "", body: "" }] },
-    ],
-  });
-  const r = await store.pullFromHub("http://hub");
+  // 现在每个源都直接抓自己的地址：只该请求甲那一个
+  const asked = [];
+  store.fetchFeedRemote = async (url) => {
+    asked.push(url);
+    if (!url.includes("aaa")) throw new Error(`不该请求别人的源：${url}`);
+    return { title: "甲", owner: "小王",
+      items: [{ mid: "a1", date: "2026-10-29", title: "甲的消息", kind: "note" }] };
+  };
+  const r = await store.syncSubscriptions();
+  assert.deepEqual(asked, ["http://hub/feed?id=aaa"], `只该抓自己订阅的地址：${asked.join(",")}`);
   assert.equal(r.added, 1, `只该写 1 条（自己订的那个），实际 ${r.added}`);
   assert.ok(/甲的消息/.test(fps.files["TLT/feeds/远程-甲.md"]), "自己订的源应有内容");
   const leaked = Object.keys(fps.files).filter((k) => /远程-乙/.test(k));
@@ -636,21 +636,20 @@ await t("拉取只写自己订阅的源，别人订的不进本库", async () =>
 
 await t("没订阅就什么都不拉", async () => {
   const { store } = await NEW();
-  store.httpJson = async () => { throw new Error("不该发请求"); };
-  const r = await store.pullFromHub("http://hub");
+  store.fetchFeedRemote = async () => { throw new Error("不该发请求"); };
+  const r = await store.syncSubscriptions();
   assert.equal(r.added, 0, "没订阅时不该拉取");
 });
 
-await t("订阅清单存在设置里：订阅后进、退订后出", async () => {
+await t("订阅清单存在设置里：订阅后进、退订后出（订阅＝直接抓那个地址）", async () => {
   const { store } = await NEW();
   store.settings.subs = [];
-  store.httpJson = async (url) => {
-    if (String(url).endsWith("/subscriptions")) return { subs: [] };
-    return { ok: true, count: 0 };
-  };
-  await store.subscribeRemote("http://hub", "http://hub/feed?id=ccc");
+  const asked = [];
+  store.fetchFeedRemote = async (url) => { asked.push(url); return { title: "丙", owner: "小王", items: [] }; };
+  await store.subscribeRemote("http://hub/feed?id=ccc");
+  assert.deepEqual(asked, ["http://hub/feed?id=ccc"], "应该直接抓这个订阅地址本身（不经过同步服务）");
   assert.deepEqual(store.settings.subs, ["http://hub/feed?id=ccc"], "订阅后应记进设置");
-  await store.unsubscribeRemote("http://hub", "http://hub/feed?id=ccc");
+  await store.forgetSub("http://hub/feed?id=ccc");
   assert.deepEqual(store.settings.subs, [], "退订后应移除");
 });
 
@@ -678,13 +677,11 @@ await t("拉取时：发布者改名不多出一个源，别名也不丢", async
   fps.files["TLT/feeds/远程-部门通知.md"] =
     `---\ntitle: 部门通知\nremote: http://hub/feed?id=dept-123\nowner: 小王\nalias: 部门动态\nown: false\n---\n\n# 部门通知\n\n`;
   await store.load();
-  store.httpJson = async () => ({
-    feeds: [{
-      url: "http://hub/feed?id=dept-123", ok: true, id: "dept-123", title: "部门通知（新版）", owner: "小王",
-      items: [{ mid: "m1", date: "2026-10-26", title: "一条", kind: "note", place: "", who: [], star: false, state: "live", until: "", body: "" }],
-    }],
+  store.fetchFeedRemote = async () => ({
+    title: "部门通知（新版）", owner: "小王",
+    items: [{ mid: "m1", date: "2026-10-26", title: "一条", kind: "note" }],
   });
-  await store.pullFromHub("http://hub");
+  await store.syncSubscriptions();
   await store.load();
   const feeds = store.feeds.filter((f) => f.remote);
   assert.equal(feeds.length, 1, `不该多出一个源，实际 ${feeds.length}：${feeds.map((f) => f.id).join(", ")}`);

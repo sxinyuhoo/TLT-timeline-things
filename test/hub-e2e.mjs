@@ -126,21 +126,21 @@ const vaultB = makeVault(B);
 const storeB = new Store({ vault: vaultB.api, metadataCache: { getFileCache: () => ({ frontmatter: {} }) } }, settings);
 await storeB.load();
 
-await t("订阅：把发布源地址交给拉取服务", async () => {
-  const r = await storeB.subscribeRemote(SYNC, `${PUB}/feed?id=我的动态`, "我的动态");
+await t("订阅：直接抓这个源地址（不经过任何同步服务）", async () => {
+  const r = await storeB.subscribeRemote(`${PUB}/feed?id=我的动态`, "我的动态");
   assert.ok(r.ok);
+  assert.equal(r.count, 2, `订阅时就该把 2 条读进来，实际 ${r.count}`);
 });
 
-await t("拉取：同步服务返回两条消息", async () => {
-  const r = await fetch(`${SYNC}/pull`).then((x) => x.json());
-  assert.equal(r.feeds.length, 1);
-  assert.equal(r.feeds[0].items.length, 2);
-  assert.equal(r.feeds[0].ok, true);
+await t("源地址本身就能读到两条消息", async () => {
+  const r = await fetch(`${PUB}/feed?id=我的动态`).then((x) => x.json());
+  assert.equal(r.items.length, 2, `源里应有 2 条：${JSON.stringify(r).slice(0, 120)}`);
+  assert.ok(r.title, "源要有标题");
 });
 
 await t("入库：远端消息写成 TLT/feeds/<id>.md", async () => {
-  const r = await storeB.pullFromHub(SYNC);
-  assert.equal(r.added, 2);
+  const r = await storeB.syncSubscriptions();      // 订阅时已经写入，这里再同步应是幂等的
+  assert.equal(r.added, 0, `已经入库过，不该再加：${r.added}`);
   const file = [...vaultB.files.keys()].find((k) => k.includes("我的动态") && k.startsWith("TLT/feeds/"));
   assert.ok(file, "没有生成远端源文件");
   const text = vaultB.files.get(file);
@@ -150,7 +150,7 @@ await t("入库：远端消息写成 TLT/feeds/<id>.md", async () => {
 });
 
 await t("幂等：再同步一次不重复", async () => {
-  const r = await storeB.pullFromHub(SYNC);
+  const r = await storeB.syncSubscriptions();
   assert.equal(r.added, 0, `第二次又加了 ${r.added} 条`);
 });
 
@@ -161,10 +161,13 @@ await t("重新加载后能读到远端消息", async () => {
   console.log("      远端源:", remote.name, remote.items.map((i) => i.title).join(" / "));
 });
 
-await t("退订后 /pull 不再返回这个源", async () => {
-  await storeB.unsubscribeRemote(SYNC, `${PUB}/feed?id=我的动态`);
-  const r = await fetch(`${SYNC}/pull`).then((x) => x.json());
-  assert.equal(r.feeds.length, 0);
+await t("退订后再同步，不会把它拉回来", async () => {
+  await storeB.forgetSub(`${PUB}/feed?id=我的动态`);
+  const before = storeB.feeds.find((f) => !f.mine)?.items.length ?? 0;
+  const r = await storeB.syncSubscriptions();
+  assert.equal(r.added, 0, "退订后不该再拉");
+  const after = storeB.feeds.find((f) => !f.mine)?.items.length ?? 0;
+  assert.equal(after, before, "本地已有的内容不动（文件由用户决定删）");
 });
 
 fs.rmSync(A, { recursive: true, force: true });

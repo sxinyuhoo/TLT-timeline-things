@@ -167,9 +167,8 @@ await t("插件重启后不该补出空的个人源（否则取消发布会变�
 });
 
 await t("删消息：只删那一条（连正文），已发布的顺手推一次", async () => {
-  vault.files["TLT/feeds/已发布源.md"] = `---\ntitle: 已发布源\nowner: me\nmine: true\n---\n\n# 已发布源\n\n- ${D} 留下的一条\n- ${D} 要删的一条 [kind:: note]\n  > 这条的正文\n- ${D} 后面的一条\n`;
+  vault.files["TLT/feeds/已发布源.md"] = `---\ntitle: 已发布源\nowner: me\nmine: true\nhub: http://x\n---\n\n# 已发布源\n\n- ${D} 留下的一条\n- ${D} 要删的一条 [kind:: note]\n  > 这条的正文\n- ${D} 后面的一条\n`;
   store.settings.feedIds = { "已发布源": "pub-1" };
-  store.settings.hubPublish = "http://x";
   await store.load();
   const feed = byName("已发布源");
   const target = feed.items.find((m) => m.title === "要删的一条");
@@ -217,16 +216,13 @@ await t("订阅同步：发布者删了，本地跟着删（自己补写、没 m
   vault.files["TLT/feeds/远程-协作.md"] = `---\ntitle: 协作\nremote: ${url}\nowner: 别人\nown: false\n---\n\n# 协作\n\n- 2026-10-20 还在的一条 [mid:: abc-2026-10-20-还在的一条]\n- 2026-10-21 已被删的一条 [mid:: abc-2026-10-21-已被删的一条]\n  > 它的正文\n- 2026-10-22 我自己补的一条\n`;
   store.settings.subs = [url];
   await store.load();
-  const put = (u, i) => ({ url: u, id: "abc", title: "协作", owner: "别人", ok: true, items: i });
-  const realHttp = store.httpJson;
-  store.httpJson = async () => ({
-    pulledAt: "2026-10-30T00:00:00Z",
-    feeds: [put(url, [
-      { mid: "abc-2026-10-20-还在的一条", date: "2026-10-20", title: "还在的一条", kind: "note" },
-    ])],
+  const realFetch = store.fetchFeedRemote;
+  store.fetchFeedRemote = async () => ({
+    title: "协作", owner: "别人",
+    items: [{ mid: "abc-2026-10-20-还在的一条", date: "2026-10-20", title: "还在的一条", kind: "note" }],
   });
-  const res = await store.pullFromHub("http://hub");
-  store.httpJson = realHttp;
+  const res = await store.syncSubscriptions();
+  store.fetchFeedRemote = realFetch;
   assert.equal(res.removed, 1, `应删掉 1 条：${JSON.stringify(res)}`);
   const text = vault.files["TLT/feeds/远程-协作.md"];
   assert.ok(!text.includes("已被删的一条"), `发布者删了的那条该没了：\n${text}`);
@@ -237,13 +233,15 @@ await t("订阅同步：发布者删了，本地跟着删（自己补写、没 m
 
 await t("订阅同步：发布者把源清空了，本地同步的也清空（自己写的留着）", async () => {
   const url = "http://hub/sub?id=empty";
+  // 上一个用例留下的订阅文件还在（这个 harness 不做回滚）：先清掉，免得一起被同步
+  Object.keys(vault.files).filter((k) => /远程-/.test(k) && !k.includes("清空")).forEach((k) => { delete vault.files[k]; });
   vault.files["TLT/feeds/远程-清空.md"] = `---\ntitle: 清空\nremote: ${url}\n---\n\n# 清空\n\n- 2026-10-20 旧的一条 [mid:: empty-1]\n- 2026-10-21 我补的\n`;
   store.settings.subs = [url];
   await store.load();
-  const realHttp = store.httpJson;
-  store.httpJson = async () => ({ pulledAt: "", feeds: [{ url, id: "empty", title: "清空", ok: true, items: [] }] });
-  const res = await store.pullFromHub("http://hub");
-  store.httpJson = realHttp;
+  const realFetch = store.fetchFeedRemote;
+  store.fetchFeedRemote = async () => ({ title: "清空", owner: "", items: [] });
+  const res = await store.syncSubscriptions();
+  store.fetchFeedRemote = realFetch;
   assert.equal(res.removed, 1, `应清掉 1 条：${JSON.stringify(res)}`);
   const text = vault.files["TLT/feeds/远程-清空.md"];
   assert.ok(!text.includes("旧的一条"), `远端清空了，本地那条也该没：\n${text}`);

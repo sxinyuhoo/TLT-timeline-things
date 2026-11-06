@@ -479,6 +479,10 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   assert.ok(scopeRow && scopeRow.querySelector("select"), "口径设置应是个下拉");
   const opts = [...scopeRow.querySelectorAll("option")].map((o) => o.textContent);
   assert.deepEqual(opts, ["只按截止日（默认）", "跨天任务每天都算"], `下拉选项：${opts}`);
+  // 服务地址不再出现在设置里：都在消息中心的发布/订阅面板里填
+  for (const gone of ["发布服务地址", "拉取服务地址"]) {
+    assert.ok(!names.includes(gone), `设置里不该再有「${gone}」：${names.join(" / ")}`);
+  }
   const heads = [...el2.querySelectorAll(".setting-item-heading .setting-item-name")].map((e) => e.textContent);
   assert.deepEqual(heads, ["目录", "口径", "消息服务", "维护"], `分节：${heads}`);
   const buttons = [...el2.querySelectorAll("button")].map((b) => b.textContent);
@@ -1025,7 +1029,7 @@ await t("人员视图：一行两个 + 星图图例带样张（并说明灰点=�
   assert.ok(document.querySelector(".tlt-star-wrap svg"), "星图 svg 结构变了");
 });
 
-await t("发布消息源：不再单独给名称框，用源自身的名字", async () => {
+await t("发布消息源：不再单独给名称框，地址在这一步填（说明 + 发布服务）", async () => {
   document.body.empty();
   const view = mount(MessagesView);
   await view.onOpen();
@@ -1038,7 +1042,7 @@ await t("发布消息源：不再单独给名称框，用源自身的名字", as
   btn.click();
   await new Promise((r) => window.setTimeout(r, 40));
   const inputs = [...document.querySelectorAll(".modal input")];
-  assert.equal(inputs.length, 1, `弹窗里应只剩「说明」一个输入框，实际 ${inputs.length}`);
+  assert.equal(inputs.length, 2, `弹窗里应是「发布服务地址」+「说明」两个输入框，实际 ${inputs.length}`);
   assert.ok((document.querySelector(".modal")?.textContent || "").includes("源名称"), "应显示源名称");
 });
 
@@ -1063,8 +1067,8 @@ await t("发布消息源：服务不通时不许报发布成功", async () => {
   document.body.empty();
   const view = mount(MessagesView);
   await view.onOpen();
-  // 模拟"根本没配发布服务"
-  view.plugin.hubState = () => ({ publish: "", sync: "", lastSync: "", lastResult: "", lastError: "" });
+  // 地址现在在弹窗里填：先试"空地址"
+  view.plugin.settings.lastHub = "";
   const before = view.store.feeds.length;
   const row = [...document.querySelectorAll(".tlt-fr")].find((x) => !x.classList.contains("add"));
   row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1075,14 +1079,16 @@ await t("发布消息源：服务不通时不许报发布成功", async () => {
   [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "发布").click();
   await new Promise((r) => window.setTimeout(r, 80));
   const said = (globalThis.__notices || []).slice(n0).join(" | ");
-  assert.ok(/还没填发布服务地址/.test(said), "应提示服务地址没填，实际：" + said);
+  assert.ok(/填一下发布服务地址/.test(said), "应提示服务地址没填，实际：" + said);
   assert.equal(view.store.feeds.length, before, "服务不通时不该真的发布");
 
-  // 配了地址但连不上：同样不许发布
-  view.plugin.hubState = () => ({ publish: "http://127.0.0.1:8787", sync: "", lastSync: "", lastResult: "", lastError: "" });
-  view.plugin.pingHub = async () => false;
+  // 填了地址但连不上：同样不许发布
+  view.plugin.pingHubUrl = async () => false;
   [...document.querySelectorAll("button")].find((b) => b.textContent.includes("发布消息源"))?.click();
   await new Promise((r) => window.setTimeout(r, 40));
+  const hubIn = [...document.querySelectorAll(".modal input")][0];
+  assert.ok(hubIn, "发布弹窗里要有地址输入框");
+  hubIn.value = "http://127.0.0.1:8787";
   [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "发布")?.click();
   await new Promise((r) => window.setTimeout(r, 80));
   assert.equal(view.store.feeds.length, before, "ping 不通时也不该发布");
@@ -3650,15 +3656,15 @@ own: false
   assert.match(btn.textContent, /立即同步/);
   // 点它：只拉这一个源（用桩替掉真实网络请求）
   const calls = [];
-  const orig = view.store.pullFromHub.bind(view.store);
-  view.store.pullFromHub = async (sync, only) => { calls.push({ sync, only }); return { added: 2, updated: 1, at: D }; };
+  const orig = view.store.syncSubscriptions.bind(view.store);
+  view.store.syncSubscriptions = async (only) => { calls.push({ only }); return { added: 2, updated: 1, removed: 0, failed: [], at: D }; };
   globalThis.__notices.length = 0;
   btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => setTimeout(r, 160));
   assert.equal(calls.length, 1, "点一次应只触发一次同步");
   assert.equal(calls[0].only, feed.remote, `应只同步这一个源：${JSON.stringify(calls[0])}`);
   assert.ok(globalThis.__notices.some((n) => /已同步/.test(n)), `应有已同步提示：${globalThis.__notices.slice(-3).join(" | ")}`);
-  view.store.pullFromHub = orig;
+  view.store.syncSubscriptions = orig;
 });
 
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {

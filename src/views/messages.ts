@@ -743,9 +743,9 @@ export class MessagesView extends ItemView {
           };
           act.appendChild(del);
         } else if (f.mine) {
-          const st = this.plugin.hubState();
+          const hub = f.hub || this.cfg.lastHub || "";
           const pid = (this.cfg.feedIds || {})[f.id] || f.id;
-          const url = `${st.publish}/feed?id=${encodeURIComponent(pid)}`;
+          const url = hub ? `${hub}/feed?id=${encodeURIComponent(pid)}` : "";
           // 订阅地址放成只读输入框（能全选）+ 一个复制按钮：之前是一段文本，没法直接复制给别人
           const urow = el("div", "tlt-urrow");
           const uin = el("input", "tlt-input tlt-input-url");
@@ -768,7 +768,7 @@ export class MessagesView extends ItemView {
             try {
               const clean = await this.store.ensureCleanPublishId(f);
               if (clean.changed) new Notice(T("订阅地址已换成新的短 ID：{id}", { id: clean.id }), 5000);
-              const r = await this.store.publishFeed(f, st.publish, clean.id);
+              const r = await this.store.publishFeed(f, hub, clean.id);
               new Notice(T("已推送 {n} 条", { n: r.count }));
             } catch (e) { new Notice(T("推送失败：") + errMsg(e)); }
           })(); };
@@ -776,8 +776,8 @@ export class MessagesView extends ItemView {
           unpub.onclick = () => { void (async () => {
             // 服务端那条也要删掉，否则别人还能拉到旧内容
             let serverGone = false;
-            try { serverGone = await this.store.unpublishFeed(pid, st.publish); } catch { /* 服务没起 */ }
-            if (!Store.isCleanId(pid)) { try { await this.store.unpublishFeed(f.id, st.publish); } catch { /* 同上 */ } }
+            try { serverGone = await this.store.unpublishFeed(pid, hub); } catch { /* 服务没起 */ }
+            if (!Store.isCleanId(pid)) { try { await this.store.unpublishFeed(f.id, hub); } catch { /* 同上 */ } }
             const back = f.personal ? 0 : await this.store.demoteToPersonal(f, "个人");
             this.selected.delete(f.id);
             await this.refresh();
@@ -788,18 +788,16 @@ export class MessagesView extends ItemView {
           })(); };
           act.append(push, unpub);
         } else {
-          const st = this.plugin.hubState();
           if (f.remote) s.appendChild(el("div", "tlt-d-body", f.remote));
           // 立即同步：不用等设置里的固定同步间隔（只拉这一个源）
           const syncOne = el("button", "tlt-btn pri", T("立即同步"));
           syncOne.dataset.syncnow = f.id;
           syncOne.onclick = () => { void (async () => {
-            const st = this.plugin.hubState();
             const btn = syncOne;
             btn.disabled = true;
             btn.setText(T("同步中…"));
             try {
-              const r = await this.store.pullFromHub(st.sync, f.remote || "");
+              const r = await this.store.syncSubscriptions(f.remote || "");
               await this.store.load();
               await this.refresh();
               new Notice(T("已同步「{n}」：新增 {a} · 更新 {b}", { n: f.name, a: r.added, b: r.updated }), 3000);
@@ -811,7 +809,7 @@ export class MessagesView extends ItemView {
           })(); };
           const un = el("button", "tlt-btn danger", T("取消订阅"));
           un.onclick = () => { void (async () => {
-            try { await this.store.unsubscribeRemote(st.sync, f.remote || ""); } catch { /* 服务没起就只清本地 */ }
+            try { await this.store.forgetSub(f.remote || ""); } catch { /* 清不掉也继续删文件 */ }
             this.selected.delete(f.id);
             const gone = await this.store.trashFeedFile(f);
             await this.refresh();
@@ -869,8 +867,7 @@ export class MessagesView extends ItemView {
       d.append(el("span", "tlt-hub-l", label), el("code", "", value));
       return d;
     };
-    box.appendChild(row(T("发布"), st.publish));
-    box.appendChild(row(T("拉取"), st.sync));
+    if (this.cfg.lastHub) box.appendChild(row(T("发布到"), this.cfg.lastHub));
     box.appendChild(el("div", "tlt-hub-note",
       T("自动同步：{a} · 自动推送：{b}（在设置里改）", { a: st.syncMin ? T("每 {n} 分钟", { n: st.syncMin }) : T("off"), b: st.pushMin ? T("每 {n} 分钟", { n: st.pushMin }) : T("off") })));
 
@@ -880,7 +877,7 @@ export class MessagesView extends ItemView {
     const sync = el("button", "tlt-btn", T("同步订阅"));
     sync.onclick = () => { void (async () => {
       try {
-        const r = await this.store.pullFromHub(st.sync);
+        const r = await this.store.syncSubscriptions();
         const stamp = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
         this.plugin.setHubState({ lastSync: stamp, lastResult: T("新增 {n} 条", { n: r.added }), lastError: "" });
         await this.refresh();
@@ -891,20 +888,19 @@ export class MessagesView extends ItemView {
     box.appendChild(btns);
 
     const input = el("input", "tlt-input");
-    input.placeholder = T("订阅地址（可粘贴 @URL:…）");
+    input.placeholder = T("订阅地址（对方给的完整地址，例如 http://192.168.1.10:8787/feed?id=…）");
     box.appendChild(input);
     const sub = el("button", "tlt-btn", T("订阅这个源"));
     sub.onclick = () => { void (async () => {
       const url = cleanFeedUrl(input.value);
       if (!url) { new Notice(T("先填订阅地址")); return; }
       try {
-        const r = await this.store.subscribeRemote(st.sync, url);
+        const r = await this.store.subscribeRemote(url);
         if (r.reason === "self") { new Notice(T("这是你自己发布的源，不需要订阅")); return; }
         if (r.existed) { new Notice(T("已经订阅过这个源")); input.value = ""; return; }
         input.value = "";
-        const p = await this.store.pullFromHub(st.sync);
         await this.refresh();
-        new Notice(T("已订阅并同步 {n} 条", { n: p.added }));
+        new Notice(T("已订阅并同步 {n} 条", { n: r.count }));
       } catch (e) { new Notice(T("订阅失败：") + errMsg(e)); }
     })(); };
     box.appendChild(sub);
@@ -932,6 +928,14 @@ class PublishFeedModal extends TltModal {
     // 源名称不在这里改：用右栏里已经定好的名字（发布/取消发布都不变）
     contentEl.appendChild(el("div", "tlt-m-meta", T("源名称：{n}", { n: this.from.name })));
 
+    const hubRow = el("div", "tlt-row");
+    hubRow.appendChild(el("span", "tlt-row-l", T("发布服务")));
+    const hubIn = el("input", "tlt-input");
+    hubIn.placeholder = T("http://192.168.1.10:8787（填一次就记住）");
+    hubIn.value = this.from.hub || this.plugin.settings.lastHub || "";
+    hubRow.appendChild(hubIn);
+    contentEl.appendChild(hubRow);
+
     const descRow = el("div", "tlt-row");
     descRow.appendChild(el("span", "tlt-row-l", T("说明")));
     const descIn = el("input", "tlt-input");
@@ -948,18 +952,19 @@ class PublishFeedModal extends TltModal {
     const ok = el("button", "tlt-btn pri", T("发布"));
     ok.onclick = () => { void (async () => {
       const name = this.from.name;
-      const hub = this.plugin.hubState().publish;
-      if (!hub) { new Notice(T("还没填发布服务地址（设置 → 消息服务）")); return; }
+      const hub = hubIn.value.trim().replace(/\/$/, "");
+      if (!hub) { new Notice(T("填一下发布服务地址（例如 http://192.168.1.10:8787）")); hubIn.focus(); return; }
       // 先确认服务在线：不通就不发布，别报"已发布"其实谁也没收到
-      if (!(await this.plugin.pingHub("publish"))) return;
+      if (!(await this.plugin.pingHubUrl(hub))) return;
       try {
         const r = await this.store.publishSource(this.from, {
-          name, desc: descIn.value.trim(),
+          name, desc: descIn.value.trim(), hub,
         });
         if (!r.ok) { new Notice(T("发布失败：名称空着")); return; }
         await this.store.load();
         const feed = this.store.feeds.find((f) => f.id === r.id || f.file === r.path);
         if (!feed) throw new Error(T("发布后没读回这个源"));
+        await this.store.setFeedHub(feed, hub);      // 这个源记住自己的发布地址
         const pushed = await this.store.publishFeed(feed, hub, r.id);
         // 读回服务端，确认它真的收到了这个源（否则只是本地改了个文件）
         const okRemote = await remoteHasFeed(hub, r.id);
