@@ -3667,6 +3667,51 @@ own: false
   view.store.syncSubscriptions = orig;
 });
 
+await t("消息中心：时间排序（默认新→旧，可切旧→新）", async () => {
+  document.body.empty();
+  const d = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+  files["TLT/feeds/个人.md"] = `---
+title: 个人
+personal: true
+owner: me
+---
+
+- ${d(-5)} 五天前的一条
+- ${d(-1)} 昨天的一条
+- ${d(0)} 今天的一条
+`;
+  const view = mount(MessagesView);
+  await view.onOpen();
+  await view.store.load();      // 夹具刚写进去：确保重读
+  view.range = "all";
+  await view.render();
+  const mine = ["今天的一条", "昨天的一条", "五天前的一条"];
+  const order = () => [...view.contentEl.querySelectorAll(".tlt-nm")].map((e) => e.textContent.trim()).filter((x) => mine.includes(x));
+  assert.deepEqual(order(), ["今天的一条", "昨天的一条", "五天前的一条"], `默认新→旧：${order().join(" / ")}`);
+  // 切到旧→新
+  const ascBtn = [...view.contentEl.querySelectorAll("[data-msgsort]")].find((b) => b.dataset.msgsort === "asc");
+  ascBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  assert.deepEqual(order(), ["五天前的一条", "昨天的一条", "今天的一条"], `切到旧→新：${order().join(" / ")}`);
+  // 再切回来
+  [...view.contentEl.querySelectorAll("[data-msgsort]")].find((b) => b.dataset.msgsort === "desc")
+    .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  assert.deepEqual(order(), ["今天的一条", "昨天的一条", "五天前的一条"], "切回新→旧");
+});
+
+await t("迁移：老的「发布服务地址」会被接过来，已发布源的订阅地址不再空白", async () => {
+  document.body.empty();
+  const inst = new TLTPlugin(app, { id: "tlt-timeline-things", dir: "tlt-timeline-things" });
+  inst.settings = { ...plugin.settings };
+  inst.store = new Store(app, inst.settings);
+  inst.saveData = async () => {};
+  // 模拟一个"老库"的 data.json：只有旧的 hubPublish
+  inst.loadData = async () => ({ hubPublish: "http://192.168.1.10:8787/", root: "TLT", appliedRoot: "TLT" });
+  await inst.loadSettings();
+  assert.equal(inst.settings.lastHub, "http://192.168.1.10:8787", `旧地址应迁移到 lastHub：${inst.settings.lastHub}`);
+});
+
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   assert.ok(/@media \(hover: none\)/.test(css), "要有 hover:none 分支");
@@ -4233,7 +4278,7 @@ await t("消息中心：搜索 / 日期工具 / 六种形态", async () => {
   await new Promise((r) => setTimeout(r, 20));
 
   const segs = [...document.querySelectorAll(".tlt-fm-tools .tlt-seg-b")].map((b) => b.textContent);
-  assert.equal(segs.join("/"), "全部/今天/近 7 天/近 30 天", `工具条：${segs}`);
+  assert.equal(segs.join("/"), "全部/今天/近 7 天/近 30 天/时间 ↓/时间 ↑", `工具条：${segs}`);
   assert.equal(document.querySelectorAll(".tlt-st").length, 0, "状态筛选应已移除");
   assert.ok([...document.querySelectorAll(".tlt-tlink")].some((b) => b.textContent === "回到今天"), "没有回到今天");
   const MODE_LABELS = ["卡片", "河流", "紧凑", "按源分带", "可缩放时间轴", "月度热力", "人物脉络"];

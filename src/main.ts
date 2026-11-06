@@ -381,6 +381,12 @@ export class TLTPlugin extends Plugin {
       this.settings.sortMilestones = { ...legacy };
       this.settings.sortTasks = { ...legacy };
     }
+    // 迁移：以前"发布服务地址"配在设置里，现在改成发布时填一次并记住。
+    // 老库升级后把旧值接过来，否则已发布源的订阅地址会显示成空白。
+    if (!this.settings.lastHub && this.settings.hubPublish) {
+      this.settings.lastHub = String(this.settings.hubPublish).replace(/\/$/, "");
+      await this.saveSettings();
+    }
   }
   async saveSettings() {
     await this.saveData(this.settings);

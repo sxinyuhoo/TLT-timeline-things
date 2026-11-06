@@ -49,6 +49,8 @@ export class MessagesView extends ItemView {
   private filter: "all" | "star" | "unread" = "all";
   private range: "all" | "today" | "7" | "30" = "all";
   private mode: "card" | "spine" | "compact" | "bands" | "heat" | "net" | "axis" = "card";
+  /** 时间排序：desc＝新→旧（默认），asc＝旧→新 */
+  private sortDir: "desc" | "asc" = "desc";
   /** 横轴时间线：窗口跨度（天）与中心（相对今天的偏移） */
   private tlSpan = 33;
   private tlCenter = 13.5;
@@ -240,6 +242,18 @@ export class MessagesView extends ItemView {
     dg.appendChild(range);
     t1.appendChild(dg);
     t1.appendChild(el("span", "tlt-spacer"));
+    // 排序：默认新→旧，可切旧→新
+    const sdg = el("div", "tlt-tgrp");
+    const ssg = el("div", "tlt-seg");
+    ([["desc", T("时间 ↓")], ["asc", T("时间 ↑")]] as const).forEach(([v, t]) => {
+      const b = el("button", "tlt-seg-b" + (this.sortDir === v ? " on" : ""), t);
+      b.dataset.msgsort = v;
+      b.onclick = () => { this.sortDir = v; void this.render(); };
+      ssg.appendChild(b);
+    });
+    sdg.appendChild(ssg);
+    t1.appendChild(sdg);
+    t1.appendChild(el("span", "tlt-spacer2"));
     const today = el("button", "tlt-tlink", T("回到今天"));
     today.onclick = () => this.jumpToday();
     t1.appendChild(today);
@@ -637,7 +651,7 @@ export class MessagesView extends ItemView {
       .filter((x) => !this.selected.size || this.selected.has(x.feed))
       .filter((x) => !this.q || x.title.includes(this.q) || (x.body || "").includes(this.q) || (x.place || "").includes(this.q))
       .filter((x) => x.date >= from && x.date <= to)
-      .sort((a, b) => a.date.localeCompare(b.date));
+      .sort((a, b) => (this.sortDir === "desc" ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)));
   }
 
   /** 回到今天：找得到就滚过去，找不到就把范围放宽再滚 */
@@ -747,6 +761,9 @@ export class MessagesView extends ItemView {
           const pid = (this.cfg.feedIds || {})[f.id] || f.id;
           const url = hub ? `${hub}/feed?id=${encodeURIComponent(pid)}` : "";
           // 订阅地址放成只读输入框（能全选）+ 一个复制按钮：之前是一段文本，没法直接复制给别人
+          if (!hub) {
+            s.appendChild(el("div", "tlt-hint", T("还没记住发布服务地址：在「发布消息源…」里填一次（或先手动推一次），地址就会显示在这里。")));
+          }
           const urow = el("div", "tlt-urrow");
           const uin = el("input", "tlt-input tlt-input-url");
           uin.readOnly = true;
