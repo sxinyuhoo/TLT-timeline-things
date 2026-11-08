@@ -21,6 +21,8 @@ export function attachLinkSuggest(app: App, ta: HTMLTextAreaElement): () => void
   let active = 0;
   let trigger = -1;            // `[[` 的起始位置
   let bang = false;            // 是不是 ![[
+  let lastQ = "";              // 上一次的查询词（光标在同一段补全里动时不要重置高亮）
+  let lastStart = -1;
 
   const IMG = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
 
@@ -51,6 +53,8 @@ export function attachLinkSuggest(app: App, ta: HTMLTextAreaElement): () => void
     pop.empty();
     hits = [];
     trigger = -1;
+    lastQ = "";
+    lastStart = -1;
   };
 
   /** 光标前是不是 `[[`（或 `![[`）触发的补全环境 */
@@ -68,6 +72,11 @@ export function attachLinkSuggest(app: App, ta: HTMLTextAreaElement): () => void
 
   const paint = () => {
     pop.empty();
+    const keepScroll = () => {
+      const on = pop.querySelector<HTMLElement>(".tlt-suggest-i.on");
+      // jsdom / 老环境没有 scrollIntoView：有就滚一下，没有就算了
+      on?.scrollIntoView?.({ block: "nearest" });
+    };
     hits.forEach((h, i) => {
       const row = adopt(createDiv({ cls: "tlt-suggest-i" + (i === active ? " on" : "") }));
       row.appendChild(adopt(createSpan({ text: h.file.basename })));
@@ -82,13 +91,19 @@ export function attachLinkSuggest(app: App, ta: HTMLTextAreaElement): () => void
     pop.style.top = `${Math.round(r.bottom + 4)}px`;
     pop.style.minWidth = `${Math.max(200, Math.min(420, Math.round(r.width)))}px`;
     pop.removeClass("tlt-hidden");
+    keepScroll();
   };
 
   const refresh = () => {
     const p = probe();
     if (!p) { close(); return; }
+    // 同一段补全（`[[` 位置与查询词都没变）→ 保持当前高亮。
+    // 不然方向键的 keyup 会再刷一次，把高亮打回第一条，看起来就是"上下键没用"。
+    if (p.start === lastStart && p.q === lastQ && hits.length) { bang = p.bang; return; }
     trigger = p.start;
     bang = p.bang;
+    lastStart = p.start;
+    lastQ = p.q;
     const scored = files()
       .map((file) => ({ file, score: score(file.basename, file.path, p.q) }))
       .filter((x) => x.score >= 0)

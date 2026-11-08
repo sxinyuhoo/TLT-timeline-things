@@ -3738,6 +3738,32 @@ await t("备注字段：打 [[ 弹文件补全、回车插入 [[文件名]]；![
   };
   const popRows = () => [...document.querySelectorAll(".tlt-suggest .tlt-suggest-i")].map((r) => r.textContent);
 
+  // ⓪ 方向键要能移动高亮（用户报的 bug：keyup 二次刷新把高亮打回第一条）
+  ta.value = "[[";
+  ta.setSelectionRange(2, 2);
+  ta.dispatchEvent(new MouseEvent("input", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  const onIdx = () => [...document.querySelectorAll(".tlt-suggest .tlt-suggest-i")].findIndex((r) => r.classList.contains("on"));
+  const rowsAll = document.querySelectorAll(".tlt-suggest .tlt-suggest-i").length;
+  assert.ok(rowsAll >= 3, `[[ 应列出多个候选（含按钮事件触发的一次）：${rowsAll}`);
+  const i0 = onIdx();
+  assert.equal(i0, 0, `初始高亮在第一条：${i0}`);
+  ta.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  ta.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowDown", bubbles: true }));   // 关键：抬起键也会触发一次刷新
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(onIdx(), 1, `按下键后高亮应下移一格：${onIdx()}`);
+  ta.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  ta.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowDown", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(onIdx(), 2, `再按一次应再下移：${onIdx()}`);
+  ta.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+  ta.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowUp", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(onIdx(), 1, `上键应回一格：${onIdx()}`);
+  // 回到第一条再继续后面的用例
+  ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+
   // ① 打 [[报 → 应出现「报告模板」，且只列匹配的
   type("先看 [[报");
   await new Promise((r) => setTimeout(r, 40));
