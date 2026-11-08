@@ -147,6 +147,7 @@ const createdFolders = [];
 const createdFolderSet = new Set();
 const vault = {
   getMarkdownFiles: () => Object.keys(files).map((p) => new TFile(p)),
+  getFiles: () => Object.keys(files).map((p) => new TFile(p)),
   getAllLoadedFiles: () => [...createdFolderSet].map((p) => new TFolder(p)),
   adapter: {
     exists: async (p) => (p in files) || createdFolderSet.has(p),
@@ -3711,6 +3712,69 @@ await t("迁移：老的「发布服务地址」会被接过来，已发布源�
   inst.loadData = async () => ({ hubPublish: "http://192.168.1.10:8787/", root: "TLT", appliedRoot: "TLT" });
   await inst.loadSettings();
   assert.equal(inst.settings.lastHub, "http://192.168.1.10:8787", `旧地址应迁移到 lastHub：${inst.settings.lastHub}`);
+});
+
+await t("备注字段：打 [[ 弹文件补全、回车插入 [[文件名]]；![[ 优先图片；|别名 里不补全", async () => {
+  document.body.empty();
+  files["TLT/tasks/顺序项目.md"] = `# 顺序项目\n\n## 一期\n\n- [ ] 带备注的任务 📅 ${D} [created:: ${D}]\n`;
+  files["TLT/素材/杆件编号.png"] = "x";
+  files["TLT/素材/报告模板.md"] = "# 报告模板\n";
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  await view.store.load();
+  const task = view.store.tasks.find((x) => x.title === "带备注的任务");
+  assert.ok(task, "夹具没读出来");
+  const m = new TaskModal(view.app, view.store, task, () => {});
+  m.open();
+  const ta = m.contentEl.querySelector(".tlt-mdf-ta");
+  assert.ok(ta, "备注字段要在");
+  // 空的备注默认就在编辑态（不用点按钮）；确认一下再打字
+  assert.ok(!ta.classList.contains("tlt-hidden"), "空备注应直接可编辑");
+
+  const type = (text) => {
+    ta.value = text;
+    ta.setSelectionRange(text.length, text.length);
+    ta.dispatchEvent(new MouseEvent("input", { bubbles: true }));
+  };
+  const popRows = () => [...document.querySelectorAll(".tlt-suggest .tlt-suggest-i")].map((r) => r.textContent);
+
+  // ① 打 [[报 → 应出现「报告模板」，且只列匹配的
+  type("先看 [[报");
+  await new Promise((r) => setTimeout(r, 40));
+  const rows = popRows();
+  assert.ok(rows.some((x) => x.includes("报告模板")), `应弹出候选：${rows.join(" / ")}`);
+  assert.ok(!rows.some((x) => x.includes("顺序项目")), `不匹配的不该出现：${rows.join(" / ")}`);
+  // 回车插入
+  ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(ta.value, "先看 [[报告模板]]", `插入结果：${JSON.stringify(ta.value)}`);
+  assert.equal(ta.selectionStart, ta.value.length, "光标应落在 ]] 之后");
+  assert.ok(!document.querySelector(".tlt-suggest:not(.tlt-hidden)"), "插入后候选应收起");
+
+  // ② ![[ → 图片优先
+  type("看图 ![[");
+  await new Promise((r) => setTimeout(r, 40));
+  const imgRows = popRows();
+  assert.ok(imgRows.length >= 2, `![[ 应弹候选：${imgRows.join(" / ")}`);
+  assert.match(imgRows[0], /杆件编号/, `图片应排第一：${imgRows.join(" / ")}`);
+  assert.equal(ta.value.trim().split("\\n").length, 1, "插入只改一行");
+  ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(ta.value, "看图 ![[杆件编号.png]]", `附件应带后缀（和 Obsidian 一致）：${JSON.stringify(ta.value)}`);
+
+  // ③ 写了别名就不弹
+  type("看 [[报告模板|模板");
+  await new Promise((r) => setTimeout(r, 40));
+  assert.ok(!document.querySelector(".tlt-suggest:not(.tlt-hidden)"), "别名里不该弹候选");
+
+  // ④ 没有匹配：不插入、不报错
+  const before = "乱打 [[zzzzzz";
+  type(before);
+  await new Promise((r) => setTimeout(r, 40));
+  ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(ta.value, before, "没有候选时回车不应改动内容");
+  m.close();
 });
 
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {

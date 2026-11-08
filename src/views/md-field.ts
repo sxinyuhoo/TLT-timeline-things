@@ -1,6 +1,7 @@
 import { App, Component, MarkdownRenderer } from "obsidian";
 import { t as T } from "../i18n";
 import { toggleMdCheckbox } from "../data";
+import { attachLinkSuggest } from "./link-suggest";
 
 /**
  * 统一的 Markdown 字段：**默认预览，可切到编辑（源代码）**——和 GitLab 的编辑体验一致。
@@ -34,6 +35,7 @@ export class MarkdownField {
   private modeBtn: HTMLButtonElement | null = null;
   private comp = new Component();
   private editing = false;
+  private detachSuggest: (() => void) | null = null;
 
   constructor(app: App, opts: MdFieldOpts) {
     this.app = app;
@@ -60,6 +62,9 @@ export class MarkdownField {
     this.ta.addEventListener("input", () => this.emit());
     this.el.appendChild(this.ta);
 
+    // 编辑框里支持 [[ / ![[ 文件补全（预览态没有输入，不用挂）
+    if (!opts.readOnly) this.detachSuggest = attachLinkSuggest(app, this.ta);
+
     this.comp.load();
     // 有内容就先给预览；空的（新建）直接进编辑，省一次点击
     this.setMode(!opts.value.trim() && !opts.readOnly);
@@ -78,6 +83,7 @@ export class MarkdownField {
   focus() { this.ta.focus(); }
 
   destroy() {
+    try { this.detachSuggest?.(); } catch { /* 挂已经没了也不影响关闭 */ }
     try { this.comp.unload(); } catch { /* 组件已卸载也不影响关闭 */ }
   }
 
