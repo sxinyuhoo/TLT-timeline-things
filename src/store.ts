@@ -1773,7 +1773,7 @@ export class Store {
     let file = await this.fileByPath(path);
     const line = `- ${it.title} [at:: ${todayISO()}]` +
       (it.tags && it.tags.length ? ` [tags:: ${it.tags.join(", ")}]` : "") +
-      (it.body ? `\n  > ${it.body}` : "");
+      (it.body ? "\n" + it.body.split(/\r?\n/).map((l) => `  > ${l}`).join("\n") : "");
     if (!file) {
       await this.createSafe(path, `# 想法池\n\n${line}\n`);
       return;

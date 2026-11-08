@@ -12,7 +12,8 @@ import type { StaffDim } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, NoteEntryModal, popMenu, el } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
-import { setSvgMarkup, miniMarkdown, svgIcon } from "./dom";
+import { setSvgMarkup, svgIcon } from "./dom";
+import { MarkdownRenderer } from "obsidian";
 import { newProjectFlow, newMilestoneFlow } from "../actions";
 
 export const VIEW_TYPE_WORKBENCH = "tlt-workbench";
@@ -1900,10 +1901,14 @@ export class WorkbenchView extends ItemView {
       if (!ideaTags(it).length) h.append(el("span", "tlt-itype", T("未打标签")));
       c.append(h, el("div", "tlt-it", it.title));
       if (it.body) {
-        const b = el("div", "tlt-ib");
-        // 标题 / 列表 / 待办 都能认；待办可以**直接点**，点一下就写回文件
-        miniMarkdown(it.body, b, {
-          onCheck: (i) => { void this.checkIdeaBox(it, i); },
+        const b = el("div", "tlt-ib markdown-rendered");
+        // 用 Obsidian 自己的渲染器：加粗/斜体/代码/引用/表格/双链 全部和笔记里一致。
+        // 渲染是异步的，渲染完再把清单的勾选接上（点一下就写回文件）。
+        void MarkdownRenderer.render(this.app, it.body, b, it.file, this).then(() => {
+          b.querySelectorAll<HTMLInputElement>("input[type=checkbox]").forEach((cb, i) => {
+            cb.removeAttribute("disabled");
+            cb.onclick = (ev) => { ev.preventDefault(); void this.checkIdeaBox(it, i); };
+          });
         });
         c.appendChild(b);
       }

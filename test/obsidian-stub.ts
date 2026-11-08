@@ -238,10 +238,71 @@ export async function requestUrl(req: any): Promise<any> {
 }
 
 
-/** 测试用的 Markdown 渲染桩：只把原文塞进容器，够断言"备注有没有渲染出来"就行 */
+/** 测试用的 Markdown 渲染桩：够用的极简渲染（加粗/斜体/行内代码/引用/清单/勾选/双链） */
 export const MarkdownRenderer = {
   render: (_app: unknown, md: string, el: HTMLElement, _path?: string, _comp?: unknown) => {
-    el.textContent = md;
+    el.empty();
+    const esc = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const inline = (x: string) => esc(x)
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\[\[([^\]]+)\]\]/g, '<a class="internal-link">$1</a>');
+    let list: HTMLElement | null = null;
+    for (const raw of md.split(/\r?\n/)) {
+      const line = raw.replace(/\s+$/, "");
+      const task = /^\s*[-*+]\s+\[([ xX])\]\s*(.*)$/.exec(line);
+      if (task) {
+        if (!list) { list = document.createElement("ul"); el.appendChild(list); }
+        const li = document.createElement("li");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        if (task[1].toLowerCase() === "x") cb.checked = true;
+        cb.disabled = true;
+        li.innerHTML = inline(task[2]);
+        li.insertBefore(cb, li.firstChild);
+        list.appendChild(li);
+        continue;
+      }
+      const bullet = /^\s*[-*+]\s+(.*)$/.exec(line);
+      if (bullet) {
+        if (!list) { list = document.createElement("ul"); el.appendChild(list); }
+        const li = document.createElement("li");
+        li.innerHTML = inline(bullet[1]);
+        list.appendChild(li);
+        continue;
+      }
+      list = null;
+      if (!line.trim()) continue;
+      const quote = /^\s*>\s?(.*)$/.exec(line);
+      if (quote) {
+        const bq = document.createElement("blockquote");
+        bq.innerHTML = inline(quote[1]);
+        el.appendChild(bq);
+        continue;
+      }
+      const h = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (h) {
+        const hd = document.createElement(`h${h[1].length}`);
+        hd.innerHTML = inline(h[2]);
+        el.appendChild(hd);
+        continue;
+      }
+      const p = document.createElement("p");
+      p.innerHTML = inline(line);
+      el.appendChild(p);
+    }
     return Promise.resolve();
   },
 };
+
+/** 最小 Component 桩：MarkdownField 会 load/unload 它，渲染桩本身不用它 */
+export class Component {
+  onload() { /* noop */ }
+  onunload() { /* noop */ }
+  load() { this.onload(); return this; }
+  unload() { this.onunload(); }
+  registerEvent() { /* noop */ }
+  registerInterval() { /* noop */ }
+  addChild() { /* noop */ }
+}

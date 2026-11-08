@@ -1,8 +1,9 @@
 import { App, Component, Modal, Notice, TFile, MarkdownRenderer } from "obsidian";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, workloadBreakdown, ideaFilterTags, toggleMdCheckbox, noteGeneralText, noteEntryText, splitNoteEntries } from "../data";
-import { miniMarkdown, svgIcon } from "./dom";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, workloadBreakdown, ideaFilterTags, noteGeneralText, noteEntryText, splitNoteEntries } from "../data";
+import { svgIcon } from "./dom";
+import { MarkdownField } from "./md-field";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K, cls?: string, text?: string
@@ -761,11 +762,14 @@ export class TaskModal extends TltModal {
     stepRow.appendChild(stepBox);
 
     const noteRow = row(contentEl, T("备注"));
-    const noteArea = el("textarea", "tlt-input tlt-textarea tlt-note-ta");
-    noteArea.value = this.draft.noteGeneral;
-    noteArea.placeholder = T("备注（可留空，支持 [[双链]] 与 markdown；按天条目写成 `日期：内容`）");
-    noteArea.oninput = () => { this.draft.noteGeneral = noteArea.value; };
-    noteRow.appendChild(noteArea);
+    const noteField = new MarkdownField(this.app, {
+      value: this.draft.noteGeneral,
+      sourcePath: t.file,
+      placeholder: T("备注（可留空；按天条目写成 `日期：内容`）"),
+      onChange: (v) => { this.draft.noteGeneral = v; },
+      minHeight: 64,
+    });
+    noteRow.appendChild(noteField.el);
 
     // 时间线：创建 / 完成 / 子项进度。默认收着，想看再点开
     const tlRow = row(contentEl, T("时间线"));
@@ -872,10 +876,13 @@ export class LogModal extends TltModal {
     contentEl.appendChild(el("div", "tlt-m-meta",
       `${this.log.due} · ${this.log.st || ""}${this.log.en ? "–" + this.log.en : ""}${this.log.project ? " · " + this.log.project : ""}`));
 
-    const body = el("textarea", "tlt-textarea");
-    body.placeholder = T("谈了什么 / 决定了什么 / 下一步（会写成文件里的引用块）");
-    body.value = this.log.note || "";
-    contentEl.appendChild(body);
+    const bodyField = new MarkdownField(this.app, {
+      value: this.log.note || "",
+      sourcePath: this.log.file,
+      placeholder: T("谈了什么 / 决定了什么 / 下一步（会写成文件里的引用块）"),
+      minHeight: 74,
+    });
+    contentEl.appendChild(bodyField.el);
 
     const foot = el("div", "tlt-m-foot");
     const del = el("button", "tlt-btn danger", T("删除这条记录"));
@@ -893,7 +900,7 @@ export class LogModal extends TltModal {
     ok.onclick = () => { void (async () => {
       const t = title.value.trim();
       if (!t) { new Notice(T("标题不能空")); return; }
-      await this.store.updateLog(this.log, { title: t, body: body.value });
+      await this.store.updateLog(this.log, { title: t, body: bodyField.value });
       this.close(); void this.onChange(); new Notice(T("已写回记录"));
     })(); };
     foot.append(del, open, ok);
@@ -1757,34 +1764,14 @@ export class IdeaModal extends TltModal {
     paintLib();
     contentEl.appendChild(lib);
 
-    const bodyLabel = el("div", "tlt-field-label tlt-label-row");
-    bodyLabel.appendChild(el("span", "", T("为什么做 / 怎么验证")));
-    const modeBtn = el("button", "tlt-btn tiny", T("编辑"));
-    modeBtn.type = "button";
-    bodyLabel.appendChild(modeBtn);
-    contentEl.appendChild(bodyLabel);
-
-    const body = el("textarea", "tlt-textarea tall");
-    body.placeholder = T("值得做的理由、可能的验证方式（可以留空）");
-    body.value = this.idea?.body || "";
-    const preview = el("div", "tlt-idea-prev");
-    const showMode = (edit: boolean) => {
-      modeBtn.textContent = edit ? T("预览") : T("编辑");
-      if (edit) { body.removeClass("tlt-hidden"); preview.addClass("tlt-hidden"); body.focus(); }
-      else { body.addClass("tlt-hidden"); preview.removeClass("tlt-hidden"); paintPreview(); }
-    };
-    const paintPreview = () => {
-      preview.empty();
-      if (!body.value.trim()) { preview.appendChild(el("div", "tlt-hint", T("正文还是空的，点「编辑」写点什么"))); return; }
-      // 待办可以直接勾：勾完写回文本框，保存时一起落盘
-      miniMarkdown(body.value, preview, {
-        onCheck: (i) => { body.value = toggleMdCheckbox(body.value, i); paintPreview(); },
-      });
-    };
-    // 现在显示的是预览 → 切去编辑；现在在编辑 → 回来重新渲染
-    modeBtn.onclick = () => showMode(!preview.classList.contains("tlt-hidden"));
-    contentEl.append(body, preview);
-    showMode(false);
+    const bodyField = new MarkdownField(this.app, {
+      value: this.idea?.body || "",
+      sourcePath: this.idea?.file || this.store.settings.ideasFile,
+      label: T("为什么做 / 怎么验证"),
+      placeholder: T("值得做的理由、可能的验证方式（可以留空）"),
+      minHeight: 120,
+    });
+    contentEl.appendChild(bodyField.el);
 
     const foot = el("div", "tlt-m-foot");
     if (!isNew) {
@@ -1802,7 +1789,7 @@ export class IdeaModal extends TltModal {
     ok.onclick = () => { void (async () => {
       const t = title.value.trim();
       if (!t) { new Notice(T("先写一句话")); return; }
-      const bd = body.value.trim();
+      const bd = bodyField.value.trim();
       if (this.idea) {
         this.idea.title = t; this.idea.tags = tags; this.idea.body = bd;
         await this.store.updateIdea(this.idea);
@@ -1821,7 +1808,7 @@ export class IdeaModal extends TltModal {
         const t = title.value.trim();
         if (!t) { new Notice(T("先写一句话")); return; }
         // 先把当前编辑落盘，再拿这句话去建任务
-        editing.title = t; editing.tags = tags; editing.body = body.value.trim();
+        editing.title = t; editing.tags = tags; editing.body = bodyField.value.trim();
         await this.store.updateIdea(editing);
         this.close(); void this.onChange();
         new QuickTaskModal(this.app, this.store, () => { void this.store.load(); }, { title: t }).open();

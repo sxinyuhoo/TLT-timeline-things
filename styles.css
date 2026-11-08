@@ -2228,3 +2228,39 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-peek-note { font-size: 11.5px; color: var(--tlt-ink2); line-height: 1.55; max-height: 210px; overflow: auto; }
 .tlt-peek-note p { margin: 0 0 6px; }
 .tlt-peek-note img { max-width: 100%; }
+
+
+/* ==========================================================================
+   统一的 Markdown 字段（MarkdownField）：默认预览、可切编辑
+   预览用 Obsidian 自己的渲染器，样式交给主题；这里只负责框、留白与切换。
+   ========================================================================== */
+.tlt-mdf { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tlt-mdf-h { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.tlt-mdf-l { font-size: 11px; color: var(--tlt-ink4); }
+.tlt-mdf-tail { margin-left: auto; display: flex; gap: 6px; }
+.tlt-mdf-tail .tlt-btn.tiny { font-size: 10px; padding: 2px 8px; }
+.tlt-mdf-prev {
+  border: 1px solid var(--tlt-line); border-radius: 7px; background: var(--tlt-surface2);
+  padding: 8px 11px; font-size: 11.5px; color: var(--tlt-ink2); line-height: 1.6;
+  max-height: 260px; overflow: auto; min-height: 34px;
+}
+.tlt-mdf-prev > :first-child { margin-top: 0; }
+.tlt-mdf-prev > :last-child { margin-bottom: 0; }
+.tlt-mdf-prev p { margin: 0 0 6px; }
+.tlt-mdf-prev h1, .tlt-mdf-prev h2, .tlt-mdf-prev h3 { font-size: 13px; margin: 8px 0 4px; }
+.tlt-mdf-prev ul, .tlt-mdf-prev ol { margin: 4px 0 6px; padding-left: 18px; }
+.tlt-mdf-prev blockquote {
+  margin: 4px 0; padding: 2px 0 2px 9px; border-left: 2px solid var(--tlt-line3); color: var(--tlt-ink3);
+}
+.tlt-mdf-prev code {
+  font-size: 11px; padding: 1px 4px; border-radius: 4px; background: var(--tlt-surface3);
+}
+.tlt-mdf-prev pre { background: var(--tlt-surface3); padding: 7px 9px; border-radius: 6px; overflow: auto; }
+.tlt-mdf-prev img { max-width: 100%; }
+.tlt-mdf-prev input[type=checkbox] { margin-right: 5px; }
+.tlt-mdf-ta {
+  width: 100%; min-height: 74px; border: 1px solid var(--tlt-line); background: var(--tlt-surface2);
+  border-radius: 7px; padding: 8px 10px; font-size: 11px; color: var(--tlt-ink2);
+  font-family: inherit; line-height: 1.7; resize: vertical;
+}
+.tlt-mdf-ta:focus { outline: none; border-color: rgba(91, 108, 255, .5); }

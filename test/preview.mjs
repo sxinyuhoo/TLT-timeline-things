@@ -39,6 +39,8 @@ EP.addClass = function (...c) { c.forEach((x) => this.classList.add(x)); };
 EP.removeClass = function (...c) { c.forEach((x) => this.classList.remove(x)); };
 EP.toggleClass = function (c, on) { this.classList.toggle(c, on); };
 EP.setCssProps = function (obj) { Object.entries(obj || {}).forEach(([k, v]) => this.style.setProperty(k, String(v))); };
+EP.createDiv = function (o) { return this.createEl("div", o); };
+EP.createSpan = function (o) { return this.createEl("span", o); };
 EP.createEl = function (tag, o = {}) {
   const e = document.createElement(tag);
   if (o.text) e.textContent = o.text;

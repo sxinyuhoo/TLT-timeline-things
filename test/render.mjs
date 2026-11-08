@@ -48,6 +48,8 @@ EP.hasClass = function (c) { return this.classList.contains(c); };
 EP.setText = function (t) { this.textContent = t; };
 EP.createSvg = function (tag) { return this.ownerDocument.createElementNS("http://www.w3.org/2000/svg", tag); };
 EP.setCssProps = function (obj) { Object.entries(obj || {}).forEach(([k, v]) => this.style.setProperty(k, String(v))); };
+EP.createDiv = function (o) { return this.createEl("div", o); };
+EP.createSpan = function (o) { return this.createEl("span", o); };
 EP.createEl = function (tag, o = {}) {
   const e = document.createElement(tag);
   if (o.text) e.textContent = o.text;
@@ -2045,24 +2047,26 @@ await t("子项：圆点更大、输入框更高、敲完一条焦点回到输�
   assert.ok(/\n  - \[ \] 第二条/.test(files["TLT/tasks/示例项目.md"]), `子项应写进文件：\n${files["TLT/tasks/示例项目.md"]}`);
 });
 
-await t("随手记：正文按极简 markdown 渲染（标题 / 列表 / 待办）", async () => {
+await t("随手记卡片：正文用 Obsidian 渲染器（标题/列表/待办/行内格式都要认）", async () => {
   document.body.empty();
-  files["TLT/ideas.md"] = `# 想法池\n\n- 一段速记 [at:: ${D}] [tags:: 工具]\n  > # 大标题\n  > ## 小标题\n  > - 先看接口\n  > - [x] 拉样例\n  > - [ ] 写脚本\n  > 普通一句话\n  > **粗体**不处理\n`;
+  files["TLT/ideas.md"] = `# 想法池\n\n- 一段速记 [at:: ${D}] [tags:: 工具]\n  > # 大标题\n  > ## 小标题\n  > - 先看接口\n  > - [x] 拉样例\n  > - [ ] 写脚本\n  > 普通一句话\n  > **粗体**和 [[双链]]\n`;
   await store.load();
   const view = mount(WorkbenchView);
   await view.onOpen();
   view.tab = "ideas";
   await view.render();
+  await new Promise((r) => setTimeout(r, 140));      // 渲染是异步的
   const card = document.querySelector(".tlt-icard");
   assert.ok(card, "应有随手记卡片");
-  assert.ok(card.querySelector(".tlt-md-h1"), "# 渲染成一级标题");
-  assert.ok(card.querySelector(".tlt-md-h2"), "## 渲染成二级标题");
-  assert.equal(card.querySelector(".tlt-md-h1").textContent, "大标题");
-  assert.equal(card.querySelectorAll(".tlt-md-li").length, 3, `三条列表项：${card.querySelectorAll(".tlt-md-li").length}`);
-  assert.equal(card.querySelectorAll(".tlt-md-cb.on").length, 1, "已完成的那条要打勾");
-  assert.ok(card.querySelector(".tlt-md-p"), "普通行按段落渲染");
-  // 不认行内格式：**粗体** 原样显示，不做半截渲染
-  assert.ok(!card.querySelector("strong"), "行内粗体不处理");
+  assert.ok(card.querySelector("h1"), "# 渲染成一级标题");
+  assert.ok(card.querySelector("h2"), "## 渲染成二级标题");
+  assert.equal(card.querySelector("h1").textContent, "大标题");
+  assert.equal(card.querySelectorAll("li").length, 3, `三条列表项：${card.querySelectorAll("li").length}`);
+  const boxes = card.querySelectorAll("input[type=checkbox]");
+  assert.equal(boxes.length, 2, `两条待办：${boxes.length}`);
+  assert.ok(boxes[0].checked && !boxes[1].checked, "勾选态要跟正文一致");
+  assert.ok(card.querySelector("strong"), `行内加粗要渲染：${card.querySelector(".tlt-ib")?.innerHTML.slice(0, 120)}`);
+  assert.ok(card.querySelector("a.internal-link"), "双链要渲染成内部链接");
 });
 
 await t("随手记：可以一键转成任务（带着那句话和标签）", async () => {
@@ -2110,51 +2114,48 @@ await t("随手记详情：一句话输入框是圆角框（和其他框一致�
   assert.ok(!/border:\s*0/.test(m[1]), "不该再是只有下划线的样式");
 });
 
-await t("随手记详情：正文默认渲染成 markdown，待办点一下就勾上（写回文本框）", async () => {
+await t("随手记详情：默认预览（渲染态）、待办点一下就勾上、可切编辑", async () => {
   document.body.empty();
   files["TLT/ideas.md"] = `# 想法池\n\n- 带待办的速记 [at:: ${D}]\n  > - [ ] 第一步\n  > - [ ] 第二步\n`;
   await store.load();
   const it = store.ideas.find((x) => x.title.includes("带待办的速记"));
   const modal = new IdeaModal(leaf.app ?? plugin.app, store, it, () => {});
   modal.open();
-  await new Promise((r) => window.setTimeout(r, 100));
-  const prev = modal.contentEl.querySelector(".tlt-idea-prev");
-  assert.ok(prev && !prev.classList.contains("tlt-hidden"), "正文默认应是渲染态");
-  const ta = modal.contentEl.querySelector("textarea");
-  assert.ok(ta.classList.contains("tlt-hidden"), "文本框默认藏起来");
-  assert.equal(prev.querySelectorAll(".tlt-md-cb").length, 2, "两条待办都要渲染出来");
-  // 点第一个待办：勾上，并写回文本框
-  prev.querySelector(".tlt-md-cb").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 60));
+  await new Promise((r) => window.setTimeout(r, 140));
+  const prev = modal.contentEl.querySelector(".tlt-mdf-prev");
+  assert.ok(prev && !prev.classList.contains("tlt-hidden"), "正文默认应是预览态");
+  const ta = modal.contentEl.querySelector(".tlt-mdf-ta");
+  assert.ok(ta.classList.contains("tlt-hidden"), "编辑框默认藏起来");
+  const boxes = prev.querySelectorAll("input[type=checkbox]");
+  assert.equal(boxes.length, 2, `两条待办都要渲染出来：${boxes.length}`);
+  boxes[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
   assert.match(ta.value, /- \[x\] 第一步/, `勾选要写回正文：${JSON.stringify(ta.value)}`);
-  assert.equal(modal.contentEl.querySelectorAll(".tlt-md-cb.on").length, 1, "渲染态跟着变");
-  // 再点一下取消
-  modal.contentEl.querySelector(".tlt-md-cb").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 60));
-  assert.match(ta.value, /- \[ \] 第一步/, `再点一下应取消：${JSON.stringify(ta.value)}`);
-  // 「编辑」按钮切到文本框
   const edit = [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent === "编辑");
   assert.ok(edit, "要有「编辑」按钮");
   edit.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await new Promise((r) => window.setTimeout(r, 40));
-  assert.ok(!ta.classList.contains("tlt-hidden"), "点「编辑」应露出文本框");
+  assert.ok(!ta.classList.contains("tlt-hidden"), "点「编辑」应露出编辑框");
+  assert.equal(edit.textContent, "预览", "切到编辑后按钮应变成「预览」");
+  // 多行正文在编辑框里必须是多行（历史 bug：全挤成一行）
+  assert.equal(ta.value.split("\n").length, 2, `编辑框应保留换行：${JSON.stringify(ta.value)}`);
 });
 
 await t("随手记卡片：渲染出来的待办也能直接勾（写回文件）", async () => {
   document.body.empty();
-  files["TLT/ideas.md"] = `# 想法池\n\n- 卡片速记 [at:: ${D}]\n  > - [ ] 待办一\n`;
+  files["TLT/ideas.md"] = `# 想法池\n\n- 卡片勾选 [at:: ${D}]\n  > - [ ] 甲\n  > - [ ] 乙\n`;
   await store.load();
   const view = mount(WorkbenchView);
   await view.onOpen();
   view.tab = "ideas";
   await view.render();
+  await new Promise((r) => setTimeout(r, 140));
   const card = document.querySelector(".tlt-icard");
-  const cb = card.querySelector(".tlt-md-cb");
-  assert.ok(cb, "卡片上应有待办方块");
-  cb.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await new Promise((r) => window.setTimeout(r, 150));
-  assert.match(files["TLT/ideas.md"], /- \[x\] 待办一/, `勾选应写回文件：\n${files["TLT/ideas.md"]}`);
-  assert.ok(!document.querySelector(".modal, .tlt-host"), "点待办不该顺手把详情弹窗打开");
+  const boxes = card.querySelectorAll("input[type=checkbox]");
+  assert.equal(boxes.length, 2, `卡片上应有待办方块：${boxes.length}`);
+  boxes[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 160));
+  assert.match(files["TLT/ideas.md"], /- \[x\] 甲/, `点一下要写回文件：\n${files["TLT/ideas.md"]}`);
 });
 
 await t("随手记转任务：只带标题，不带标签", async () => {
@@ -3618,7 +3619,7 @@ await t("任务详情：备注排在子项下面", async () => {
   const m = new TaskModal(view.app, view.store, task, () => {});
   m.open();
   const steps = m.contentEl.querySelector(".tlt-steps");
-  const note = m.contentEl.querySelector(".tlt-note-ta");
+  const note = m.contentEl.querySelector(".tlt-mdf-ta");
   assert.ok(steps, "弹窗里要有子项区");
   assert.ok(note, "弹窗里要有备注框");
   // 用 DOM 位置判断先后：可见的「备注」在「子项」下面
