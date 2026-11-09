@@ -3803,6 +3803,26 @@ await t("备注字段：打 [[ 弹文件补全、回车插入 [[文件名]]；![
   m.close();
 });
 
+await t("日历默认定位：周视图居中 08:30；手机档日/周视图交给 CSS 可滚（不写死内联高）", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/data-tier="phone"\] \.tlt-daygrid \{[^}]*max-height: 58vh[^}]*overflow-y: auto/.test(css),
+    "手机档日视图要有可滚上限");
+  assert.ok(/data-tier="phone"\] \.tlt-wscroll \{[^}]*max-height: 58vh/.test(css), "手机档周视图也要有可滚上限");
+
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today"; view.calView = "w"; view.viewDate = D;      // 就是今天
+  view.focusPending = null; view.weekScroll = null; view.renderedWeek = "";
+  await view.render();
+  assert.equal(view.focusPending, 8 * 60 + 30, `周视图默认中心应是 08:30（510 分钟），实际 ${view.focusPending}`);
+  // 日视图仍然以"现在"为准
+  view.calView = "d"; view.focusPending = null; view.dayScroll = null; view.renderedDay = "";
+  await view.render();
+  const d = new Date();
+  assert.equal(view.focusPending, d.getHours() * 60 + d.getMinutes(), "日视图仍应定位到此刻");
+});
+
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {
   const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
   assert.ok(/@media \(hover: none\)/.test(css), "要有 hover:none 分支");

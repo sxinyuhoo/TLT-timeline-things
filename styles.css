@@ -2083,7 +2083,8 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 /* ---- 手机档：日历排版 ---- */
 /* 日视图：时间轴拿满宽度，右侧"这天要做的/记录"挪到下面 */
 .tlt-root[data-tier="phone"] .tlt-daywrap { flex-direction: column; gap: 10px; align-items: stretch; }
-.tlt-root[data-tier="phone"] .tlt-daygrid { width: 100%; height: 60vh; }
+.tlt-root[data-tier="phone"] .tlt-daygrid { width: 100%; height: auto; max-height: 58vh; overflow-y: auto; }
+.tlt-root[data-tier="phone"] .tlt-wscroll { max-height: 58vh; overflow-y: auto; }
 .tlt-root[data-tier="phone"] .tlt-dayside { width: 100%; }
 /* 顶部 7 天条：横向可滑，别把每个格子压成一条线 */
 .tlt-root[data-tier="phone"] .tlt-strip { overflow-x: auto; scrollbar-width: none; }

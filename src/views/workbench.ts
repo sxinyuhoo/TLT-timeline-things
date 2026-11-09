@@ -53,7 +53,9 @@ function panelIcon(): SVGSVGElement {
   return svg;
 }
 const DAY_FROM = 0, DAY_TO = 24 * 60, HOUR_PX = 62;          // 时间轴＝全天 00:00–24:00
-const DAY_END_WRITE = 23 * 60 + 59;                            // 写进文件的最大结束时间（"24:00" 不是合法的 time 值）
+const DAY_END_WRITE = 23 * 60 + 59;
+/** 周视图打开时默认居中的时刻（08:30）：早上到上午这一段最常看 */
+const WEEK_FOCUS_MIN = 8 * 60 + 30;                            // 写进文件的最大结束时间（"24:00" 不是合法的 time 值）
 /** 时间轴左边留给刻度、右边留边距（与 styles.css 里 .tlt-blk 的 left/right 保持一致） */
 const GUTTER = 52, RIGHT_PAD = 8;
 /** 周视图里一小时占多少像素（比日视图压得紧） */
@@ -2106,14 +2108,13 @@ export class WorkbenchView extends ItemView {
     const scroll = el("div", "tlt-wscroll");
     p.appendChild(scroll);
     scroll.style.height = `${HOUR * hours + 8}px`;     // 先按完整时间轴给高，挂进 DOM 后再收进可用高度（内部滚）
-    // 打开时把"要看的时刻"放到视口中部偏上：今天＝现在，别的日子＝9:00（挂载后由 fitWeekHeight 应用）
-    const dnow = new Date();
+    // 打开时把"要看的时刻"放到视口中部偏上：周视图固定 08:30（早上到上午最常看；挂载后由 fitCalendarHeight 应用）
     this.renderedWeek = this.viewDate;
     if (this.scrollToMin !== null) this.focusPending = this.scrollToMin;
     else if (this.weekScroll && this.weekScroll.day === this.viewDate) {
       scroll.dataset.scrollTop = String(Math.max(0, this.weekScroll.top));   // 同一天重渲：保住你滚到的位置
       this.focusPending = null;
-    } else this.focusPending = this.viewDate === todayISO() ? dnow.getHours() * 60 + dnow.getMinutes() : 9 * 60;
+    } else this.focusPending = WEEK_FOCUS_MIN;            // 周视图默认把 08:30 放到视觉中心（比"现在"更常用）
     this.scrollToMin = null;
     const inner = el("div", "tlt-winner");
     inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR}px`;
@@ -2454,8 +2455,11 @@ export class WorkbenchView extends ItemView {
     if (Math.abs(box.scrollTop - target) > 2) box.scrollTop = target;
     // 回读校验：写进去被夹回 0（容器其实还没可见）→ 目标留着，稍后再试，别停 0 点
     if (target > 40 && box.scrollTop < 8) {
-      if (this.focusTries++ < 20) window.setTimeout(() => this.applyCalendarFocus(), 150);
-      else this.focusTries = 0;
+      // 写不进去（容器当时还不可滚）→ 下一帧/稍后再试；手机端布局稳定得比桌面晚
+      if (this.focusTries++ < 24) {
+        window.requestAnimationFrame(() => this.applyCalendarFocus());
+        window.setTimeout(() => this.applyCalendarFocus(), 120);
+      } else this.focusTries = 0;
       return;
     }
     this.focusTries = 0;
@@ -2474,7 +2478,7 @@ export class WorkbenchView extends ItemView {
     if (work.clientHeight < 200) return;             // 还没布局（或环境没有真实尺寸，比如测试的 jsdom）
 
     // ① 周视图：滚动壳撑到可用高度，再按"要看的时刻"定位（居中偏上）
-    const sc = this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
+    const sc = this.tier === "phone" ? null : this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
     if (sc) {
       const room = work.clientHeight - (sc.getBoundingClientRect().top - work.getBoundingClientRect().top) - 32;
       const box = Math.max(320, room);
@@ -2482,7 +2486,8 @@ export class WorkbenchView extends ItemView {
     }
 
     // ② 日视图：时间轴格子也撑到可用高度（不然"视口中心"和"屏幕中心"不是一回事）
-    const day = this.contentEl.querySelector<HTMLElement>(".tlt-daygrid");
+    // 手机档交给 CSS（max-height + 内部滚），这里写内联高度会让它等于内容高度、滚不起来
+    const day = this.tier === "phone" ? null : this.contentEl.querySelector<HTMLElement>(".tlt-daygrid");
     if (day) {
       const room = work.clientHeight - (day.getBoundingClientRect().top - work.getBoundingClientRect().top) - 32;
       const box = Math.max(420, room);
