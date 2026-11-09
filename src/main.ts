@@ -111,6 +111,8 @@ export function refreshTabHeaders(app: App) {
 export class TLTPlugin extends Plugin {
   settings: Settings;
   store: Store;
+  /** 重画日记块的节流定时器 */
+  private dailyTimer: number | null = null;
   private hub = { publish: "", sync: "", lastSync: "", lastResult: "", lastError: "" };
   /** 已注册的命令 + 取名字的函数：切语言时原地改名，不用重载插件 */
   private cmdNames: { cmd: { name: string }; full: () => string }[] = [];
@@ -129,14 +131,32 @@ export class TLTPlugin extends Plugin {
    * 这里**绝不能**再 await store.load()：数据读完会回调 onDataChange → 又调回这里，形成死循环。
    */
   refreshDailyBlocks(): Promise<void> {
+    // 节流：一次数据变更可能牵动很多次刷新，150ms 内合并成一次重画
+    if (this.dailyTimer !== null) return Promise.resolve();
+    this.dailyTimer = window.setTimeout(() => {
+      this.dailyTimer = null;
+      this.drawDailyBlocks();
+    }, 150);
+    return Promise.resolve();
+  }
+
+  /** 立刻把所有日记块重画一遍（选择器放宽：阅读视图、实时预览、弹窗里的都算） */
+  private drawDailyBlocks(): void {
+    const hosts = new Set<HTMLElement>();
+    document
+      .querySelectorAll<HTMLElement>('[class*="block-language-tlt-daily"], .tlt-daily-host, .tlt-daily')
+      .forEach((el) => {
+        // 块本身可能被包了一层：往上找到真正挂着画法的那个宿主
+        const owner = el.closest("[class*='block-language-tlt-daily'], .tlt-daily-host") ?? el;
+        if (owner.instanceOf(HTMLElement)) hosts.add(owner);
+      });
     let n = 0;
-    document.querySelectorAll<HTMLElement>(".block-language-tlt-daily, .tlt-daily-host").forEach((host) => {
+    hosts.forEach((host) => {
       const draw = (host as unknown as { __tltDraw?: () => void }).__tltDraw;
       if (typeof draw !== "function") return;
       try { draw(); n += 1; } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
     });
     if (!n) console.debug("TLT: 没有找到需要重画的日记块");
-    return Promise.resolve();
   }
 
   /**
@@ -331,6 +351,7 @@ export class TLTPlugin extends Plugin {
         this.refreshAll();
       }, 400);
     };
+    this.register(() => { if (this.dailyTimer !== null) window.clearTimeout(this.dailyTimer); });
     this.registerEvent(this.app.vault.on("modify", reload));
     this.registerEvent(this.app.vault.on("create", reload));
     this.registerEvent(this.app.vault.on("delete", reload));
@@ -339,6 +360,8 @@ export class TLTPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on("css-change", () => this.applyTheme()));
     // 切到 TLT 的视图时，把右侧那些「按活动文件渲染」的核心面板（大纲、双链、出链、局部图）清空，
     // 免得它们继续显示上一个文件的内容——TLT 不是文件视图，那些内容对不上号。
+    this.registerEvent(this.app.workspace.on("file-open", () => { void this.refreshDailyBlocks(); }));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => { void this.refreshDailyBlocks(); }));
     this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => {
       const type = leaf?.view?.getViewType?.();
       if (type !== VIEW_TYPE_WORKBENCH && type !== VIEW_TYPE_MESSAGES) return;
@@ -588,6 +611,7 @@ export class TLTPlugin extends Plugin {
   }
 
   refreshAll() {
+    void this.refreshDailyBlocks();
     const draw = (type: string) => {
       for (const l of this.app.workspace.getLeavesOfType(type)) {
         try {

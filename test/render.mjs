@@ -2437,7 +2437,7 @@ await t("事件流写不进去，也不能连累勾选本身", async () => {
   assert.match(files["TLT/tasks/事件失败.md"], /- \[x\] 要勾的活/, "任务文件要改到");
 });
 
-await t("日记块刷新按 DOM 找人（宿主换掉也刷得到）", async () => {
+await t("日记块刷新：按 DOM 找人（宿主换掉也刷得到）、节流合并、编辑/阅读两种壳都认", async () => {
   document.body.empty();
   const inst = makePlugin();
   inst.app = app;
@@ -2449,8 +2449,41 @@ await t("日记块刷新按 DOM 找人（宿主换掉也刷得到）", async () 
   const plain = document.createElement("div");       // 没有画法的块：不该炸
   plain.className = "block-language-tlt-daily";
   document.body.appendChild(plain);
+  // 实时预览那种壳：画法挂在外层 .tlt-daily-host，外面再包一层 block-language-*
+  const wrap = document.createElement("div");
+  wrap.className = "cm-preview-code-block block-language-tlt-daily";
+  const inner = document.createElement("div");
+  inner.className = "tlt-daily-host";
+  inner.__tltDraw = () => { drawn += 1; };
+  wrap.appendChild(inner);
+  document.body.appendChild(wrap);
+
   await inst.refreshDailyBlocks();
-  assert.equal(drawn, 1, `挂在元素上的画法要被调到，实际 ${drawn}`);
+  await new Promise((r) => setTimeout(r, 260));       // 节流 150ms，等它落地
+  assert.equal(drawn, 2, `两种壳里的画法都要被调到，实际 ${drawn}`);
+  // 连点多次只重画一次（150ms 内合并）
+  drawn = 0;
+  void inst.refreshDailyBlocks(); void inst.refreshDailyBlocks(); void inst.refreshDailyBlocks();
+  await new Promise((r) => setTimeout(r, 260));
+  assert.equal(drawn, 2, `节流后仍是每个块一次，实际 ${drawn}`);
+});
+
+await t("数据一变（工作台改完）→ 日记块自动重画，不用按 Cmd+E", async () => {
+  document.body.empty();
+  const inst = makePlugin();
+  inst.app = app;
+  inst.store = store;                      // 用加载好的那份数据
+  let drawn = 0;
+  const host = document.createElement("div");
+  host.className = "tlt-daily-host";
+  host.__tltDraw = () => { drawn += 1; };
+  document.body.appendChild(host);
+  // 真插件里接线：store.onDataChange = () => refreshDailyBlocks()
+  store.onDataChange = () => { void inst.refreshDailyBlocks(); };
+  await store.load();                      // 模拟"工作台改完重读数据"
+  await new Promise((r) => setTimeout(r, 320));
+  assert.ok(drawn >= 1, `数据读完后日记块应自动重画，实际 ${drawn}`);
+  store.onDataChange = undefined;
 });
 
 await t("消息弹窗：自己的源能删消息，订阅来的不给删", async () => {
