@@ -2266,3 +2266,8 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
   font-family: inherit; line-height: 1.7; resize: vertical;
 }
 .tlt-mdf-ta:focus { outline: none; border-color: rgba(91, 108, 255, .5); }
+
+
+/* 很矮的日程块（≤25 分钟）：只显示标题，时间交给悬停提示/详情 */
+.tlt-blk-c.tlt-blk-short .tlt-blk-m { display: none; }
+.tlt-blk-c.tlt-blk-short .tlt-blk-t { font-size: 10px; line-height: 1.2; }

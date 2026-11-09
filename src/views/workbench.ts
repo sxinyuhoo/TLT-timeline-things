@@ -52,14 +52,14 @@ function panelIcon(): SVGSVGElement {
   }
   return svg;
 }
-const DAY_FROM = 0, DAY_TO = 24 * 60, HOUR_PX = 62;          // 时间轴＝全天 00:00–24:00
+const DAY_FROM = 0, DAY_TO = 24 * 60, HOUR_PX = 84;          // 时间轴＝全天 00:00–24:00（每小时 84px：30 分钟的块也有 42px，标题+时间放得下）
 const DAY_END_WRITE = 23 * 60 + 59;
 /** 周视图打开时默认居中的时刻（08:30）：早上到上午这一段最常看 */
 const WEEK_FOCUS_MIN = 8 * 60 + 30;                            // 写进文件的最大结束时间（"24:00" 不是合法的 time 值）
 /** 时间轴左边留给刻度、右边留边距（与 styles.css 里 .tlt-blk 的 left/right 保持一致） */
 const GUTTER = 52, RIGHT_PAD = 8;
 /** 周视图里一小时占多少像素（比日视图压得紧） */
-const WEEK_HOUR = 56;                     // 周视图每小时多少像素（固定：够高才看得清；一天放不下就由滚动壳内部滚）
+const WEEK_HOUR = 64;                     // 周视图每小时多少像素（30 分钟的块＝32px，够放标题；一天放不下就内部滚）
 const HOUR_css = () => WEEK_HOUR;
 
 /**
@@ -852,6 +852,8 @@ export class WorkbenchView extends ItemView {
       blk.style.setProperty("--hue", this.hueFor(x.id, usedHues));
       blk.title = `${x.title}\n${x.meta}`;
       const c = el("div", "tlt-blk-c");
+      // 矮块（不到 34px，约 25 分钟以内）：只留标题，别把时间那行裁成半个字
+      if (((x.b - x.a) / 60) * HOUR_PX < 34) c.addClass("tlt-blk-short");
       const titleEl = el("div", "tlt-blk-t", x.title);
       const noteText = x.item.note || "";
       if (noteText) {                     // 有备注：标题后一个小记号，悬停能看首行
