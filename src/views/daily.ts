@@ -116,7 +116,8 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
           new Notice(T("勾选没写进去，看看控制台里的报错"));
         } finally {
           busy = false;
-          void plugin.refreshDailyBlocks();                   // 不管成没成都要重画，免得界面停在旧状态
+          // 先重读数据再重画：日记块里的任务对象是自己那份，不重读的话重画还是旧状态
+          void store.load().catch(() => undefined).then(() => plugin.refreshDailyBlocks());
         }
       })();
     };
@@ -159,7 +160,7 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
           void (async () => {
             try { await store.setStepDone(t, i, !st.done); }
             catch (e) { console.error("TLT: 子项勾选失败", e); }
-            finally { void plugin.refreshDailyBlocks(); }
+            finally { void store.load().catch(() => undefined).then(() => plugin.refreshDailyBlocks()); }
           })();
         });
         sr.append(sc, el("span", "", st.text));

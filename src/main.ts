@@ -124,18 +124,19 @@ export class TLTPlugin extends Plugin {
    * 断了以后刷新全部落空——用户那边看到的就是"点了勾、改了日期，块里什么都没变"。
    * 现在直接按 DOM 找块、取挂在元素上的画法，谁在页面上就刷谁。
    */
+  /**
+   * 只重画日记块（不重读数据——重读由调用方负责）。
+   * 这里**绝不能**再 await store.load()：数据读完会回调 onDataChange → 又调回这里，形成死循环。
+   */
   refreshDailyBlocks(): Promise<void> {
-    // 先重读一遍数据再重画：日记块里的任务对象是自己那份，不重读的话
-    // 勾完重画还是旧状态，再点一下会按旧状态写盘（表现为"点了没反应/勾不上"）。
-    return this.store.load().catch(() => undefined).then(() => {
-      let n = 0;
-      document.querySelectorAll<HTMLElement>(".block-language-tlt-daily, .tlt-daily-host").forEach((host) => {
-        const draw = (host as unknown as { __tltDraw?: () => void }).__tltDraw;
-        if (typeof draw !== "function") return;
-        try { draw(); n += 1; } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
-      });
-      if (!n) console.debug("TLT: 没有找到需要重画的日记块");
+    let n = 0;
+    document.querySelectorAll<HTMLElement>(".block-language-tlt-daily, .tlt-daily-host").forEach((host) => {
+      const draw = (host as unknown as { __tltDraw?: () => void }).__tltDraw;
+      if (typeof draw !== "function") return;
+      try { draw(); n += 1; } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
     });
+    if (!n) console.debug("TLT: 没有找到需要重画的日记块");
+    return Promise.resolve();
   }
 
   /**
@@ -277,6 +278,9 @@ export class TLTPlugin extends Plugin {
     setLanguage(this.settings.language);
     this.store = new Store(this.app, this.settings);
     this.store.onSettingsChange = () => this.saveSettings();
+    // 工作台/命令里改完任务会重读数据：这时把日记块也重画一遍，
+    // 否则日记里那块还停在旧状态（用户报过：工作台勾完了，日记里还是未完成）。
+    this.store.onDataChange = () => { void this.refreshDailyBlocks(); };
 
     registerTltIcons();
 

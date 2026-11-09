@@ -202,43 +202,71 @@ await t("点方块不冒泡；任务名后面的 📝 打开任务详情", async
 
 await t("勾选框点一下＝勾上（不能被行级处理翻两次）；点正文不勾；点 📝 只开弹窗", async () => {
   fixture();
+  // 自带一条任务：不依赖别的用例留下的状态
+  fps.files["TLT/tasks/勾选专用.md"] = `# 勾选专用\n\n## 一期\n\n- [ ] 勾选专用任务 📅 2026-10-29 [est:: 1]\n`;
   const { app, store } = await makeStore();
+  await store.load();
   let refreshed = 0;
   let plugin;                                 // 真插件里 refreshDailyBlocks 会重画整个块（拿到新数据），stub 也照做
   plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() { refreshed++; renderDaily(plugin, host, "", "70-生活/diary/2026/20261029.md"); } };
   const host = document.createElement("div");
   document.body.appendChild(host);
   renderDaily(plugin, host, "", "70-生活/diary/2026/20261029.md");
-  const file = "TLT/tasks/交通核心算法研发.md";
-  const rowOf = () => [...host.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("今天到期的活"));
+  const file = "TLT/tasks/勾选专用.md";
+  const rowOf = () => [...host.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("勾选专用任务"));
+  assert.ok(rowOf(), "夹具里的任务应出现在日记块里");
 
-  // ① 点勾选框：一次点击只能翻一次（0.9.66 的 bug 是行级 handler 又翻一次，结果勾不上）
-  rowOf().querySelector(".tlt-daily-cb").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
-  await flush(80);
-  const now = new Date();
-  const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  assert.ok(fps.files[file].includes("[done:: " + todayLocal + "]"),
-    "点勾选框应该把任务勾上（这条挂了说明一次点击被翻了两次）：\n" + fps.files[file]);
-  assert.ok(/^- \[x\]/.test((fps.files[file].split("\n").find((l) => l.includes("今天到期的活")) || "").trim()),
-    "任务行该变成 [x]：" + (fps.files[file].split("\n").find((l) => l.includes("今天到期的活")) || ""));
-  assert.ok(refreshed >= 1, "勾完要重画");
-
-  // ② 点行内正文：不勾（用户明确只留勾选框）
+  // ① 点行内正文：不勾（用户明确只留勾选框）
   const before = fps.files[file];
   rowOf().querySelector(".tlt-daily-b").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   await flush(60);
   assert.equal(fps.files[file], before, "点正文不该改动任务状态");
 
-  // ③ 点 📝：只开弹窗，不勾
+  // ② 点 📝：只开弹窗，不勾
   rowOf().querySelector(".tlt-daily-edit").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   await flush(60);
   assert.equal(fps.files[file], before, "点 📝 不该改动任务状态");
 
-  // ④ 再点一次勾选框：能取消（不是被 busy 永久卡住）
+  // ③ 点勾选框：一次点击只能翻一次（0.9.66 的 bug 是行级 handler 又翻一次，结果勾不上）
   rowOf().querySelector(".tlt-daily-cb").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
-  await flush(80);
-  assert.ok(!fps.files[file].includes("[done:: " + todayLocal + "]"),
-    "再点一次应该取消完成：\n" + fps.files[file]);
+  await flush(120);
+  const now = new Date();
+  const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const line = fps.files[file].split("\n").find((l) => l.includes("勾选专用任务")) || "";
+  assert.ok(/^- \[x\]/.test(line.trim()), `任务行该变成 [x]：${line}`);
+  assert.ok(fps.files[file].includes("[done:: " + todayLocal + "]"), `应补上完成时间：${line}`);
+  assert.ok(refreshed >= 1, "勾完要重画");
+  // 勾完它就离开"今日待做"（这是对的：完成了就不该还挂着）
+  assert.ok(!rowOf(), "勾完之后不该还留在待做清单里");
+});
+
+await t("工作台里改完（重读数据）后，日记块跟着更新——用户报的 bug", async () => {
+  fixture();
+  // 用"今天"的日记 + 今天到期的任务：勾完才会进「今日已完成」（这是用户的实际场景）
+  const n0 = new Date();
+  const todayISO = `${n0.getFullYear()}-${String(n0.getMonth() + 1).padStart(2, "0")}-${String(n0.getDate()).padStart(2, "0")}`;
+  const todayPath = `70-生活/diary/2026/${todayISO.replace(/-/g, "")}.md`;
+  fps.files["TLT/tasks/同步专用.md"] = `# 同步专用\n\n## 一期\n\n- [ ] 同步专用任务 📅 ${todayISO} [est:: 1]\n  - [ ] 它的子项\n`;
+  const { app, store } = await makeStore();
+  await store.load();
+  const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() { renderDaily(plugin, host, "", todayPath); } };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  // 真插件里是 store.onDataChange = () => refreshDailyBlocks()
+  store.onDataChange = () => { void plugin.refreshDailyBlocks(); };
+  renderDaily(plugin, host, "", todayPath);
+  const row = () => [...host.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("同步专用任务"));
+  assert.ok(row(), "先要有这一行");
+  assert.ok(!row().querySelector(".tlt-daily-cb.on"), "一开始应是未完成");
+
+  // 模拟"在工作台里勾完"：走 store 的写接口 + 重读数据（视图那边就是这么干的）
+  const t1 = store.tasks.find((x) => x.title === "同步专用任务");
+  await store.toggleTask(t1);
+  await store.load();
+  await flush(60);
+  const after = row();
+  assert.ok(after, `勾完后应出现在"今日已完成"里：${[...host.querySelectorAll(".tlt-daily-row")].map((r) => r.textContent.trim().slice(0, 12)).join(" / ")}`);
+  assert.ok(after.querySelector(".tlt-daily-cb.on"), "日记块里也该是已完成（勾上）");
 });
 
 await t("勾选写回文件，并触发整体重画", async () => {

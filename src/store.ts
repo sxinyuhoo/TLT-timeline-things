@@ -120,6 +120,9 @@ export const PEOPLE_COLORS = ["#F0C24B", "#6C8CFF", "#27C1A3", "#B57BFF", "#F299
 export class Store {
   /** 由插件注入：store 内部改了设置（如订阅清单）时落盘 */
   onSettingsChange?: () => void | Promise<void>;
+  /** 每次数据读完（load 完成）通知一声：日记块这类"不在视图里"的界面靠它跟着更新 */
+  onDataChange?: () => void;
+  private dataChangeTimer: number | null = null;
   private async saveSettingsSafe() { try { await this.onSettingsChange?.(); } catch { /* 存不下不影响功能 */ } }
   app: App;
   settings: TLTSettings;
@@ -360,6 +363,13 @@ export class Store {
     this.staff = uniqBy(this.staff, (s) => s.file);
 
     this.loaded = true;
+    // 读完通知一声（下一拍）：日记块不在视图里，不通知它就一直是旧的
+    if (this.dataChangeTimer === null) {
+      this.dataChangeTimer = setTimeout(() => {
+        this.dataChangeTimer = null;
+        try { this.onDataChange?.(); } catch (e) { console.warn("TLT: 数据变更回调失败", e); }
+      }, 0);
+    }
     } finally {
       this.loading = false;
     }
