@@ -205,6 +205,8 @@ export class WorkbenchView extends ItemView {
   private focusPending: number | null = null;
   /** "定位到现在"重试次数：容器还没真实高度时不能写 scrollTop，等它稳 */
   private focusTries = 0;
+  /** 定位方式：false＝把目标时刻放到视口 42% 处（居中偏上）；true＝让目标时刻**贴着视口顶部** */
+  private focusTop = false;
   /** 消息中心浮层是否展开（纯界面状态，不落盘） */
   private msgsOpen = false;
   /** 上一次自动居中的"视图+日期"，用来判断这次要不要重新居中 */
@@ -923,11 +925,16 @@ export class WorkbenchView extends ItemView {
     // 定位口径：把要看的那个时刻放在**视口中间偏上**（0.42 处），不再顶在视口最上面
     // 真正的高度要等挂进 DOM 才知道，所以这里只记"要看的时刻"，由 fitWeekHeight 统一定位
     this.renderedDay = sel;
-    if (jump !== null) this.focusPending = jump;
+    if (jump !== null) { this.focusPending = jump; this.focusTop = false; }
     else if (this.dayScroll && this.dayScroll.day === sel && this.dayScroll.top > 4) {
       grid.dataset.scrollTop = String(Math.max(0, this.dayScroll.top));
       this.focusPending = null;                      // 同一天重渲：保住用户滚到的位置，别又居中回去
-    } else this.focusPending = sel === todayISO() ? nowMin : 9 * 60;   // 没滚过（或假值 0）→ 照常定位到此刻
+    } else {
+      // 今天：把"现在"放到视口 42% 处；别的日子：让 **08:00 贴着顶部**（原来居中 9:00，实际从 6 点就开始了）
+      const today = sel === todayISO();
+      this.focusPending = today ? nowMin : 8 * 60;
+      this.focusTop = !today;
+    }
     return p;
   }
 
@@ -2110,11 +2117,14 @@ export class WorkbenchView extends ItemView {
     scroll.style.height = `${HOUR * hours + 8}px`;     // 先按完整时间轴给高，挂进 DOM 后再收进可用高度（内部滚）
     // 打开时把"要看的时刻"放到视口中部偏上：周视图固定 08:30（早上到上午最常看；挂载后由 fitCalendarHeight 应用）
     this.renderedWeek = this.viewDate;
-    if (this.scrollToMin !== null) this.focusPending = this.scrollToMin;
+    if (this.scrollToMin !== null) { this.focusPending = this.scrollToMin; this.focusTop = false; }
     else if (this.weekScroll && this.weekScroll.day === this.viewDate) {
       scroll.dataset.scrollTop = String(Math.max(0, this.weekScroll.top));   // 同一天重渲：保住你滚到的位置
       this.focusPending = null;
-    } else this.focusPending = WEEK_FOCUS_MIN;            // 周视图默认把 08:30 放到视觉中心（比"现在"更常用）
+    } else {
+      this.focusPending = WEEK_FOCUS_MIN;                 // 周视图默认从 08:30 开始看（贴着顶部，别从 5 点多露头）
+      this.focusTop = true;
+    }
     this.scrollToMin = null;
     const inner = el("div", "tlt-winner");
     inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR}px`;
@@ -2451,7 +2461,7 @@ export class WorkbenchView extends ItemView {
     }
     this.focusTries = 0;
     const perHour = box.classList.contains("tlt-daygrid") ? HOUR_PX : HOUR_css();
-    const target = Math.max(0, ((focus - DAY_FROM) / 60) * perHour - box.clientHeight * 0.42);
+    const target = Math.max(0, ((focus - DAY_FROM) / 60) * perHour - (this.focusTop ? 0 : box.clientHeight * 0.42));
     if (Math.abs(box.scrollTop - target) > 2) box.scrollTop = target;
     // 回读校验：写进去被夹回 0（容器其实还没可见）→ 目标留着，稍后再试，别停 0 点
     if (target > 40 && box.scrollTop < 8) {

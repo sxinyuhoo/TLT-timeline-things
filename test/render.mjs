@@ -3815,12 +3815,21 @@ await t("日历默认定位：周视图居中 08:30；手机档日/周视图交�
   view.tab = "today"; view.calView = "w"; view.viewDate = D;      // 就是今天
   view.focusPending = null; view.weekScroll = null; view.renderedWeek = "";
   await view.render();
-  assert.equal(view.focusPending, 8 * 60 + 30, `周视图默认中心应是 08:30（510 分钟），实际 ${view.focusPending}`);
-  // 日视图仍然以"现在"为准
+  assert.equal(view.focusPending, 8 * 60 + 30, `周视图默认从 08:30 开始看（510 分钟），实际 ${view.focusPending}`);
+  assert.equal(view.focusTop, true, "周视图应顶对齐（顶部就是 08:30，别从 5 点多露头）");
+  // 今天：日视图以"现在"为准，且居中（42% 处）
   view.calView = "d"; view.focusPending = null; view.dayScroll = null; view.renderedDay = "";
   await view.render();
   const d = new Date();
-  assert.equal(view.focusPending, d.getHours() * 60 + d.getMinutes(), "日视图仍应定位到此刻");
+  assert.equal(view.focusPending, d.getHours() * 60 + d.getMinutes(), "今天的日视图仍应定位到此刻");
+  assert.equal(view.focusTop, false, "今天的日视图是居中偏上，不是顶对齐");
+  // 非今天：顶部应为 08:00
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const yiso = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
+  view.viewDate = yiso; view.focusPending = null; view.dayScroll = null; view.renderedDay = "";
+  await view.render();
+  assert.equal(view.focusPending, 8 * 60, `非今天的日视图顶部应是 08:00（480 分钟），实际 ${view.focusPending}`);
+  assert.equal(view.focusTop, true, "非今天的日视图应顶对齐");
 });
 
 await t("触摸适配：手机档没有 hover 也能看见按钮、命中区够大；块身要长按才拖", async () => {
