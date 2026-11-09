@@ -364,8 +364,9 @@ export class Store {
 
     this.loaded = true;
     // 读完通知一声（下一拍）：日记块不在视图里，不通知它就一直是旧的
-    if (this.dataChangeTimer === null) {
-      this.dataChangeTimer = setTimeout(() => {
+    // 用 window 的定时器（弹窗兼容）；纯 node 测试环境没有 window，跳过这次通知即可
+    if (this.dataChangeTimer === null && typeof window !== "undefined") {
+      this.dataChangeTimer = window.setTimeout(() => {
         this.dataChangeTimer = null;
         try { this.onDataChange?.(); } catch (e) { console.warn("TLT: 数据变更回调失败", e); }
       }, 0);

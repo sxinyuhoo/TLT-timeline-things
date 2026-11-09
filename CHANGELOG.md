@@ -1,5 +1,14 @@
 # 更新日志
 
+## 0.9.85
+
+**同 0.9.84 的修复（日记块状态不跟着工作台更新），另把定时器写法收敛到官方要求**
+
+- 0.9.84 里的定时器用了全局 `setTimeout`，官方 lint 要求用 `window.setTimeout()`（独立窗口兼容）。现在改成 `window.setTimeout` 并加了环境守卫（纯 node 测试环境没有 `window` 就跳过这次通知）——行为不变，lint 回到 0 error 0 warning。
+
+**测试**：全量 293 项全过；lint 0 error 0 warning
+
+
 ## 0.9.84
 
 **修：在工作台里把任务和子任务都勾完了，tlt-daily 里还是未完成**
