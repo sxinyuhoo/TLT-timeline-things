@@ -222,9 +222,14 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
 export function registerDailyBlocks(plugin: TLTPlugin) {
   plugin.registerMarkdownCodeBlockProcessor("tlt-daily", (source: string, host: HTMLElement, ctx: MarkdownPostProcessorContext) => {
     host.addClass("tlt-daily-host");                    // 自己打个记号，刷新时按它找人
-    // 画法挂在元素上：块被 Obsidian 重画/重建后，刷新直接找得到（不再依赖会过期的登记表）
+    // 把"画这一块需要的东西"记在元素上：源码 + 所在笔记路径。
+    // 重画时由**当前插件**自己重建渲染（见 TLTPlugin.drawDailyBlocks），不走旧闭包——
+    // 编辑视图和阅读视图可能各有一份块，插件更新后旧闭包还指向旧 store，表现就是"一边更新了、另一边没更新"。
+    const hostWithDaily = host as unknown as { __tltSrc?: string; __tltPath?: string; __tltDraw?: () => void };
+    hostWithDaily.__tltSrc = source;
+    hostWithDaily.__tltPath = ctx.sourcePath;
     const draw = () => renderDaily(plugin, host, source, ctx.sourcePath);
-    (host as unknown as { __tltDraw?: () => void }).__tltDraw = draw;
+    hostWithDaily.__tltDraw = draw;
     draw();
   });
 }

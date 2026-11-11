@@ -1542,6 +1542,51 @@ await t("手机档周视图：整周 7 列都在（挤不下就横滑，不是�
   Object.defineProperty(view.contentEl, "clientWidth", { value: 0, configurable: true });
 });
 
+await t("tlt-daily：编辑视图那份也要跟着工作台更新（宿主上记了源码就用当前实例重画，旧闭包不算数）", async () => {
+  document.body.empty();
+  const n0 = new Date();
+  const TS = `${n0.getFullYear()}-${String(n0.getMonth() + 1).padStart(2, "0")}-${String(n0.getDate()).padStart(2, "0")}`;
+  const path = `70-生活/diary/2026/${TS.replace(/-/g, "")}.md`;
+  files["TLT/tasks/日记同步.md"] = `# 日记同步（测试）\n\n## 一期\n\n- [ ] 编辑视图要同步的任务 📅 ${TS} [est:: 1]\n`;
+  await store.load();
+  const inst = makePlugin();
+  inst.app = app;
+  inst.store = store;
+
+  // 模拟"编辑视图"和"阅读视图"各有一份块：两份都只记了源码（新版处理器会这么做）
+  const makeHost = (stale) => {
+    const host = document.createElement("div");
+    host.className = "tlt-daily-host block-language-tlt-daily";
+    host.__tltSrc = ""; host.__tltPath = path;
+    host.__tltDraw = () => { if (stale) host.textContent = "旧闭包画的（不该用到）"; };
+    document.body.appendChild(host);
+    return host;
+  };
+  const editHost = makeHost(true);
+  const readHost = makeHost(true);
+
+  await inst.refreshDailyBlocks();
+  await new Promise((r) => setTimeout(r, 260));
+  for (const [name, h] of [["编辑视图", editHost], ["阅读视图", readHost]]) {
+    assert.ok(!h.textContent.includes("旧闭包"), `${name}不该走旧闭包`);
+    assert.ok(h.querySelector(".tlt-daily-row"), `${name}应该真的画出来了`);
+    assert.ok(h.textContent.includes("编辑视图要同步的任务"), `${name}里要有那条任务`);
+    const cb = h.querySelector(".tlt-daily-row .tlt-daily-cb");
+    assert.ok(cb && !cb.classList.contains("on"), `${name}初始应是未完成`);
+  }
+
+  // 工作台里勾完 → 重读数据 → 两个视图都要变
+  const t1 = store.tasks.find((x) => x.title === "编辑视图要同步的任务");
+  await store.toggleTask(t1);
+  await store.load();
+  await inst.refreshDailyBlocks();
+  await new Promise((r) => setTimeout(r, 260));
+  for (const [name, h] of [["编辑视图", editHost], ["阅读视图", readHost]]) {
+    assert.ok(h.textContent.includes("今日已完成"), `${name}勾完应进「今日已完成」：${h.textContent.slice(0, 40)}`);
+  }
+  delete files["TLT/tasks/日记同步.md"];
+});
+
 await t("左栏可折叠写进设置；消息中心是浮层（点 ✕ 关、点工作台也关）", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);

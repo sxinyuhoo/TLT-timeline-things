@@ -16,7 +16,7 @@ import {
 import { todayISO, asText, type Period } from "./data";
 import { t, t as T, setLanguage, LANGUAGE_LABELS, type Language } from "./i18n";
 import { attachFolderSuggest } from "./views/folder-suggest";
-import { registerDailyBlocks } from "./views/daily";
+import { registerDailyBlocks, renderDaily } from "./views/daily";
 
 type ThemeMode = "auto" | "light" | "dark";
 
@@ -152,9 +152,18 @@ export class TLTPlugin extends Plugin {
       });
     let n = 0;
     hosts.forEach((host) => {
-      const draw = (host as unknown as { __tltDraw?: () => void }).__tltDraw;
-      if (typeof draw !== "function") return;
-      try { draw(); n += 1; } catch (e) { console.error(T("TLT: 日记块渲染失败"), e); }
+      const h = host as unknown as { __tltSrc?: string; __tltPath?: string; __tltDraw?: () => void };
+      try {
+        if (typeof h.__tltSrc === "string" && typeof h.__tltPath === "string") {
+          // 用**当前实例**重画：编辑视图/阅读视图各一份、插件更新后留下的旧块，都会拿到最新数据
+          renderDaily(this, host, h.__tltSrc, h.__tltPath);
+          n += 1;
+          return;
+        }
+        if (typeof h.__tltDraw === "function") { h.__tltDraw(); n += 1; }   // 老的块（没记源码）退回旧画法
+      } catch (e) {
+        console.error(T("TLT: 日记块渲染失败"), e);
+      }
     });
     if (!n) console.debug("TLT: 没有找到需要重画的日记块");
   }
