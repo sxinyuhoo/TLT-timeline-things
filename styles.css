@@ -2278,7 +2278,7 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-mdf-ta:focus { outline: none; border-color: rgba(91, 108, 255, .5); }
 
 
-/* 日记块里的「日程记录」：一行一条 bullet，时间是淡淡的 */}
+/* 日记块里的「日程记录」：一行一条 bullet，时间是淡淡的 */
 .tlt-daily-logs { margin: 2px 0 0; padding-left: 18px; }
 .tlt-daily-logs li { margin: 3px 0; line-height: 1.45; }
 .tlt-daily-logs li::marker { color: var(--tlt-ink4); }
