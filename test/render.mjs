@@ -470,7 +470,8 @@ await t("源名称可改，id 不变", async () => {
 
 await t("设置页：无顶级标题、分节顺序、动作按钮", async () => {
   document.body.empty();
-  const tab = new TLTSettingTab(app, makePlugin());
+  const plugin = makePlugin();
+  const tab = new TLTSettingTab(app, plugin);
   tab.containerEl = document.createElement("div");
   tab.renderSettings();
   const el2 = tab.containerEl;
@@ -1393,8 +1394,97 @@ await t("日程块：拖拽改时间 + 右键菜单（删记录 / 取消排期�
   blk.dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true, clientX: 120, clientY: 320 }));
   await new Promise((r) => setTimeout(r, 20));
   const menu = [...document.querySelectorAll(".tlt-menu-i")].map((b) => b.textContent);
-  assert.ok(menu.some((x) => x.includes("调整时间")), `菜单应有调整时间，实际：${menu.join(" / ")}`);
+  assert.ok(menu.some((x) => x.includes("改日期 / 时间…")), `菜单应有「改日期 / 时间…」，实际：${menu.join(" / ")}`);
   assert.ok(menu.some((x) => x.includes("删除") || x.includes("取消排期")), `菜单应有删除/取消排期，实际：${menu.join(" / ")}`);
+});
+
+await t("日历口径在 definitions 里也有一份（1.13+ 的设置页读的是它，之前只改了命令式那份）", async () => {
+  const tab = new TLTSettingTab(app, makePlugin());
+  const defs = tab.getSettingDefinitions();
+  const flat = defs.flatMap((d) => (d.type === "group" ? d.items : [d]));
+  assert.ok(flat.some((x) => x.control?.key === "dayTaskScope"), `definitions 里要有 dayTaskScope，实际 ${flat.map((x) => x.control?.key || x.name).join(" / ")}`);
+  const g = defs.find((d) => d.type === "group" && d.heading === "日历");
+  assert.ok(g, `definitions 里要有「日历」分节，实际 ${defs.map((d) => d.heading || d.name).join(" / ")}`);
+  const keys = defs.map((d) => (d.type === "group" ? d.heading : d.name));
+  assert.deepEqual(keys.filter((k) => ["目录", "日历", "口径", "消息服务", "维护"].includes(k)),
+    ["目录", "日历", "口径", "消息服务", "维护"], `分节顺序：${keys.join(" / ")}`);
+  // 控件写入走的就是通用的 setControlValue（bag[key] = value），键在 pick 的联合类型里放开了
+  await tab.setControlValue("dayTaskScope", "span");
+});
+
+await t("「改日期 / 时间…」：手动把日程挪到别的天与时间段（不用先删再建）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  files["TLT/logs/2026-11.md"] = `# 记录 2026-11\n\n## ${D}\n\n- 09:30–11:00 要挪走的记录\n`;
+  await view.store.load();
+  view.tab = "today"; view.calView = "d"; view.viewDate = D;
+  await view.render();
+  const blk = [...view.contentEl.querySelectorAll(".tlt-blk")].find((b) => b.textContent.includes("要挪走的记录"));
+  assert.ok(blk, "先要有这个记录块");
+  blk.dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true, clientX: 100, clientY: 300 }));
+  await new Promise((r) => setTimeout(r, 20));
+  const item = [...document.querySelectorAll(".tlt-menu-i")].find((b) => b.textContent.includes("改日期 / 时间…"));
+  assert.ok(item, "菜单里要有改日期 / 时间…");
+  item.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  const modal = document.querySelector(".tlt-modal");
+  assert.ok(modal, "要弹出改日程弹窗");
+  const [dayIn, stIn, enIn] = [...modal.querySelectorAll("input")];
+  assert.equal(dayIn.type, "date");
+  dayIn.value = "2026-11-20"; stIn.value = "13:00"; enIn.value = "14:30";
+  [...modal.querySelectorAll("button")].find((b) => b.textContent === "保存").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 120));
+  const src = files["TLT/logs/2026-11.md"];
+  assert.ok(src.includes("## 2026-11-20"), `日期要挪过去：${src}`);
+  assert.ok(/13:00\s*[–-]\s*14:30/.test(src), `时间要改掉：${src}`);
+  assert.ok(!src.includes("09:30–11:00 要挪走的记录"), "旧位置不该还留着");
+  delete files["TLT/logs/2026-11.md"];
+});
+
+await t("块里面名称优先：矮块收掉时间行；标题可换两行（CSS 断言）", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-blk-t,\s*\.tlt-wbt\s*\{[^}]*white-space:\s*normal/.test(css), "标题要能换行，不能 nowrap 一截了事");
+  assert.ok(/\.tlt-blk-c\.tlt-blk-tight\s+\.tlt-blk-m\s*\{\s*display:\s*none/.test(css), "矮块要收掉时间行");
+  assert.ok(/\.tlt-wblk\.tlt-wblk-tight\s+\.tlt-wbm\s*\{\s*display:\s*none/.test(css), "周视图矮块也要收掉时间行");
+  // 渲染：30 分钟的块（84px/小时 → 42px）应带 tight，不带 short
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  files["TLT/tasks/块高.md"] = `# 块高（测试）\n\n## 一期\n\n- [ ] 半小时的块 📅 ${D} [st:: 14:00] [en:: 14:30] [plan:: ${D}] [created:: ${D}]\n- [ ] 十分钟的块 📅 ${D} [st:: 15:00] [en:: 15:10] [plan:: ${D}] [created:: ${D}]\n`;
+  await view.store.load();
+  view.tab = "today"; view.calView = "d"; view.viewDate = D;
+  await view.render();
+  const byTitle = (name) => [...view.contentEl.querySelectorAll(".tlt-blk")].find((b) => b.textContent.includes(name));
+  const half = byTitle("半小时的块"), tiny = byTitle("十分钟的块");
+  assert.ok(half?.querySelector(".tlt-blk-c.tlt-blk-tight"), "30 分钟的块应是 tight（藏时间、两行标题）");
+  assert.ok(tiny?.querySelector(".tlt-blk-c.tlt-blk-short"), "10 分钟的块应是 short（一行标题）");
+  delete files["TLT/tasks/块高.md"];
+});
+
+await t("周视图滚动位置：重渲/fit 之后不能被清成 0（拖动日程就跳回 0 点那个 bug）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  files["TLT/tasks/滚动恢复.md"] = `# 滚动恢复（测试）\n\n## 一期\n\n- [ ] 滚动用例 📅 ${D} [st:: 14:00] [en:: 15:00] [plan:: ${D}] [created:: ${D}]\n`;
+  await view.store.load();
+  view.tab = "today"; view.calView = "w"; view.viewDate = D; view.weekScroll = null; view.renderedWeek = "";
+  await view.render();
+  const sc = () => view.contentEl.querySelector(".tlt-wscroll");
+  assert.ok(sc(), "周视图要有滚动壳");
+  // jsdom 量不到真实高度：手动给一个，模拟"真的能滚"
+  Object.defineProperty(sc(), "clientHeight", { value: 400, configurable: true });
+  sc().scrollTop = 300;
+  sc().dispatchEvent(new dom.window.Event("scroll"));           // 边滚边记
+  assert.equal(view.weekScroll?.top, 300, `滚动位置要记住，实际 ${JSON.stringify(view.weekScroll)}`);
+  await view.refresh();                                          // 拖动落盘后的那次重渲
+  await new Promise((r) => setTimeout(r, 200));
+  const sc2 = view.contentEl.querySelector(".tlt-wscroll");
+  Object.defineProperty(sc2, "clientHeight", { value: 400, configurable: true });
+  sc2.scrollTop = 0;                                             // 模拟 fit 把 scrollTop 清成 0
+  view.reapplyStoredScroll();
+  assert.equal(sc2.scrollTop, 300, `补一次恢复后应回到 300，实际 ${sc2.scrollTop}`);
+  delete files["TLT/tasks/滚动恢复.md"];
 });
 
 await t("左栏可折叠写进设置；消息中心是浮层（点 ✕ 关、点工作台也关）", async () => {

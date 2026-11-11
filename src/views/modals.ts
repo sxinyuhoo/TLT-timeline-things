@@ -1,7 +1,7 @@
 import { App, Component, Modal, Notice, TFile, MarkdownRenderer } from "obsidian";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, workloadBreakdown, ideaFilterTags, noteGeneralText, noteEntryText, splitNoteEntries } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, hhmmToMin, workloadBreakdown, ideaFilterTags, noteGeneralText, noteEntryText, splitNoteEntries } from "../data";
 import { svgIcon } from "./dom";
 import { MarkdownField } from "./md-field";
 
@@ -2144,6 +2144,55 @@ export class TagEditModal extends TltModal {
 }
 
 /** 小输入框（替代 window.prompt，Obsidian 审核不允许用原生 prompt） */
+/** 手动改一条日程的日期与起止时间（周/日视图右键「改日期 / 时间…」） */
+export class BlockWhenModal extends TltModal {
+  title: string;
+  initial: { day: string; st: string; en: string };
+  onSave: (day: string, st: string, en: string) => void | Promise<void>;
+  constructor(app: App, title: string, initial: { day: string; st: string; en: string },
+    onSave: (day: string, st: string, en: string) => void | Promise<void>) {
+    super(app);
+    this.title = title; this.initial = initial; this.onSave = onSave;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("tlt-modal");
+    contentEl.appendChild(el("div", "tlt-m-title", this.title));
+    const row = (label: string, type: string, value: string) => {
+      const w = el("div", "tlt-m-whenrow");
+      w.appendChild(el("span", "tlt-m-whenlabel", label));
+      const input = el("input", "tlt-input");
+      input.type = type;
+      input.value = value;
+      w.appendChild(input);
+      contentEl.appendChild(w);
+      return input;
+    };
+    const dayIn = row(T("日期"), "date", this.initial.day);
+    const stIn = row(T("开始"), "time", this.initial.st || "09:00");
+    const enIn = row(T("结束"), "time", this.initial.en || "10:00");
+    const hint = el("div", "tlt-m-hint", T("日期＝这条日程排在哪天；开始 / 结束＝当天的时间段。"));
+    contentEl.appendChild(hint);
+    const foot = el("div", "tlt-m-foot");
+    const cancel = el("button", "tlt-btn", T("取消"));
+    cancel.onclick = () => this.close();
+    const ok = el("button", "tlt-btn pri", T("保存"));
+    ok.onclick = () => {
+      const day = dayIn.value.trim();
+      const st = stIn.value.trim(), en = enIn.value.trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) { new Notice(T("日期要像 2026-11-11")); return; }
+      if (!/^\d{2}:\d{2}$/.test(st) || !/^\d{2}:\d{2}$/.test(en)) { new Notice(T("时间要像 09:30")); return; }
+      if (hhmmToMin(en) <= hhmmToMin(st)) { new Notice(T("结束要晚于开始")); return; }
+      this.close();
+      void this.onSave(day, st, en);
+    };
+    foot.append(cancel, ok);
+    contentEl.appendChild(foot);
+    window.setTimeout(() => dayIn.focus(), 50);
+  }
+  onClose() { this.contentEl.empty(); }
+}
+
 export class PromptModal extends TltModal {
   title: string;
   label: string;

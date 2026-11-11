@@ -9,7 +9,7 @@ import {
   hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox, floorToHalfHour, nowHalfHour,
 } from "../data";
 import type { StaffDim } from "../data";
-import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, NoteEntryModal, popMenu, el } from "./modals";
+import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, NoteEntryModal, popMenu, el, BlockWhenModal } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
 import { ConfirmModal } from "./picker";
 import { setSvgMarkup, svgIcon } from "./dom";
@@ -428,7 +428,8 @@ export class WorkbenchView extends ItemView {
       delete wsc.dataset.scrollTop;
     }
     try { this.fitCalendarHeight(); } catch (e) { console.error("TLT: 日历高度校正失败", e); }
-    window.setTimeout(() => this.applyCalendarFocus(), 120);     // 等高度彻底稳了再对位置（40ms 时偶发还差一截）
+    this.reapplyStoredScroll();                                  // fit 改了高度，有时会把 scrollTop 清成 0，补回来
+    window.setTimeout(() => { this.reapplyStoredScroll(); this.applyCalendarFocus(); }, 120);   // 等高度彻底稳了再对位置（40ms 时偶发还差一截）
   }
 
   /* ---------- 左栏 ---------- */
@@ -842,6 +843,7 @@ export class WorkbenchView extends ItemView {
     const wrap = el("div", "tlt-daywrap");
     const grid = el("div", "tlt-daygrid");
     grid.dataset.slotgrid = "1";
+    grid.addEventListener("scroll", () => { this.dayScroll = { day: this.viewDate, top: grid.scrollTop }; }, { passive: true });
     const inner = el("div", "tlt-dayinner");
     inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR_PX}px`;
     for (let mnt = DAY_FROM; mnt < DAY_TO; mnt += 60) {
@@ -892,7 +894,11 @@ export class WorkbenchView extends ItemView {
       blk.title = `${x.title}\n${x.meta}`;
       const c = el("div", "tlt-blk-c");
       // 矮块（不到 34px，约 25 分钟以内）：只留标题，别把时间那行裁成半个字
-      if (((x.b - x.a) / 60) * HOUR_PX < 34) c.addClass("tlt-blk-short");
+      const hpx = ((x.b - x.a) / 60) * HOUR_PX;
+      // 高度不够时把「时间」那行收掉，优先让日程名称看得见：
+      //   <34px（约 25 分钟内）→ 只有 1 行标题；<56px（约 40 分钟）→ 两行标题、不显时间
+      if (hpx < 34) c.addClass("tlt-blk-short");
+      else if (hpx < 56) c.addClass("tlt-blk-tight");
       const titleEl = el("div", "tlt-blk-t", x.title);
       const noteText = x.item.note || "";
       if (noteText) {                     // 有备注：标题后一个小记号，悬停能看首行
@@ -2155,6 +2161,8 @@ export class WorkbenchView extends ItemView {
 
     const scroll = el("div", "tlt-wscroll");
     p.appendChild(scroll);
+    // 边滚边记：拖动落盘会整页重渲，靠渲染前后各记一次不够稳（fit 改高度会把 scrollTop 清 0）
+    scroll.addEventListener("scroll", () => { this.weekScroll = { day: this.viewDate, top: scroll.scrollTop }; }, { passive: true });
     scroll.style.height = `${HOUR * hours + 8}px`;     // 先按完整时间轴给高，挂进 DOM 后再收进可用高度（内部滚）
     // 打开时把"要看的时刻"放到视口中部偏上：周视图固定 08:30（早上到上午最常看；挂载后由 fitCalendarHeight 应用）
     this.renderedWeek = this.viewDate;
@@ -2198,6 +2206,10 @@ export class WorkbenchView extends ItemView {
           blk.style.width = `calc((100% - 3px) / ${lanes} - 2px)`;
         }
         blk.style.setProperty("--hue", this.hueFor(x.item.id, new Set<string>()));
+        // 矮块（<40px，约 35 分钟）优先显示名称：时间那行收掉；极矮（<26px）只留一行标题
+        const whpx = Math.max(24, ((x.b - x.a) / 60) * HOUR);
+        if (whpx < 26) blk.classList.add("tlt-wblk-short");
+        else if (whpx < 40) blk.classList.add("tlt-wblk-tight");
         blk.title = `${x.title}\n${x.st || ""}${x.en ? "–" + x.en : ""} · ${x.kind === "plan" ? T("计划") : T("记录")}`;
         blk.append(el("b", "tlt-wbt", x.title),
           el("span", "tlt-wbm", `${x.st || ""}${x.en ? "–" + x.en : ""}`));
@@ -3241,20 +3253,50 @@ export class WorkbenchView extends ItemView {
   }
 
   /** 日程块右键菜单：编辑 / 删除（计划块是"取消排期"） */
+  /**
+   * 「改日期 / 时间…」：手动把一条日程挪到别的日子/时间段，不用先删再建。
+   * 计划块：日期写 [plan::]（排期日），时间写 [st::]/[en::]——和拖动落盘同一套口径。
+   * 记录块：日期=它记在哪一天，时间=行首那一段。
+   */
+  private openBlockWhen(kind: "plan" | "log", item: Task) {
+    const day = kind === "plan" ? (item.plan || todayISO()) : (item.due || todayISO());
+    new BlockWhenModal(this.app, T("改日程"), { day, st: item.st || "09:00", en: item.en || "10:00" },
+      async (d, st, en) => {
+        if (kind === "plan") {
+          await this.store.setField(item, "plan", d);
+          await this.store.setField(item, "st", st);
+          await this.store.setField(item, "en", en);
+        } else {
+          if (d !== item.due) await this.store.moveLogToDate(item, d);
+          await this.store.setLogTime(item, st, en);
+        }
+        new Notice(T("已改到 {d} {a}–{b}", { d, a: st, b: en }), 2500);
+        await this.refresh();
+      }).open();
+  }
+
+  /**
+   * 恢复型定位：把"用户上次滚到的位置"补齐。
+   * 挂载时的恢复写在 fitCalendarHeight 之前，而 fit 会改内容高度，可能把 scrollTop 清成 0；
+   * 表现就是"拖动一个块，周视图就跳回 0 点"。这里在 fit 之后再压一次。
+   */
+  private reapplyStoredScroll() {
+    if (this.focusPending !== null) return;              // 正在显式定位（跳转/首次打开），别抢
+    if (this.tab !== "today") return;
+    if (this.calView === "d" && this.dayScroll && this.dayScroll.day === this.viewDate) {
+      const g = this.contentEl.querySelector<HTMLElement>(".tlt-daygrid");
+      if (g && g.clientHeight > 80 && Math.abs(g.scrollTop - this.dayScroll.top) > 2) g.scrollTop = this.dayScroll.top;
+    } else if (this.calView === "w" && this.weekScroll && this.weekScroll.day === this.viewDate) {
+      const w = this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
+      if (w && w.clientHeight > 80 && Math.abs(w.scrollTop - this.weekScroll.top) > 2) w.scrollTop = this.weekScroll.top;
+    }
+  }
+
   private blockMenu(kind: "plan" | "log", item: Task, at: { x: number; y: number }) {
     const items: { label: string; onClick: () => void | Promise<void>; danger?: boolean }[] = [];
     if (kind === "plan") {
       items.push({ label: T("打开任务"), onClick: () => new TaskModal(this.app, this.store, item, () => this.refresh()).open() });
-      items.push({
-        label: T("调整时间…"),
-        onClick: () => {
-          new PromptModal(this.app, T("调整时间段"), T("09:30–11:00"), async (v) => {
-            const m = /^(\d{1,2}):(\d{2})\s*(?:–|-|~)\s*(\d{1,2}):(\d{2})$/.exec(v.trim());
-            if (!m) { new Notice(T("格式像 09:30–11:00")); return; }
-            await this.saveBlockTime("plan", item.id, Number(m[1]) * 60 + Number(m[2]), Number(m[3]) * 60 + Number(m[4]));
-          }, `${item.st || "09:00"}–${item.en || "10:00"}`).open();
-        },
-      });
+      items.push({ label: T("改日期 / 时间…"), onClick: () => this.openBlockWhen("plan", item) });
       items.push({ label: T("写备注…"), onClick: () => {
         const day = item.plan || todayISO();
         new NoteEntryModal(this.app, this.store, item, day, () => this.refresh()).open();
@@ -3268,16 +3310,7 @@ export class WorkbenchView extends ItemView {
       } });
     } else {
       items.push({ label: T("编辑记录"), onClick: () => new LogModal(this.app, this.store, item, () => this.refresh()).open() });
-      items.push({
-        label: T("调整时间…"),
-        onClick: () => {
-          new PromptModal(this.app, T("调整时间段"), T("09:30–11:00"), async (v) => {
-            const m = /^(\d{1,2}):(\d{2})\s*(?:–|-|~)\s*(\d{1,2}):(\d{2})$/.exec(v.trim());
-            if (!m) { new Notice(T("格式像 09:30–11:00")); return; }
-            await this.saveBlockTime("log", item.id, Number(m[1]) * 60 + Number(m[2]), Number(m[3]) * 60 + Number(m[4]));
-          }, `${item.st || "09:00"}–${item.en || "10:00"}`).open();
-        },
-      });
+      items.push({ label: T("改日期 / 时间…"), onClick: () => this.openBlockWhen("log", item) });
       items.push({ label: T("删除这条记录"), danger: true, onClick: async () => {
         await this.store.deleteLog(item);
         new Notice(T("已删除记录"), 2500);

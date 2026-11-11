@@ -882,7 +882,7 @@ export class TLTSettingTab extends PluginSettingTab {
       },
     });
     const pick = (
-      key: "defaultPeriod" | "autoSyncMin" | "autoPushMin" | "theme" | "language",
+      key: "defaultPeriod" | "autoSyncMin" | "autoPushMin" | "theme" | "language" | "dayTaskScope",
       name: string, desc: string, options: Record<string, string>,
     ): SettingDefinition => ({ name: t(name), desc: t(desc), control: { type: "dropdown", key, options } });
     const every = { "0": t("关闭"), "5": t("5 分钟"), "15": t("15 分钟"), "30": t("30 分钟"), "60": t("1 小时") };
@@ -904,6 +904,14 @@ export class TLTSettingTab extends PluginSettingTab {
           folder("logsFolder", T("记录目录"), T("按月一个文件，正文用 ## 日期 分节。"), d.logsFolder),
           text("ideasFile", T("随手记文件"), T("单文件，一行一条。"), d.ideasFile),
           text("tagsFile", T("标签库文件"), T("单文件，一行一个标签。"), d.tagsFile),
+        ],
+      },
+      {
+        type: "group", heading: t("日历"),
+        items: [
+          pick("dayTaskScope", T("「点一下排进时间表」列哪些任务"),
+            T("日历日视图右侧那个清单（标题「这天要做的」）的口径。只影响日历日程怎么显示，和下面的统计口径（占比周期、饱和度）不是一回事。"),
+            { due: t("今天截止的（默认）"), span: t("开展中的（跨天任务每天都算）") }),
         ],
       },
       {

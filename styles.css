@@ -2275,6 +2275,22 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-daily-lt { color: var(--tlt-ink3); font-variant-numeric: tabular-nums; margin-right: 6px; font-size: 0.92em; }
 .tlt-daily-lb { color: var(--tlt-ink); }
 
-/* 很矮的日程块（≤25 分钟）：只显示标题，时间交给悬停提示/详情 */
+/* 日程块：**名称优先**。块里放不下两行时收掉时间，绝不出现"只看得见一个时间、看不到名称" */
+.tlt-blk-t, .tlt-wbt {
+  white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+/* 矮块（约 40 分钟内）：时间收掉，标题两行 */
+.tlt-blk-c.tlt-blk-tight .tlt-blk-m { display: none; }
+/* 极矮（约 25 分钟内）/ 极矮的周块：只留一行标题 */
 .tlt-blk-c.tlt-blk-short .tlt-blk-m { display: none; }
-.tlt-blk-c.tlt-blk-short .tlt-blk-t { font-size: 10px; line-height: 1.2; }
+.tlt-blk-c.tlt-blk-short .tlt-blk-t { -webkit-line-clamp: 1; font-size: 10px; line-height: 1.25; }
+.tlt-wblk.tlt-wblk-tight .tlt-wbm { display: none; }
+.tlt-wblk.tlt-wblk-short .tlt-wbm { display: none; }
+.tlt-wblk.tlt-wblk-short .tlt-wbt { -webkit-line-clamp: 1; }
+
+/* 「改日程」弹窗里的三行 */
+.tlt-m-whenrow { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.tlt-m-whenlabel { width: 42px; color: var(--tlt-ink3); font-size: 12px; flex: none; }
+.tlt-m-whenrow .tlt-input { flex: 1; }
+.tlt-m-hint { color: var(--tlt-ink4); font-size: 11.5px; margin: 4px 0 2px; }
