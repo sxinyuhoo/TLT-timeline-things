@@ -476,12 +476,32 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   const el2 = tab.containerEl;
   assert.equal(el2.querySelectorAll("h1, h2, h3").length, 0, "不该手写标题元素");
   const names = [...el2.querySelectorAll(".setting-item-name")].map((e) => e.textContent);
-  assert.deepEqual(names.slice(0, 4), ["界面语言", "每周从哪天开始", "「这天要做的」怎么收任务", "主题"], `通用项应排在最前，实际 ${names.slice(0, 4)}`);
+  assert.deepEqual(names.slice(0, 4), ["界面语言", "每周从哪天开始", "「点一下排进时间表」列哪些任务", "主题"], `通用项应排在最前，实际 ${names.slice(0, 4)}`);
   // 「这天要做的」口径：默认只按截止日，可切到跨天
-  const scopeRow = [...el2.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "「这天要做的」怎么收任务");
+  const scopeRow = [...el2.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "「点一下排进时间表」列哪些任务");
   assert.ok(scopeRow && scopeRow.querySelector("select"), "口径设置应是个下拉");
   const opts = [...scopeRow.querySelectorAll("option")].map((o) => o.textContent);
-  assert.deepEqual(opts, ["只按截止日（默认）", "跨天任务每天都算"], `下拉选项：${opts}`);
+  assert.deepEqual(opts, ["今天截止的（默认）", "开展中的（跨天任务每天都算）"], `下拉选项：${opts}`);
+  // 口径真的影响日视图右侧"点一下排进时间表"那个清单
+  {
+    const dv = mount(WorkbenchView);
+    await dv.onOpen();
+    const prevScope = dv.store.settings.dayTaskScope;      // 用完还回去，别影响别的用例
+    dv.tab = "today"; dv.calView = "d"; dv.viewDate = D;
+    files["TLT/tasks/口径.md"] = `# 口径（测试）\n\n## 一期\n\n- [ ] 今天截止的活 📅 ${D} [created:: ${D}]\n- [ ] 开展中的活 🛫 ${D} 📅 2026-12-31 [created:: ${D}]\n`;
+    await dv.store.load();
+    dv.store.settings.dayTaskScope = "due";
+    await dv.render();
+    let chips = [...dv.contentEl.querySelectorAll(".tlt-chipq")].map((c) => c.textContent || "");
+    assert.ok(chips.some((c) => c.includes("今天截止的活")), `「今天截止的」应列出来：${chips.join(" / ")}`);
+    assert.ok(!chips.some((c) => c.includes("开展中的活")), `默认不该列跨天开展中的：${chips.join(" / ")}`);
+    dv.store.settings.dayTaskScope = "span";
+    await dv.render();
+    chips = [...dv.contentEl.querySelectorAll(".tlt-chipq")].map((c) => c.textContent || "");
+    assert.ok(chips.some((c) => c.includes("开展中的活")), `「开展中的」应列出来：${chips.join(" / ")}`);
+    dv.store.settings.dayTaskScope = prevScope;
+    delete files["TLT/tasks/口径.md"];
+  }
   // 服务地址不再出现在设置里：都在消息中心的发布/订阅面板里填
   for (const gone of ["发布服务地址", "拉取服务地址"]) {
     assert.ok(!names.includes(gone), `设置里不该再有「${gone}」：${names.join(" / ")}`);

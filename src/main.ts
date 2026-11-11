@@ -1019,11 +1019,11 @@ export class TLTSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName(t("「这天要做的」怎么收任务"))
-      .setDesc(t("日视图右侧那个清单的口径。默认只看截止日；换成「跨天任务每天出现」后，🛫 开始日到 📅 截止日之间的每一天都会列出它。"))
+      .setName(t("「点一下排进时间表」列哪些任务"))
+      .setDesc(t("日历日视图右侧那个清单（标题「这天要做的」）的口径。「今天截止的」= 只列 📅 是这天、还没排时间的；「开展中的」= 另外把 🛫 开始日到 📅 截止日之间的跨天任务，在区间内每一天都列出来。"))
       .addDropdown((dd) => {
-        dd.addOption("due", t("只按截止日（默认）"))
-          .addOption("span", t("跨天任务每天都算"))
+        dd.addOption("due", t("今天截止的（默认）"))
+          .addOption("span", t("开展中的（跨天任务每天都算）"))
           .setValue(p.settings.dayTaskScope ?? "due")
           .onChange((v) => {
             p.settings.dayTaskScope = v === "span" ? "span" : "due";
