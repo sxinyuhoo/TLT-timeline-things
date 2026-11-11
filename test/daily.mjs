@@ -240,6 +240,48 @@ await t("勾选框点一下＝勾上（不能被行级处理翻两次）；点�
   assert.ok(!rowOf(), "勾完之后不该还留在待做清单里");
 });
 
+await t("当天日程记录：以 bullet 显示、排在任务下面；空文案改成「这天没有待办，也没有记录」", async () => {
+  fixture();
+  fps.files["TLT/logs/2026-10.md"] = `# 记录 2026-10\n\n## 2026-10-29\n\n- 09:30–11:00 交通厅对接会\n- 下午随手记的一条\n\n## 2026-10-30\n\n- 次日的事\n`;
+  fps.files["TLT/tasks/记录专用.md"] = `# 记录专用\n\n## 一期\n\n- [ ] 记录专用任务 📅 2026-10-29 [est:: 1]\n`;
+  const { app, store } = await makeStore();
+  await store.load();
+  const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() {} };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  renderDaily(plugin, host, "", "70-生活/diary/2026/20261029.md");
+
+  const list = host.querySelector(".tlt-daily-logs");
+  assert.ok(list, "当天有记录就该有 bullet 列表");
+  const items = [...list.querySelectorAll("li")].map((li) => li.textContent.trim());
+  assert.deepEqual(items, ["09:30–11:00交通厅对接会", "下午随手记的一条"], `只列当天那两条（不带时间的排在后面），实际 ${JSON.stringify(items)}`);
+  assert.ok(list.textContent.includes("09:30–11:00"), "时间要显示出来");
+  // 顺序：记录列表排在所有任务行之后
+  const rows = [...host.querySelectorAll(".tlt-daily-row")];
+  const lastRowY = rows.length ? rows[rows.length - 1].compareDocumentPosition(list) : 0;
+  assert.ok(rows.length === 0 || (lastRowY & 4) !== 0, "记录要排在任务下面");
+  assert.ok(host.textContent.includes("日程记录"), "要有小标题");
+  assert.ok(!host.textContent.includes("也没有完成的记录"), "旧文案不该再出现");
+
+  // 第二天（10-30）：任务没有，但有一条记录 → 不显示空文案
+  host.empty();
+  renderDaily(plugin, host, "", "70-生活/diary/2026/20261030.md");
+  assert.ok(!host.querySelector(".tlt-daily-empty"), "有记录就不算空");
+  assert.ok(host.querySelector(".tlt-daily-logs").textContent.includes("次日的事"), "第二天那条要出现");
+
+  // 第三天（10-31）：任务和记录都没有 → 新空文案（换一个干净库，免得共用夹具里别的任务还挂着）
+  fps.files = {};
+  fps.files["70-生活/diary/2026/20261031.md"] = "";
+  const { store: s2 } = await makeStore();
+  await s2.load();
+  const plugin2 = { store: s2, dailyBlocks: new Set(), refreshDailyBlocks() {} };
+  host.empty();
+  renderDaily(plugin2, host, "", "70-生活/diary/2026/20261031.md");
+  const empty = host.querySelector(".tlt-daily-empty");
+  assert.ok(empty && empty.textContent.includes("这天没有待办，也没有记录"), "空文案应是新版");
+  assert.ok(!host.querySelector(".tlt-daily-logs"), "没记录就别画列表");
+});
+
 await t("工作台里改完（重读数据）后，日记块跟着更新——用户报的 bug", async () => {
   fixture();
   // 用"今天"的日记 + 今天到期的任务：勾完才会进「今日已完成」（这是用户的实际场景）

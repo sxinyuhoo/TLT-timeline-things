@@ -186,8 +186,27 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
   if (o.wip) section(T("进行中"), g.wip, "todo");
   section(T("今日已完成"), g.done, "done");
 
-  if ((!o.overdue || !g.overdue.length) && !g.todo.length && !g.planned.length && !g.done.length && !(o.wip && g.wip.length)) {
-    box.appendChild(el("div", "tlt-daily-empty", T("这天没有待办，也没有完成的记录")));
+  // 这一天的日程记录（日历里"实际发生的事"）：统一排在任务下面，一行一条 bullet。
+  // 数据就是 TLT/logs/<月>.md 里 `## 某天` 段落的那些行（解析成 kind === "log" 的记录）。
+  const logs = store.logs
+    .filter((l) => l.due === date)
+    .sort((a, b) => (a.st || "99:99").localeCompare(b.st || "99:99"));
+  if (logs.length) {
+    const h = el("div", "tlt-daily-h");
+    h.append(el("span", "", T("日程记录")), el("b", "", String(logs.length)));
+    box.appendChild(h);
+    const ul = el("ul", "tlt-daily-logs");
+    logs.forEach((l) => {
+      const li = el("li", "");
+      if (l.st) li.appendChild(el("span", "tlt-daily-lt", l.en ? `${l.st}–${l.en}` : l.st));
+      li.appendChild(el("span", "tlt-daily-lb", l.title));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+  }
+
+  if ((!o.overdue || !g.overdue.length) && !g.todo.length && !g.planned.length && !g.done.length && !(o.wip && g.wip.length) && !logs.length) {
+    box.appendChild(el("div", "tlt-daily-empty", T("这天没有待办，也没有记录")));
   }
 }
 
