@@ -1019,19 +1019,6 @@ export class TLTSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName(t("「点一下排进时间表」列哪些任务"))
-      .setDesc(t("日历日视图右侧那个清单（标题「这天要做的」）的口径。「今天截止的」= 只列 📅 是这天、还没排时间的；「开展中的」= 另外把 🛫 开始日到 📅 截止日之间的跨天任务，在区间内每一天都列出来。"))
-      .addDropdown((dd) => {
-        dd.addOption("due", t("今天截止的（默认）"))
-          .addOption("span", t("开展中的（跨天任务每天都算）"))
-          .setValue(p.settings.dayTaskScope ?? "due")
-          .onChange((v) => {
-            p.settings.dayTaskScope = v === "span" ? "span" : "due";
-            void p.saveSettings();
-          });
-      });
-
-    new Setting(containerEl)
       .setName(t("主题"))
       .setDesc(T("跟随 Obsidian，或强制深色/浅色。主界面右上角的按钮也能切。"))
       .addDropdown((d) =>
@@ -1098,6 +1085,25 @@ export class TLTSettingTab extends PluginSettingTab {
     folder("tagsFile", t("标签库文件"), t("单文件，一行一个标签。"), d.tagsFile);
 
     /* ---------- 口径 ---------- */
+    /* ---------- 日历 ---------- */
+    new Setting(containerEl).setName(t("日历")).setHeading();
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: T("只影响日历日程怎么显示，和上面的统计口径（占比周期、饱和度）不是一回事。"),
+    });
+    new Setting(containerEl)
+      .setName(t("「点一下排进时间表」列哪些任务"))
+      .setDesc(t("日历日视图右侧那个清单（标题「这天要做的」）的口径。「今天截止的」= 只列 📅 是这天、还没排时间的；「开展中的」= 另外把 🛫 开始日到 📅 截止日之间的跨天任务，在区间内每一天都列出来。"))
+      .addDropdown((dd) => {
+        dd.addOption("due", t("今天截止的（默认）"))
+          .addOption("span", t("开展中的（跨天任务每天都算）"))
+          .setValue(p.settings.dayTaskScope ?? "due")
+          .onChange((v) => {
+            p.settings.dayTaskScope = v === "span" ? "span" : "due";
+            void p.saveSettings();
+          });
+      });
+
     new Setting(containerEl).setName(t("口径")).setHeading();
     new Setting(containerEl)
       .setName(t("默认占比周期"))

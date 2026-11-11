@@ -476,7 +476,7 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   const el2 = tab.containerEl;
   assert.equal(el2.querySelectorAll("h1, h2, h3").length, 0, "不该手写标题元素");
   const names = [...el2.querySelectorAll(".setting-item-name")].map((e) => e.textContent);
-  assert.deepEqual(names.slice(0, 4), ["界面语言", "每周从哪天开始", "「点一下排进时间表」列哪些任务", "主题"], `通用项应排在最前，实际 ${names.slice(0, 4)}`);
+  assert.deepEqual(names.slice(0, 3), ["界面语言", "每周从哪天开始", "主题"], `通用项应排在最前，实际 ${names.slice(0, 3)}`);
   // 「这天要做的」口径：默认只按截止日，可切到跨天
   const scopeRow = [...el2.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "「点一下排进时间表」列哪些任务");
   assert.ok(scopeRow && scopeRow.querySelector("select"), "口径设置应是个下拉");
@@ -507,7 +507,9 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
     assert.ok(!names.includes(gone), `设置里不该再有「${gone}」：${names.join(" / ")}`);
   }
   const heads = [...el2.querySelectorAll(".setting-item-heading .setting-item-name")].map((e) => e.textContent);
-  assert.deepEqual(heads, ["目录", "口径", "消息服务", "维护"], `分节：${heads}`);
+  assert.deepEqual(heads, ["目录", "日历", "口径", "消息服务", "维护"], `分节：${heads}`);
+  // 日历是独立一节：口径（占比周期/饱和度）不能被拿来管日程显示
+  assert.equal(scopeRow.closest(".setting-item").previousElementSibling?.textContent?.includes("只影响日历"), true, "日历节要先说明它和统计口径无关");
   const buttons = [...el2.querySelectorAll("button")].map((b) => b.textContent);
   assert.ok(buttons.includes("推送我的源") && buttons.includes("同步订阅") && buttons.includes("测试连接"), `按钮：${buttons}`);
   const rootRow = [...el2.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "根目录");
@@ -1449,6 +1451,32 @@ await t("主题令牌：color-scheme 跟着插件走 + 控件规则压得住主�
   // 3) 不该再依赖 Obsidian 的变量（深色/浅色切换时会不跟随）
   const obsidianVars = [...css.matchAll(/var\(--(background|text|interactive|divider)[a-z-]*/g)].map((m) => m[0]);
   assert.equal(obsidianVars.length, 0, `还有 Obsidian 变量没换：${obsidianVars.slice(0, 5).join(", ")}`);
+});
+
+await t("日视图九点看过、十一点还在：心跳要自己把「现在」那条线挪过去（不用切视图）", async () => {
+  document.body.empty();
+  const n0 = new Date();
+  const TS = `${n0.getFullYear()}-${String(n0.getMonth() + 1).padStart(2, "0")}-${String(n0.getDate()).padStart(2, "0")}`;
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  files["TLT/tasks/心跳.md"] = `# 心跳（测试）\n\n## 一期\n\n- [ ] 心跳任务 📅 ${TS} [created:: ${TS}]\n`;
+  await view.store.load();
+  view.tab = "today"; view.calView = "d"; view.viewDate = TS;
+  await view.render();
+  await new Promise((r) => setTimeout(r, 3600));   // 等"定位到现在"的几次重试都跑完，免得它把线又画回真实时间
+  assert.ok(view.contentEl.querySelector(".tlt-now"), "今天要有一条「现在」线");
+  view.tickNow(new Date(n0.getFullYear(), n0.getMonth(), n0.getDate(), 15, 30));   // 假装到了 15:30
+  const line = view.contentEl.querySelector(".tlt-now");
+  const top = parseFloat(line.style.top || "0");
+  const want = ((15 * 60 + 30) / 60) * 84;                       // 时间轴全天 00:00 起，84px/小时
+  assert.ok(Math.abs(top - want) <= 1, `线的位置该走到 15:30（期望 ${want}px，实际 ${top}px）`);
+  assert.ok(line.textContent.includes("15:30"), `标签也要跟着走：${line.textContent}`);
+  // 看别的日期时心跳不该插一条"现在"线
+  view.viewDate = "2026-11-01";
+  await view.render();
+  view.tickNow(new Date(n0.getFullYear(), n0.getMonth(), n0.getDate(), 15, 31));
+  assert.ok(!view.contentEl.querySelector(".tlt-now"), "非今天的日视图不该有「现在」线");
+  delete files["TLT/tasks/心跳.md"];
 });
 
 await t("切到人员：卡片 + 饱和度 45%", async () => {

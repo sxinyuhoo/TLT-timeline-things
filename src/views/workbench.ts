@@ -203,6 +203,42 @@ export class WorkbenchView extends ItemView {
   private scrollToMin: number | null = null;
   /** 日历里"待居中到视口 42%"的时刻（分钟）；应用一次就清掉 */
   private focusPending: number | null = null;
+  /** 分钟级心跳：日视图里"现在"那条线要自己走，不能等切视图才刷新 */
+  private nowTimer: number | null = null;
+  /** 上次心跳时认为是"今天"的那天，用来发现跨天 */
+  private nowDay = "";
+  /** 每 30 秒走一次：日视图（今天）里把"现在"那条线挪到当下的位置；跨天则整页重画 */
+  private startNowTicker() {
+    if (this.nowTimer !== null) return;
+    this.nowDay = todayISO();
+    this.nowTimer = window.setInterval(() => { this.tickNow(); }, 30_000);
+  }
+
+  /**
+   * 心跳一次。`at` 只给测试用；正常走系统时间。
+   * 只动"现在"那条线：不重画整个日历，也不会把用户正在看的滚动位置拽走。
+   */
+  tickNow(at?: Date) {
+    const now = at ?? new Date();
+    const nm = now.getHours() * 60 + now.getMinutes();
+    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const crossed = this.nowDay !== "" && day !== this.nowDay;   // 第一次跑不算跨天
+    this.nowDay = day;
+    if (this.tab !== "today") return;
+    if (crossed) {
+      // 跨天了：日期条、"今天"高亮、"现在"线全都要重算。原来停在昨天的话，跟着滚到今天
+      if (this.calView === "d" && this.viewDate !== day) this.viewDate = day;
+      void this.render();
+      return;
+    }
+    if (this.calView !== "d" || this.viewDate !== day) return;
+    const line = this.contentEl.querySelector<HTMLElement>(".tlt-now");
+    if (!line) { void this.render(); return; }        // 刚进入 0:00–24:00 的可视区间，补一条
+    line.style.top = `${((nm - DAY_FROM) / 60) * HOUR_PX}px`;
+    const b = line.querySelector("b");
+    if (b) b.setText(T("现在 {t}", { t: minToHHMM(nm) }));
+  }
+
   /** "定位到现在"重试次数：容器还没真实高度时不能写 scrollTop，等它稳 */
   private focusTries = 0;
   /** 定位方式：false＝把目标时刻放到视口 42% 处（居中偏上）；true＝让目标时刻**贴着视口顶部** */
@@ -286,16 +322,19 @@ export class WorkbenchView extends ItemView {
       this.ro.observe(this.contentEl);
     }
     await this.render();
+    this.startNowTicker();                 // 打开就开心跳：日历上的"现在"要自己走
   }
   async onClose() {
     this.ro?.disconnect();
     this.ro = null;
+    if (this.nowTimer !== null) { window.clearInterval(this.nowTimer); this.nowTimer = null; }
     this.contentEl.empty();
   }
 
   async refresh() {
     await this.ensureData(true);
     await this.render();
+    this.startNowTicker();
   }
 
   /**
