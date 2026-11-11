@@ -2294,3 +2294,14 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-m-whenlabel { width: 42px; color: var(--tlt-ink3); font-size: 12px; flex: none; }
 .tlt-m-whenrow .tlt-input { flex: 1; }
 .tlt-m-hint { color: var(--tlt-ink4); font-size: 11.5px; margin: 4px 0 2px; }
+
+/* 手机档周视图：整周一条 + 只画选中的那一天（列宽才够，重叠的块也读得清） */
+.tlt-root[data-tier="phone"] .tlt-wcols { grid-template-columns: 52px 1fr; }
+.tlt-root[data-tier="phone"] .tlt-whead { grid-template-columns: 52px repeat(7, 1fr); gap: 2px; }
+.tlt-root[data-tier="phone"] .tlt-wd { padding: 4px 2px 5px; border-radius: 8px; }
+.tlt-root[data-tier="phone"] .tlt-wd.sel { background: color-mix(in srgb, var(--tlt-acc) 16%, transparent); }
+.tlt-root[data-tier="phone"] .tlt-wdn { font-size: 14px; font-weight: 600; }
+.tlt-root[data-tier="phone"] .tlt-wdw { font-size: 10px; }
+.tlt-root[data-tier="phone"] .tlt-wdn2 { display: block; font-size: 9px; color: var(--tlt-ink4); margin-top: 1px; }
+.tlt-root[data-tier="phone"] .tlt-wbt { font-size: 12px; }        /* 一列了，名称可以大一点 */
+.tlt-root[data-tier="phone"] .tlt-wbm { font-size: 10px; }

@@ -1487,6 +1487,40 @@ await t("周视图滚动位置：重渲/fit 之后不能被清成 0（拖动日�
   delete files["TLT/tasks/滚动恢复.md"];
 });
 
+await t("手机档周视图：整周一条 + 只画选中那天（列宽才够；点条上的日期能换天）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  files["TLT/tasks/手机周.md"] = `# 手机周（测试）\n\n## 一期\n\n`
+    + `- [ ] 周一的活 📅 2026-11-09 [st:: 14:00] [en:: 14:30] [plan:: 2026-11-09] [created:: 2026-11-09]\n`
+    + `- [ ] 周三上午的会 📅 2026-11-11 [st:: 09:30] [en:: 10:30] [plan:: 2026-11-11] [created:: 2026-11-11]\n`
+    + `- [ ] 周三另一个会 📅 2026-11-11 [st:: 09:30] [en:: 10:30] [plan:: 2026-11-11] [created:: 2026-11-11]\n`;
+  await view.store.load();
+  // 让 measureTier 真的判成手机档：容器宽度 < 620（jsdom 量不到就手动给一个）
+  Object.defineProperty(view.contentEl, "clientWidth", { value: 390, configurable: true });
+  view.tab = "today"; view.calView = "w"; view.viewDate = "2026-11-11";
+  await view.render();
+
+  const cols = () => [...view.contentEl.querySelectorAll(".tlt-wcol")];
+  assert.equal(cols().length, 1, `手机档只画一列，实际 ${cols().length}`);
+  const heads = [...view.contentEl.querySelectorAll(".tlt-whead .tlt-wd")];
+  assert.equal(heads.length, 7, "上面仍是整周 7 格");
+  assert.ok(heads.every((h) => h.querySelector(".tlt-wdn2")), "每格带当天条数");
+  const wed = heads.find((h) => h.dataset.day === "2026-11-11");
+  const nBody = cols()[0].querySelectorAll(".tlt-wblk").length;
+  assert.equal(wed.querySelector(".tlt-wdn2").textContent, String(nBody), "格子上的条数要和列里画出来的一致");
+  assert.ok(nBody >= 2, `周三至少要有我放进去的两条，实际 ${nBody}`);
+  assert.ok(wed.classList.contains("sel"), "选中那天要有选中态");
+  // 点周一的格子 → 换成周一
+  heads.find((h) => h.dataset.day === "2026-11-09").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 700));       // 点一下会走一次 ensureData + render
+  assert.equal(view.viewDate, "2026-11-09", `点日期应换天，实际 ${view.viewDate}`);
+  assert.equal([...view.contentEl.querySelectorAll(".tlt-wcol")].length, 1, "换天之后还是一列");
+  assert.ok(view.contentEl.querySelector(".tlt-wcol .tlt-wblk")?.textContent.includes("周一的活"), "换成周一后画周一那条");
+  delete files["TLT/tasks/手机周.md"];
+  Object.defineProperty(view.contentEl, "clientWidth", { value: 0, configurable: true });
+});
+
 await t("左栏可折叠写进设置；消息中心是浮层（点 ✕ 关、点工作台也关）", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);

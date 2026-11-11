@@ -2147,14 +2147,21 @@ export class WorkbenchView extends ItemView {
 
     p.appendChild(this.rhythm());          // 节奏保持在上面：切视图它不动
     p.appendChild(this.calBar());          // 档位切换 + 导航，四个视图共用
+    // 手机档：7 列挤在一屏怎么看都只有几个字，改成"整周一条 + 选中的那一天"（跟系统日历一个路子）。
+    // 条上每格带当天条数，点一下换那天；列体只画选中日，列宽就够了，重叠的块也读得清。
+    const phone = this.tier === "phone";
     const head = el("div", "tlt-whead");
     head.appendChild(el("div", "tlt-wgut"));
     days.forEach((k) => {
       const d = D(k);
-      const c = el("div", "tlt-wd" + (k === todayISO() ? " today" : ""));
+      const c = el("div", "tlt-wd" + (k === todayISO() ? " today" : "") + (phone && k === this.viewDate ? " sel" : ""));
       c.dataset.day = k;                       // 列头＝去那天；列身空白＝在这天这个时间点建日程
       c.dataset.goday = "1";
       c.append(el("span", "tlt-wdw", weekday(d.getDay())), el("span", "tlt-wdn", String(d.getDate())));
+      if (phone) {
+        const n = this.blocksOn(k).length;
+        c.appendChild(el("span", "tlt-wdn2", n ? String(n) : ""));    // 当天有几条：一眼扫一周
+      }
       head.appendChild(c);
     });
     p.appendChild(head);
@@ -2187,6 +2194,7 @@ export class WorkbenchView extends ItemView {
     cols.appendChild(el("div", "tlt-wgut2"));        // 第一格留给左侧刻度，别让周一到周五挤进 52px 里
     inner.appendChild(cols);
     days.forEach((k) => {
+      if (phone && k !== this.viewDate) return;                        // 手机档只画选中那天
       // 周视图不给"选中日"整列上底色：两个蓝底并排看着像蒙版；今天留一层极淡的
       const col = el("div", "tlt-wcol" + (k === todayISO() ? " today" : ""));
       col.dataset.day = k;
@@ -2235,6 +2243,7 @@ export class WorkbenchView extends ItemView {
     // 列宽拿不到（还没布局）时按 120px 估，免得横向拖一下跳到很远的天
     const colW = () => { const w = col ? col.getBoundingClientRect().width : 0; return w > 8 ? w : 120; };
     const dayAt = (dx: number) => {
+      if (this.tier === "phone") return day;               // 手机档一列：横向别跨天，免得一拖就跳走
       const start = this.store.settings.weekStart === 0 ? 0 : 1;
       const days = weekDays(this.viewDate, start);
       const idx = days.indexOf(day);
@@ -2912,7 +2921,9 @@ export class WorkbenchView extends ItemView {
         new QuickLogModal(this.app, this.store, k, () => { void this.refresh(); }, startAt).open();
         return;
       }
-      // 周/月/年视图里点某天＝进那天的日视图（macOS 的手感）；日视图里就是切日子
+      // 周/月/年视图里点某天＝进那天的日视图（macOS 的手感）；日视图里就是切日子。
+      // 手机档的周视图是个例外：那里本来就只画选中那天，点日期＝换看哪天，别跳走。
+      if (this.calView === "w" && this.tier === "phone") { this.viewDate = k; await this.render(); return; }
       if (this.calView !== "d") this.calView = "d";
       this.viewDate = k;
       await this.render(); return;
