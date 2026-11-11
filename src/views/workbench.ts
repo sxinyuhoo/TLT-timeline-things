@@ -2107,8 +2107,14 @@ export class WorkbenchView extends ItemView {
     } else if (this.calView === "w") {
       const days = weekDays(sel, p);
       const a = D(days[0]), b = D(days[6]);
-      lab.append(T("{y} 年 {m} 月 {d} 日", { y: a.getFullYear(), m: a.getMonth() + 1, d: a.getDate() }));
-      lab.createEl("em", { text: T("到 {m} 月 {d} 日（第 {w} 周）", { m: b.getMonth() + 1, d: b.getDate(), w: isoWeek(days[0]) }) });
+      if (this.tier === "phone") {
+        // 手机档一行放不下长日期：写成「11 月 9 日–15 日 · 第 46 周」
+        lab.append(T("{m} 月 {d} 日–{d2} 日", { m: a.getMonth() + 1, d: a.getDate(), d2: b.getDate() }));
+        lab.createEl("em", { text: T("第 {w} 周", { w: isoWeek(days[0]) }) });
+      } else {
+        lab.append(T("{y} 年 {m} 月 {d} 日", { y: a.getFullYear(), m: a.getMonth() + 1, d: a.getDate() }));
+        lab.createEl("em", { text: T("到 {m} 月 {d} 日（第 {w} 周）", { m: b.getMonth() + 1, d: b.getDate(), w: isoWeek(days[0]) }) });
+      }
     } else if (this.calView === "m") {
       const dl = D(sel);
       lab.append(T("{y} 年 {m} 月", { y: dl.getFullYear(), m: dl.getMonth() + 1 }));

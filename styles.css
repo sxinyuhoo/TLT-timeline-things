@@ -2093,6 +2093,15 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 /* 日历工具栏（日/周/月/年 + 日期导航）：允许换行 */
 .tlt-root[data-tier="phone"] .tlt-dbar { flex-wrap: wrap; gap: 6px; }
 .tlt-root[data-tier="phone"] .tlt-dbar .tlt-hint2 { display: none; }
+/* 手机档：日/周/月/年 独占一行，日期选择器（‹ 日期 › 回到今天）在它下面排成一行 */
+.tlt-root[data-tier="phone"] .tlt-calview { flex: 1 0 100%; }
+.tlt-root[data-tier="phone"] .tlt-dbar .tlt-dlabel {
+  flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tlt-root[data-tier="phone"] .tlt-dbar .tlt-dlabel em { margin-left: 4px; }
+.tlt-root[data-tier="phone"] .tlt-dbar .tlt-spacer { display: none; }
+.tlt-root[data-tier="phone"] .tlt-dbar .tlt-dhint { display: none; }      /* 这条统计在右栏里已有，别把选择器挤到第二行 */
+.tlt-root[data-tier="phone"] .tlt-dbar .tlt-btn { flex: none; }
 /* 顶栏：藏明暗按钮、新建只留"＋"、搜索收窄、标题不吃零宽 */
 .tlt-root[data-tier="phone"] .tlt-theme-btn { display: none; }
 .tlt-root[data-tier="phone"] .tlt-search { flex: 0 1 96px; min-width: 72px; }

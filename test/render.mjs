@@ -1487,6 +1487,25 @@ await t("周视图滚动位置：重渲/fit 之后不能被清成 0（拖动日�
   delete files["TLT/tasks/滚动恢复.md"];
 });
 
+await t("手机档日期选择器：日/周/月/年 独占一行，‹ 日期 › 回到今天 在下面排成一行（不折成两行）", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.tlt-root\[data-tier="phone"\] \.tlt-calview\s*\{\s*flex:\s*1 0 100%/.test(css), "手机档分段控件要独占一行");
+  assert.ok(/\.tlt-root\[data-tier="phone"\] \.tlt-dbar \.tlt-dhint\s*\{\s*display:\s*none/.test(css), "手机档把那条统计藏掉，别把选择器挤下去");
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  Object.defineProperty(view.contentEl, "clientWidth", { value: 390, configurable: true });
+  view.tab = "today"; view.calView = "w"; view.viewDate = "2026-11-11";
+  await view.render();
+  const lab = view.contentEl.querySelector(".tlt-dbar .tlt-dlabel");
+  assert.equal(lab.textContent.replace(/\s+/g, ""), "11月9日–15日第46周", `手机档要用短日期，实际 ${lab.textContent}`);
+  const bar = view.contentEl.querySelector(".tlt-dbar");
+  const kids = [...bar.children].map((c) => c.className.split(" ")[0]);
+  assert.deepEqual(kids.slice(0, 5), ["tlt-seg", "tlt-dnav", "tlt-dlabel", "tlt-dnav", "tlt-btn"], `选择器顺序：${kids.join(" / ")}`);
+  assert.ok(!bar.querySelector(".tlt-dhint"), "手机档不该有那条记录/未排的统计");
+  Object.defineProperty(view.contentEl, "clientWidth", { value: 0, configurable: true });
+});
+
 await t("手机档周视图：整周一条 + 只画选中那天（列宽才够；点条上的日期能换天）", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
