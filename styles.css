@@ -1791,7 +1791,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-calview .tlt-seg-b { min-width: 46px; padding: 0 13px; text-align: center; }
 
 /* ---- 周视图：7 列 × 同一条时间轴 ---- */
-.tlt-whead { display: grid; grid-template-columns: 52px repeat(7, 1fr); gap: 3px; padding: 0 8px 4px 0; }
+.tlt-whead { display: grid; grid-template-columns: 52px repeat(7, var(--tlt-wcolw, 1fr)); gap: 3px; padding: 0 8px 4px 0; }
 .tlt-wgut { }
 .tlt-wd { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0 5px;
   border-radius: 8px; cursor: pointer; }
@@ -1804,7 +1804,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-wscroll { position: relative; height: 480px; overflow-y: auto; overscroll-behavior: contain;
   border: 1px solid var(--tlt-line); border-radius: 11px; background: var(--tlt-bg2); }
 .tlt-winner { position: relative; width: 100%; }
-.tlt-wcols { position: absolute; inset: 0 8px 0 0; display: grid; grid-template-columns: 52px repeat(7, 1fr); gap: 3px; }
+.tlt-wcols { position: absolute; inset: 0 8px 0 0; display: grid; grid-template-columns: 52px repeat(7, var(--tlt-wcolw, 1fr)); gap: 3px; }
 .tlt-wgut2 { }
 .tlt-wcol { position: relative; border-left: 1px solid var(--tlt-line4); }
 .tlt-wcol:first-child { border-left: 0; }
@@ -2306,8 +2306,22 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-m-hint { color: var(--tlt-ink4); font-size: 11.5px; margin: 4px 0 2px; }
 
 /* 手机档周视图：整周一条 + 只画选中的那一天（列宽才够，重叠的块也读得清） */
-.tlt-root[data-tier="phone"] .tlt-wcols { grid-template-columns: 52px 1fr; }
-.tlt-root[data-tier="phone"] .tlt-whead { grid-template-columns: 52px repeat(7, 1fr); gap: 2px; }
+/* 手机档周视图：整周 7 列都在，每列 148px，整块可以左右滑（日期头吸顶、刻度吸附在左侧） */
+.tlt-root[data-tier="phone"] { --tlt-wcolw: 148px; }
+.tlt-root[data-tier="phone"] .tlt-wscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tlt-root[data-tier="phone"] .tlt-whead {
+  position: sticky; top: 0; z-index: 5; width: max-content; gap: 2px; padding-right: 8px;
+  background: var(--tlt-bg);
+}
+.tlt-root[data-tier="phone"] .tlt-winner { width: max-content; }
+.tlt-root[data-tier="phone"] .tlt-wcols { position: static; inset: auto; width: max-content; gap: 2px; padding-right: 8px; }
+.tlt-root[data-tier="phone"] .tlt-wgut,
+.tlt-root[data-tier="phone"] .tlt-wgut2 { position: sticky; left: 0; z-index: 3; background: var(--tlt-bg); }
+.tlt-root[data-tier="phone"] .tlt-hour span {
+  /* sticky 对 inline 不生效，得先变成块级 */
+  display: inline-block; position: sticky; left: 2px; top: auto; z-index: 3;
+  background: var(--tlt-bg); padding-right: 4px;
+}
 .tlt-root[data-tier="phone"] .tlt-wd { padding: 4px 2px 5px; border-radius: 8px; }
 .tlt-root[data-tier="phone"] .tlt-wd.sel { background: color-mix(in srgb, var(--tlt-acc) 16%, transparent); }
 .tlt-root[data-tier="phone"] .tlt-wdn { font-size: 14px; font-weight: 600; }

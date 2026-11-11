@@ -1506,7 +1506,7 @@ await t("手机档日期选择器：日/周/月/年 独占一行，‹ 日期 �
   Object.defineProperty(view.contentEl, "clientWidth", { value: 0, configurable: true });
 });
 
-await t("手机档周视图：整周一条 + 只画选中那天（列宽才够；点条上的日期能换天）", async () => {
+await t("手机档周视图：整周 7 列都在（挤不下就横滑，不是只画一天）；列宽由 --tlt-wcolw 定", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
   await view.onOpen();
@@ -1521,21 +1521,23 @@ await t("手机档周视图：整周一条 + 只画选中那天（列宽才够�
   await view.render();
 
   const cols = () => [...view.contentEl.querySelectorAll(".tlt-wcol")];
-  assert.equal(cols().length, 1, `手机档只画一列，实际 ${cols().length}`);
+  assert.equal(cols().length, 7, `手机档也要画满整周 7 列，实际 ${cols().length}`);
   const heads = [...view.contentEl.querySelectorAll(".tlt-whead .tlt-wd")];
   assert.equal(heads.length, 7, "上面仍是整周 7 格");
   assert.ok(heads.every((h) => h.querySelector(".tlt-wdn2")), "每格带当天条数");
   const wed = heads.find((h) => h.dataset.day === "2026-11-11");
-  const nBody = cols()[0].querySelectorAll(".tlt-wblk").length;
-  assert.equal(wed.querySelector(".tlt-wdn2").textContent, String(nBody), "格子上的条数要和列里画出来的一致");
-  assert.ok(nBody >= 2, `周三至少要有我放进去的两条，实际 ${nBody}`);
-  assert.ok(wed.classList.contains("sel"), "选中那天要有选中态");
-  // 点周一的格子 → 换成周一
+  const wedCol = view.contentEl.querySelector('.tlt-wcol[data-day="2026-11-11"]');
+  const nBody = wedCol.querySelectorAll(".tlt-wblk").length;
+  assert.ok(nBody >= 2, `周三那一列至少要有我放进去的两条，实际 ${nBody}`);
+  assert.ok(view.contentEl.querySelector(".tlt-wscroll .tlt-whead"), "手机档日期头要放进横向滚动容器里（跟列一起滑）");
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/data-tier="phone"\]\s*\{[^}]*--tlt-wcolw:\s*148px/.test(css), "手机档列宽变量要有");
+  assert.ok(/data-tier="phone"\] \.tlt-wscroll\s*\{[^}]*overflow-x:\s*auto/.test(css), "要能横向滑");
+  // 点周一列头 → 进那天的日视图（桌面上就是这个手感）
   heads.find((h) => h.dataset.day === "2026-11-09").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   await new Promise((r) => setTimeout(r, 700));       // 点一下会走一次 ensureData + render
   assert.equal(view.viewDate, "2026-11-09", `点日期应换天，实际 ${view.viewDate}`);
-  assert.equal([...view.contentEl.querySelectorAll(".tlt-wcol")].length, 1, "换天之后还是一列");
-  assert.ok(view.contentEl.querySelector(".tlt-wcol .tlt-wblk")?.textContent.includes("周一的活"), "换成周一后画周一那条");
+  assert.equal(view.calView, "d", "点列头＝进那天的日视图");
   delete files["TLT/tasks/手机周.md"];
   Object.defineProperty(view.contentEl, "clientWidth", { value: 0, configurable: true });
 });
