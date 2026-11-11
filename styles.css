@@ -2095,8 +2095,9 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-root[data-tier="phone"] .tlt-dbar .tlt-hint2 { display: none; }
 /* 手机档：日/周/月/年 独占一行，日期选择器（‹ 日期 › 回到今天）在它下面排成一行 */
 .tlt-root[data-tier="phone"] .tlt-calview { flex: 1 0 100%; }
+/* ‹ 日期 › 要挨在一起：标签只管缩小、不抢空白，否则右箭头会被顶到最右边去 */
 .tlt-root[data-tier="phone"] .tlt-dbar .tlt-dlabel {
-  flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tlt-root[data-tier="phone"] .tlt-dbar .tlt-dlabel em { margin-left: 4px; }
 .tlt-root[data-tier="phone"] .tlt-dbar .tlt-spacer { display: none; }
