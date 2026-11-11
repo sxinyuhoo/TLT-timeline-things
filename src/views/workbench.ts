@@ -6,8 +6,7 @@ import type { SortCfg, SortKey } from "../store";
 import type { Idea } from "../data";
 import {
   Task, Msg, Period, todayISO, addDays, noteGeneralText,
-  hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox, floorToHalfHour, nowHalfHour,
-} from "../data";
+  hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox, floorToHalfHour, nowHalfHour, isPersonal } from "../data";
 import type { StaffDim } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, NoteEntryModal, popMenu, el, BlockWhenModal } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
@@ -203,6 +202,8 @@ export class WorkbenchView extends ItemView {
   private scrollToMin: number | null = null;
   /** 日历里"待居中到视口 42%"的时刻（分钟）；应用一次就清掉 */
   private focusPending: number | null = null;
+  /** 「这天要做的」展开到哪一天（按日期记：换天就收回折叠） */
+  private unsMoreFor = "";
   /** 分钟级心跳：日视图里"现在"那条线要自己走，不能等切视图才刷新 */
   private nowTimer: number | null = null;
   /** 上次心跳时认为是"今天"的那天，用来发现跨天 */
@@ -929,12 +930,38 @@ export class WorkbenchView extends ItemView {
 
     // 右栏
     const side = el("div", "tlt-dayside");
-    const uns = this.unscheduled(sel);
+    const allUns = this.unscheduled(sel);
+    const CAP = 10;                                          // 一屏看完的"今天候选"，多的折叠
+    const expanded = this.unsMoreFor === sel;
+    const uns = expanded ? allUns : allUns.slice(0, CAP);
     const b1 = el("div", "tlt-box");
     const h1 = el("div", "tlt-box-h");
     h1.append(el("span", "", T("这天要做的")), el("span", "tlt-hint2", T("点一下排进时间表")));
     b1.appendChild(h1);
-    if (uns.length) {
+    // 过滤条：谁 + 工作/个人。给我的默认「我的 + 工作和个人」，这里就地切
+    const st = this.store.settings;
+    const me = (st.whoAmI ?? "").trim();
+    const bar = el("div", "tlt-box-filters");
+    if (me) {
+      ([[ "me", T("我的") ], [ "all", T("全部") ]] as const).forEach(([k, label]) => {
+        const b = el("button", "tlt-mini" + ((st.dayWho ?? "me") === k ? " on" : ""), label);
+        b.dataset.daywho = k;
+        bar.appendChild(b);
+      });
+      bar.appendChild(el("span", "tlt-box-sep"));
+    }
+    ([["all", T("全部")], ["work", T("工作")], ["personal", T("个人")]] as const).forEach(([k, label]) => {
+      const b = el("button", "tlt-mini" + ((st.dayScope ?? "all") === k ? " on" : ""), label);
+      b.dataset.dayscope = k;
+      bar.appendChild(b);
+    });
+    if (allUns.length && allUns.length !== uns.length) {
+      const hint = el("span", "tlt-box-more", T("已隐藏 {n} 条", { n: allUns.length - uns.length }));
+      hint.title = T("共 {n} 条，超出的折叠起来了", { n: allUns.length });
+      bar.appendChild(hint);
+    }
+    b1.appendChild(bar);
+    if (allUns.length) {
       const chips = el("div", "tlt-chips");
       uns.forEach((t) => {
         const c = el("span", "tlt-chipq");
@@ -944,6 +971,12 @@ export class WorkbenchView extends ItemView {
         chips.appendChild(c);
       });
       b1.appendChild(chips);
+      if (allUns.length > CAP) {
+        const more = el("button", "tlt-box-morebtn");
+        more.dataset.unsmore = "1";
+        more.textContent = expanded ? T("收起") : T("还有 {n} 条…", { n: allUns.length - CAP });
+        b1.appendChild(more);
+      }
     } else b1.appendChild(el("div", "tlt-empty", T("都排上了")));
     side.appendChild(b1);
 
@@ -988,13 +1021,41 @@ export class WorkbenchView extends ItemView {
   private logsOn(k: string): Task[] {
     return this.store.logs.filter((l) => l.due === k).sort((a, b) => (hhmmToMin(a.st) || 0) - (hhmmToMin(b.st) || 0));
   }
+  /**
+   * 「这天要做的」候选：当天截止的 + （span 模式下）已经开展中的。
+   * 过滤口径（用户在 0.9.97 定的）：
+   *  · 人员：设了「我是谁」且选了「我的」→ **只认显式 owner**（未分派的不算我的）；
+   *  · 归属：默认「工作 + 个人」都看（这是"我一整天"的工作台，不是纯工作台），可在框头切；
+   *  · 近期：span 模式下 📅 超过「这天 + N 天」的不进来（N 默认 7，可在设置里改，0=不设）；
+   * 排序：今天截止/已逾期 → 📅 近 → 优先级高 → 🛫 近。
+   */
   private unscheduled(k: string) {
-    const span = (this.store.settings as { dayTaskScope?: string }).dayTaskScope === "span";
-    return this.store.tasks.filter((t) => {
-      if (t.done || t.st) return false;
-      if (t.due === k) return true;
-      return span && !!t.start && !!t.due && t.start <= k && t.due >= k;   // 跨天任务：区间内每天都算
-    });
+    const st = this.store.settings;
+    const span = st.dayTaskScope === "span";
+    const me = (st.whoAmI ?? "").trim();
+    const who = st.dayWho ?? "me";
+    const scope = st.dayScope ?? "all";
+    const days = Number(st.recentDays ?? 7);
+    const limit = days > 0 ? addDays(k, days) : "";
+    const inScope = (t: Task) => (scope === "all" ? true : scope === "personal" ? isPersonal(t) : !isPersonal(t));
+    const mineOnly = !!me && who === "me";
+    const rank = (t: Task) => (t.due === k ? 0 : t.due && t.due < k ? 1 : 2);
+    return this.store.tasks
+      .filter((t) => {
+        if (t.done || t.st) return false;
+        if (!inScope(t)) return false;
+        if (mineOnly && !t.owners.includes(me)) return false;
+        const dueOk = t.due === k || (span && !!t.start && !!t.due && t.start <= k && t.due >= k);
+        if (!dueOk) return false;
+        if (span && limit && t.due && t.due > limit) return false;      // 近期窗口
+        return true;
+      })
+      .sort((a, b) =>
+        rank(a) - rank(b)
+        || (a.due || "9999").localeCompare(b.due || "9999")
+        || b.pri - a.pri
+        || (a.start || "9999").localeCompare(b.start || "9999")
+        || a.title.localeCompare(b.title));
   }
 
   private rhythm(): HTMLElement {
@@ -2928,6 +2989,27 @@ export class WorkbenchView extends ItemView {
       // 周/月/年视图里点某天＝进那天的日视图（macOS 的手感）；日视图里就是切日子
       if (this.calView !== "d") this.calView = "d";
       this.viewDate = k;
+      await this.render(); return;
+    }
+
+    const more = pick("[data-unsmore]");
+    if (more) {
+      this.unsMoreFor = this.unsMoreFor === this.viewDate ? "" : this.viewDate;
+      await this.render(); return;
+    }
+    const daywho = pick("[data-daywho]");
+    if (daywho) {
+      this.store.settings.dayWho = daywho.dataset.daywho === "all" ? "all" : "me";
+      const p = this.plugin as unknown as { saveUiState?: () => Promise<void> };
+      try { await p.saveUiState?.(); } catch { /* 存不下不影响这次切换 */ }
+      await this.render(); return;
+    }
+    const dayscope = pick("[data-dayscope]");
+    if (dayscope) {
+      const v = dayscope.dataset.dayscope;
+      this.store.settings.dayScope = v === "work" || v === "personal" ? v : "all";
+      const p2 = this.plugin as unknown as { saveUiState?: () => Promise<void> };
+      try { await p2.saveUiState?.(); } catch { /* 同上 */ }
       await this.render(); return;
     }
 

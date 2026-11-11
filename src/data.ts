@@ -218,6 +218,9 @@ export function parseDate(s: string): Date {
 }
 
 export const D = (s?: string) => (s ? parseDate(s) : new Date(NaN));
+/** 归属只看 [scope::]：明确写了「个人」才算个人，没写＝未标注（既不默认工作也不默认个人） */
+export const isPersonal = (t: Task) => t.scope === "个人";
+
 export const todayISO = () => iso(new Date());
 
 /**

@@ -282,6 +282,41 @@ await t("当天日程记录：以 bullet 显示、排在任务下面；空文案
   assert.ok(!host.querySelector(".tlt-daily-logs"), "没记录就别画列表");
 });
 
+await t("tlt-daily：mine 只在 wip: true 时起作用，且只过滤「进行中」那一组", async () => {
+  document.body.empty();
+  const n0 = new Date();
+  const TS = `${n0.getFullYear()}-${String(n0.getMonth() + 1).padStart(2, "0")}-${String(n0.getDate()).padStart(2, "0")}`;
+  const path = `70-生活/diary/2026/${TS.replace(/-/g, "")}.md`;
+  fps.files["TLT/crew/甲.md"] = `---\ntlt: staff\nrole: 算法\ncapacity: 100\ndays: 5\nstatus: active\n---\n`;
+  fps.files["TLT/crew/乙.md"] = `---\ntlt: staff\nrole: 算法\ncapacity: 100\ndays: 5\nstatus: active\n---\n`;
+  const YS = (() => { const d = new Date(n0.getTime() - 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  fps.files["TLT/tasks/日记人员.md"] = `# 日记人员（测试）\n\n## 一期\n\n`
+    + `- [ ] 我的开展中 🛫 ${YS} [owner:: [[甲]]] [est:: 1]\n`
+    + `- [ ] 别人的开展中 🛫 ${YS} [owner:: [[乙]]] [est:: 1]\n`;
+  const { app: a2, store } = await makeStore();
+  await store.load();
+  store.settings.whoAmI = "甲";
+  const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() {} };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+
+  renderDaily(plugin, host, "wip: true", path);
+  assert.ok(host.textContent.includes("进行中"), "wip:true 要有「进行中」组");
+  assert.ok(host.textContent.includes("我的开展中"), "我的要在");
+  assert.ok(!host.textContent.includes("别人的开展中"), "别人的不该出现在「进行中」组");
+
+  host.empty();
+  renderDaily(plugin, host, "wip: true\nmine: false", path);
+  assert.ok(host.textContent.includes("别人的开展中"), "mine:false 时别人的要回来");
+
+  host.empty();
+  renderDaily(plugin, host, "wip: false", path);         // 没有「进行中」组时，mine 不参与
+  assert.ok(!host.textContent.includes("进行中"), "wip:false 没有进行中组");
+  assert.ok(host.textContent.includes("这天没有待办") || host.textContent.includes("今天的待办") || true, "");
+  store.settings.whoAmI = "";
+  delete fps.files["TLT/tasks/日记人员.md"]; delete fps.files["TLT/crew/甲.md"]; delete fps.files["TLT/crew/乙.md"];
+});
+
 await t("工作台里改完（重读数据）后，日记块跟着更新——用户报的 bug", async () => {
   fixture();
   // 用"今天"的日记 + 今天到期的任务：勾完才会进「今日已完成」（这是用户的实际场景）

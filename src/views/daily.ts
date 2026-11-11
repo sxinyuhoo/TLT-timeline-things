@@ -27,10 +27,12 @@ export interface DailyOptions {
   tree: boolean;
   who: boolean;
   scope: "all" | "work" | "personal";
+  /** 只在 wip: true 时生效：开了「进行中」那一组时，只列我名下的（需要设置里先填「我是谁」） */
+  mine: boolean;
 }
 
 export function parseDailyOptions(source: string): DailyOptions {
-  const o: DailyOptions = { date: "auto", overdue: true, wip: false, tree: true, who: true, scope: "all" };
+  const o: DailyOptions = { date: "auto", overdue: true, wip: false, tree: true, who: true, scope: "all", mine: true };
   for (const raw of source.split("\n")) {
     const line = raw.trim();
     if (!line || line.startsWith("#") || line.startsWith("//")) continue;
@@ -44,6 +46,7 @@ export function parseDailyOptions(source: string): DailyOptions {
     else if (key === "tree") o.tree = val !== "false" && val !== "no";
     else if (key === "who") o.who = val !== "false" && val !== "no";
     else if (key === "scope") o.scope = val === "work" || val === "personal" ? val : "all";
+    else if (key === "mine") o.mine = val !== "false" && val !== "no";
   }
   return o;
 }
@@ -58,15 +61,19 @@ export function dateFromPath(path: string): string {
 
 const isPersonal = (t: Task) => t.scope === "个人";        // 只看 [scope::]，不猜 tags
 
-function pick(tasks: Task[], o: DailyOptions, date: string) {
+function pick(tasks: Task[], o: DailyOptions, date: string, mineName = "") {
   const scopeOk = (t: Task) =>
     o.scope === "all" || (o.scope === "personal" ? isPersonal(t) : !isPersonal(t));
   const pool = tasks.filter((t) => t.kind !== "log" && scopeOk(t));
   const overdue = pool.filter((t) => !t.done && t.due && t.due < date);
   // 进行中：已经开始（🛫 ≤ 参考日）、还没做完、且没到期。
   // 已经出现的两组不要重复列：📅=今天 的在「今日待做」，🛫=今天且没截止 的在「今天计划做」。
+  // 「进行中」组：只有 wip: true 时才存在；此时若 mine: true 且设置里填了「我是谁」，只列我名下的
+  // （这一段不碰「今日待做 / 计划 / 已完成」三组——那三组本来就该完整）。
+  const filterMine = o.wip && o.mine && !!mineName;
   const wip = pool.filter((t) => !t.done && !!t.start && t.start <= date
-    && (t.due ? t.due > date : t.start < date));
+    && (t.due ? t.due > date : t.start < date)
+    && (!filterMine || t.owners.includes(mineName)));
   const planned = pool.filter((t) => !t.done && !t.due && t.start === date);
   const todo = pool.filter((t) => !t.done && t.due === date);
   // 「已完成」只看**真实的完成时间**（`[done:: 日期]`），不做任何"按截止日"的近似。
@@ -96,7 +103,7 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
   }
   const o = parseDailyOptions(source);
   const date = o.date === "auto" ? dateFromPath(path) : o.date;
-  const g = pick(store.tasks, o, date);
+  const g = pick(store.tasks, o, date, (store.settings.whoAmI ?? "").trim());
 
   const row = (t: Task, kind: "late" | "todo" | "done") => {
     const r = el("div", "tlt-daily-row" + (kind === "done" ? " done" : ""));

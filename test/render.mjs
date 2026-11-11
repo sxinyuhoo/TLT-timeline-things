@@ -488,6 +488,7 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
     const dv = mount(WorkbenchView);
     await dv.onOpen();
     const prevScope = dv.store.settings.dayTaskScope;      // 用完还回去，别影响别的用例
+    const prevRecent = dv.store.settings.recentDays;
     dv.tab = "today"; dv.calView = "d"; dv.viewDate = D;
     files["TLT/tasks/口径.md"] = `# 口径（测试）\n\n## 一期\n\n- [ ] 今天截止的活 📅 ${D} [created:: ${D}]\n- [ ] 开展中的活 🛫 ${D} 📅 2026-12-31 [created:: ${D}]\n`;
     await dv.store.load();
@@ -497,10 +498,12 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
     assert.ok(chips.some((c) => c.includes("今天截止的活")), `「今天截止的」应列出来：${chips.join(" / ")}`);
     assert.ok(!chips.some((c) => c.includes("开展中的活")), `默认不该列跨天开展中的：${chips.join(" / ")}`);
     dv.store.settings.dayTaskScope = "span";
+    dv.store.settings.recentDays = 0;                      // 这条用例只看口径，别被"近期窗口"挡住
     await dv.render();
     chips = [...dv.contentEl.querySelectorAll(".tlt-chipq")].map((c) => c.textContent || "");
     assert.ok(chips.some((c) => c.includes("开展中的活")), `「开展中的」应列出来：${chips.join(" / ")}`);
     dv.store.settings.dayTaskScope = prevScope;
+    dv.store.settings.recentDays = prevRecent;
     delete files["TLT/tasks/口径.md"];
   }
   // 服务地址不再出现在设置里：都在消息中心的发布/订阅面板里填
@@ -510,7 +513,8 @@ await t("设置页：无顶级标题、分节顺序、动作按钮", async () =>
   const heads = [...el2.querySelectorAll(".setting-item-heading .setting-item-name")].map((e) => e.textContent);
   assert.deepEqual(heads, ["目录", "日历", "口径", "消息服务", "维护"], `分节：${heads}`);
   // 日历是独立一节：口径（占比周期/饱和度）不能被拿来管日程显示
-  assert.equal(scopeRow.closest(".setting-item").previousElementSibling?.textContent?.includes("只影响日历"), true, "日历节要先说明它和统计口径无关");
+  assert.ok([...el2.querySelectorAll(".setting-item-description")].some((e) => e.textContent.includes("只影响日历")),
+    "日历节要先说明它和统计口径无关");
   const buttons = [...el2.querySelectorAll("button")].map((b) => b.textContent);
   assert.ok(buttons.includes("推送我的源") && buttons.includes("同步订阅") && buttons.includes("测试连接"), `按钮：${buttons}`);
   const rootRow = [...el2.querySelectorAll(".setting-item")].find((x) => x.querySelector(".setting-item-name")?.textContent === "根目录");
@@ -1585,6 +1589,77 @@ await t("tlt-daily：编辑视图那份也要跟着工作台更新（宿主上�
     assert.ok(h.textContent.includes("今日已完成"), `${name}勾完应进「今日已完成」：${h.textContent.slice(0, 40)}`);
   }
   delete files["TLT/tasks/日记同步.md"];
+});
+
+await t("日视图清单：我的 / 归属 / 近期窗口 / 折叠 10 条（0.9.97 口径）", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const D2 = "2026-11-11";
+  files["TLT/crew/甲.md"] = `---\ntlt: staff\nrole: 算法\ncapacity: 100\ndays: 5\nstatus: active\n---\n`;
+  files["TLT/crew/乙.md"] = `---\ntlt: staff\nrole: 算法\ncapacity: 100\ndays: 5\nstatus: active\n---\n`;
+  const lines = [
+    `- [ ] 我的工作开展中 🛫 2026-11-01 📅 2026-11-15 [owner:: [[甲]]] [scope:: 工作] [created:: 2026-11-01]`,
+    `- [ ] 别人的开展工作 🛫 2026-11-01 📅 2026-11-15 [owner:: [[乙]]] [scope:: 工作] [created:: 2026-11-01]`,
+    `- [ ] 没分派的开展工作 🛫 2026-11-01 📅 2026-11-15 [scope:: 工作] [created:: 2026-11-01]`,
+    `- [ ] 我的个人事项 🛫 2026-11-01 📅 2026-11-15 [owner:: [[甲]]] [scope:: 个人] [created:: 2026-11-01]`,
+    `- [ ] 我的远期活 🛫 2026-11-01 📅 2026-12-31 [owner:: [[甲]]] [scope:: 工作] [created:: 2026-11-01]`,
+    `- [ ] 今天截止的活 📅 ${D2} [owner:: [[甲]]] [scope:: 工作] [created:: 2026-11-01]`,
+  ];
+  files["TLT/tasks/清单口径.md"] = `# 清单口径（测试）\n\n## 一期\n\n${lines.join("\n")}\n`;
+  await view.store.load();
+  view.tab = "today"; view.calView = "d"; view.viewDate = D2;
+  const titles = () => [...view.contentEl.querySelectorAll(".tlt-chipq")].map((c) => c.title);
+
+  // ① 不设「我是谁」+ span + 默认全部归属：所有人、工作+个人都进来，但远期被 7 天窗口挡住
+  Object.assign(view.store.settings, { whoAmI: "", dayTaskScope: "span", dayWho: "me", dayScope: "all", recentDays: 7 });
+  await view.render();
+  let all = titles();
+  assert.ok(all.includes("别人的开展工作"), `没设我是谁时不该按人员过滤：${all.join(" / ")}`);
+  assert.ok(all.includes("我的个人事项"), "默认应该工作+个人都看");
+  assert.ok(!all.includes("我的远期活"), "📅 超过 7 天的不该进来");
+  assert.ok(view.contentEl.querySelector(".tlt-box-filters"), "要有过滤条");
+
+  // ② 设了我是谁 + 我的：只留我名下的（未分派不算）
+  view.store.settings.whoAmI = "甲";
+  await view.render();
+  all = titles();
+  assert.ok(all.includes("我的工作开展中"), "我的要留下");
+  assert.ok(!all.includes("别人的开展工作"), "别人的要去掉");
+  assert.ok(!all.includes("没分派的开展工作"), "未分派的不算我的（用户明确）");
+
+  // ③ 归属切工作 / 个人
+  view.store.settings.dayScope = "work";
+  await view.render();
+  assert.ok(titles().includes("我的工作开展中") && !titles().includes("我的个人事项"), "只看工作时个人不该出现");
+  view.store.settings.dayScope = "personal";
+  await view.render();
+  assert.ok(titles().includes("我的个人事项") && !titles().includes("我的工作开展中"), "只看个人时工作不该出现");
+  view.store.settings.dayScope = "all";
+
+  // ④ 窗口 0 = 不设上限
+  view.store.settings.recentDays = 0;
+  await view.render();
+  assert.ok(titles().includes("我的远期活"), "0 = 不设上限，远期要回来");
+  view.store.settings.recentDays = 7;
+
+  // ⑤ 10 条上限 + 展开（另外补 9 条今天的活，让"我的"总数超过 10）
+  const extra = Array.from({ length: 9 }, (_, i) => `- [ ] 批量活 ${i + 1} 📅 ${D2} [owner:: [[甲]]] [scope:: 工作] [created:: 2026-11-01]`).join("\n");
+  files["TLT/tasks/清单批量.md"] = `# 清单批量（测试）\n\n## 一期\n\n${extra}\n`;
+  await view.store.load();
+  await view.render();
+  const count = [...view.contentEl.querySelectorAll(".tlt-chipq")].length;
+  assert.equal(count, 10, `默认最多 10 条，实际 ${count}`);
+  const more = view.contentEl.querySelector("[data-unsmore]");
+  assert.ok(more && more.textContent.includes("还有"), "超出要有「还有 N 条…」");
+  more.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 250));
+  const after = [...view.contentEl.querySelectorAll(".tlt-chipq")].length;
+  assert.ok(after > 10, `点开之后要变多，实际 ${after}`);
+
+  Object.assign(view.store.settings, { whoAmI: "", dayWho: "me", dayScope: "all", recentDays: 7, dayTaskScope: "due" });
+  delete files["TLT/tasks/清单口径.md"]; delete files["TLT/tasks/清单批量.md"];
+  delete files["TLT/crew/甲.md"]; delete files["TLT/crew/乙.md"];
 });
 
 await t("左栏可折叠写进设置；消息中心是浮层（点 ✕ 关、点工作台也关）", async () => {
@@ -4489,12 +4564,12 @@ await t("截止日期：选开始日就跟着填截止日（日历才会开在�
   modal.open();
   await new Promise((r) => window.setTimeout(r, 60));
   const [startEl, dueEl] = [...modal.contentEl.querySelectorAll(".tlt-dline input[type=date]")];
-  // 选开始日：11-12（当前是 10 月）
-  startEl.value = "2026-11-12";
+  // 选开始日：挑一个和"默认截止日（明天）"不相干的日期，否则 follow() 会提前 return
+  startEl.value = "2026-11-13";
   startEl.dispatchEvent(new startEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
-  assert.equal(dueEl.value, "2026-11-12", `选开始日后截止框应跟着填，实际 ${dueEl.value}`);
+  assert.equal(dueEl.value, "2026-11-13", `选开始日后截止框应跟着填，实际 ${dueEl.value}`);
   assert.ok(dueEl.classList.contains("is-auto"), "自动跟随的值要有淡显标记");
-  assert.equal(modal.draft.due, "2026-11-12", "跟着填的值也要进任务（所见即所得）");
+  assert.equal(modal.draft.due, "2026-11-13", "跟着填的值也要进任务（所见即所得）");
   // 用户自己改截止日 → 之后不再跟
   dueEl.value = "2026-11-20";
   dueEl.dispatchEvent(new dueEl.ownerDocument.defaultView.Event("change", { bubbles: true }));

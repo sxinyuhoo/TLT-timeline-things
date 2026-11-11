@@ -28,6 +28,14 @@ export interface TLTSettings {
   ideasFile: string;
   /** "这天要做的"按什么收：due＝只看截止日（默认）；span＝跨天任务在区间内每天都算 */
   dayTaskScope?: "due" | "span";
+  /** 我是谁：crew 里的名字。填了之后日历清单可只显示我名下的任务 */
+  whoAmI?: string;
+  /** 日历清单的近期窗口：只看 📅 在「这天 + N 天」以内的（0 = 不设上限，默认 7） */
+  recentDays?: number;
+  /** 日历清单的人员过滤：me＝只看我的（默认，但没设「我是谁」时不生效）；all＝全部 */
+  dayWho?: "me" | "all";
+  /** 日历清单的归属过滤：all＝工作+个人（默认）；work；personal */
+  dayScope?: "all" | "work" | "personal";
   /** 最近一次用的发布服务地址（只在发布弹窗里填，设置界面不显示；用来预填和推送） */
   lastHub?: string;
   tagsFile: string;

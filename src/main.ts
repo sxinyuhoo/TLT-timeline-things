@@ -891,7 +891,7 @@ export class TLTSettingTab extends PluginSettingTab {
       },
     });
     const pick = (
-      key: "defaultPeriod" | "autoSyncMin" | "autoPushMin" | "theme" | "language" | "dayTaskScope",
+      key: "defaultPeriod" | "autoSyncMin" | "autoPushMin" | "theme" | "language" | "dayTaskScope" | "recentDays" | "whoAmI",
       name: string, desc: string, options: Record<string, string>,
     ): SettingDefinition => ({ name: t(name), desc: t(desc), control: { type: "dropdown", key, options } });
     const every = { "0": t("关闭"), "5": t("5 分钟"), "15": t("15 分钟"), "30": t("30 分钟"), "60": t("1 小时") };
@@ -918,6 +918,17 @@ export class TLTSettingTab extends PluginSettingTab {
       {
         type: "group", heading: t("日历"),
         items: [
+          {
+            name: t("我是谁"),
+            desc: t("选一个 crew 里的人员。设了之后，日历右侧「这天要做的」可以只列我名下的任务（不设＝不按人员过滤）。"),
+            control: {
+              type: "dropdown", key: "whoAmI",
+              options: { "": t("不设置"), ...Object.fromEntries(this.plugin.store.staff.map((x) => [x.name, x.name])) },
+            },
+          },
+          pick("recentDays", T("「这天要做的」看多远"),
+            T("开展中的任务，📅 超过「这天 + 这么多天」的就不列出来（0 = 不设上限）。默认 7 天。"),
+            { "7": t("7 天（默认）"), "14": t("14 天"), "30": t("30 天"), "0": t("不设上限") }),
           pick("dayTaskScope", T("「点一下排进时间表」列哪些任务"),
             T("日历日视图右侧那个清单（标题「这天要做的」）的口径。只影响日历日程怎么显示，和下面的统计口径（占比周期、饱和度）不是一回事。"),
             { due: t("今天截止的（默认）"), span: t("开展中的（跨天任务每天都算）") }),
@@ -988,9 +999,19 @@ export class TLTSettingTab extends PluginSettingTab {
    * 声明式设置是**每次按键**都调这里：逐字只把值记下来，
    * 派生路径 / 建目录 / 搬数据一律留给「更新」按钮。
    */
+  /** 声明式控件读值：数字型字段（recentDays）要和下拉的字符串选项对得上 */
+  getControlValue(key: string): unknown {
+    const bag = this.plugin.settings as unknown as Record<string, unknown>;
+    if (key === "recentDays") {
+      const n = bag.recentDays;
+      return typeof n === "number" ? String(n) : "7";
+    }
+    return bag[key];
+  }
+
   async setControlValue(key: string, value: unknown): Promise<void> {
     const bag = this.plugin.settings as unknown as Record<string, unknown>;
-    bag[key] = value;
+    bag[key] = key === "recentDays" ? Number(value) || 0 : value;      // 下拉给的是字符串，这里收成数字
     await this.plugin.saveSettings();
     if (key === "theme") this.plugin.applyTheme();
     if (key === "language") { setLanguage(asText(value)); this.plugin.relabel(); }
@@ -1108,6 +1129,30 @@ export class TLTSettingTab extends PluginSettingTab {
       cls: "setting-item-description",
       text: T("只影响日历日程怎么显示，和上面的统计口径（占比周期、饱和度）不是一回事。"),
     });
+    new Setting(containerEl)
+      .setName(t("我是谁"))
+      .setDesc(t("选一个 crew 里的人员。设了之后，日历右侧「这天要做的」可以只列我名下的任务（不设＝不按人员过滤）。"))
+      .addDropdown((dd) => {
+        dd.addOption("", t("不设置"));
+        for (const x of p.store.staff) dd.addOption(x.name, x.name);
+        dd.setValue(p.settings.whoAmI ?? "").onChange((v) => {
+          p.settings.whoAmI = v;
+          void p.saveSettings();
+          void p.refreshAll();
+        });
+      });
+    new Setting(containerEl)
+      .setName(t("「这天要做的」看多远"))
+      .setDesc(t("开展中的任务，📅 超过「这天 + 这么多天」的就不列出来（0 = 不设上限）。默认 7 天。"))
+      .addDropdown((dd) => {
+        dd.addOptions({ "7": t("7 天（默认）"), "14": t("14 天"), "30": t("30 天"), "0": t("不设上限") })
+          .setValue(String(p.settings.recentDays ?? 7))
+          .onChange((v) => {
+            p.settings.recentDays = Number(v) || 0;
+            void p.saveSettings();
+            void p.refreshAll();
+          });
+      });
     new Setting(containerEl)
       .setName(t("「点一下排进时间表」列哪些任务"))
       .setDesc(t("日历日视图右侧那个清单（标题「这天要做的」）的口径。「今天截止的」= 只列 📅 是这天、还没排时间的；「开展中的」= 另外把 🛫 开始日到 📅 截止日之间的跨天任务，在区间内每一天都列出来。"))

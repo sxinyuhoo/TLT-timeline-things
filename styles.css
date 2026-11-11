@@ -2329,3 +2329,19 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 .tlt-root[data-tier="phone"] .tlt-wdn2 { display: block; font-size: 9px; color: var(--tlt-ink4); margin-top: 1px; }
 .tlt-root[data-tier="phone"] .tlt-wbt { font-size: 12px; }        /* 一列了，名称可以大一点 */
 .tlt-root[data-tier="phone"] .tlt-wbm { font-size: 10px; }
+
+/* 「这天要做的」过滤条：我的/全部 + 全部/工作/个人，一行小胶囊 */
+.tlt-box-filters { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 2px 0 6px; }
+.tlt-mini {
+  font-family: inherit; font-size: 10px; line-height: 1; padding: 4px 7px; border-radius: 999px;
+  border: 1px solid var(--tlt-line); background: transparent; color: var(--tlt-ink4); cursor: pointer;
+}
+.tlt-mini:hover { color: var(--tlt-ink); border-color: var(--tlt-line2); }
+.tlt-mini.on { color: var(--tlt-acc); border-color: var(--tlt-acc); background: rgba(91, 108, 255, .12); }
+.tlt-box-sep { width: 1px; height: 12px; background: var(--tlt-line2); margin: 0 2px; }
+.tlt-box-more { margin-left: auto; font-size: 9.5px; color: var(--tlt-ink5); }
+.tlt-box-morebtn {
+  display: block; width: 100%; margin-top: 4px; padding: 5px 0; font-family: inherit; font-size: 10px;
+  color: var(--tlt-ink3); background: transparent; border: 1px dashed var(--tlt-line2); border-radius: 7px; cursor: pointer;
+}
+.tlt-box-morebtn:hover { color: var(--tlt-ink); border-color: var(--tlt-line3); }
