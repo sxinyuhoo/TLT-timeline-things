@@ -336,9 +336,6 @@ export class TLTPlugin extends Plugin {
     this.cmd("hub-publish", "推送到发布服务", () => { void this.publishAll(); });
     this.cmd("hub-sync", "从拉取服务同步", () => { void this.syncAll(); });
 
-    this.settingTab = new TLTSettingTab(this.app, this);
-    this.addSettingTab(this.settingTab);
-
     registerDailyBlocks(this);
 
     // 布局恢复完成后再让页签重画一次：重启时页签可能在图标注册之前就画好了
@@ -351,6 +348,10 @@ export class TLTPlugin extends Plugin {
     this.applyTheme();
     await this.store.ensureVault();
     await this.store.load();
+    // 设置页放到首次读完数据之后再注册：设置里有些下拉（比如「我是谁」）要读 crew / 任务里的人员，
+    // 早注册的话用户一旦在数据就绪前打开设置，那份下拉就是空的——而且不会再自动重来。
+    this.settingTab = new TLTSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
 
     let timer: number | null = null;
     const reload = () => {
@@ -873,6 +874,16 @@ export default TLTPlugin;
  * 每项都写清「改了会怎样」，动作类集中在各自小节里。
  * 声明式（1.13+ 的设置搜索）与命令式（老客户端 / 需要按钮的地方）两套字段保持一致。
  */
+/** 「我是谁」的候选：crew 里的人员 ∪ 任务里出现过的负责人（两头都算，免得数据没建全时下拉是空的） */
+function whoOptions(plugin: TLTPlugin): Record<string, string> {
+  const names = new Set<string>();
+  for (const x of plugin.store?.staff ?? []) names.add(x.name);
+  for (const t of plugin.store?.tasks ?? []) for (const o of t.owners) names.add(o);
+  const out: Record<string, string> = { "": t("不设置") };
+  [...names].filter(Boolean).sort((a, b) => a.localeCompare(b)).forEach((n) => { out[n] = n; });
+  return out;
+}
+
 export class TLTSettingTab extends PluginSettingTab {
   plugin: TLTPlugin;
   constructor(app: App, plugin: TLTPlugin) { super(app, plugin); this.plugin = plugin; }
@@ -921,10 +932,7 @@ export class TLTSettingTab extends PluginSettingTab {
           {
             name: t("我是谁"),
             desc: t("选一个 crew 里的人员。设了之后，日历右侧「这天要做的」可以只列我名下的任务（不设＝不按人员过滤）。"),
-            control: {
-              type: "dropdown", key: "whoAmI",
-              options: { "": t("不设置"), ...Object.fromEntries(this.plugin.store.staff.map((x) => [x.name, x.name])) },
-            },
+            control: { type: "dropdown", key: "whoAmI", options: whoOptions(this.plugin) },
           },
           pick("recentDays", T("「这天要做的」看多远"),
             T("开展中的任务，📅 超过「这天 + 这么多天」的就不列出来（0 = 不设上限）。默认 7 天。"),
@@ -1131,10 +1139,9 @@ export class TLTSettingTab extends PluginSettingTab {
     });
     new Setting(containerEl)
       .setName(t("我是谁"))
-      .setDesc(t("选一个 crew 里的人员。设了之后，日历右侧「这天要做的」可以只列我名下的任务（不设＝不按人员过滤）。"))
+      .setDesc(t("选一个 crew 里的人员（也会列出任务里出现过的负责人）。设了之后，日历右侧「这天要做的」可以只列我名下的任务（不设＝不按人员过滤）。"))
       .addDropdown((dd) => {
-        dd.addOption("", t("不设置"));
-        for (const x of p.store.staff) dd.addOption(x.name, x.name);
+        for (const [v, label] of Object.entries(whoOptions(p))) dd.addOption(v, label);
         dd.setValue(p.settings.whoAmI ?? "").onChange((v) => {
           p.settings.whoAmI = v;
           void p.saveSettings();

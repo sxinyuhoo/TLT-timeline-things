@@ -880,6 +880,7 @@ export const EN: Record<string, string> = {
   "负责人": "Owner",
   "我是谁": "Who am I",
   "不设置": "Not set",
+  "选一个 crew 里的人员（也会列出任务里出现过的负责人）。设了之后，日历右侧「这天要做的」可以只列我名下的任务（不设＝不按人员过滤）。": "Pick yourself from crew (owners seen in tasks are listed too). Once set, the day-view list can show only tasks assigned to you (unset = no owner filter).",
   "选一个 crew 里的人员。设了之后，日历右侧「这天要做的」可以只列我名下的任务（不设＝不按人员过滤）。": "Pick yourself from crew. Once set, the day-view list can show only tasks assigned to you (unset = no owner filter).",
   "「这天要做的」看多远": "How far the day list looks",
   "开展中的任务，📅 超过「这天 + 这么多天」的就不列出来（0 = 不设上限）。默认 7 天。": "In-progress tasks due later than this day + N days are left out (0 = no limit). Default 7 days.",

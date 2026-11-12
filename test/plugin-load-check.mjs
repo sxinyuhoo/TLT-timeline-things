@@ -101,7 +101,7 @@ inst.loadData = async () => settings;
 const { WorkbenchView } = await import("./vault-render-bundle.mjs").catch(() => ({}));
 try {
   await inst.onload();
-  console.log("onload 完成 ✓  任务", inst.store?.tasks?.length, "源", inst.store?.feeds?.length);
+  console.log("onload 完成 ✓  任务", inst.store?.tasks?.length, "源", inst.store?.feeds?.length, "人员", inst.store?.staff?.length);
 } catch (e) {
   console.error("onload 抛错 ✗ →", e && e.stack ? e.stack.split("\n").slice(0, 6).join("\n") : e);
   process.exitCode = 1;
@@ -186,6 +186,29 @@ try {
   }
 } catch (e) {
   console.error("日记块渲染抛错 ✗ →", e && e.message ? e.message : e);
+  process.exitCode = 1;
+}
+
+/* 设置页：「我是谁」的下拉到底有没有选项（用户报过空的） */
+try {
+  const TabClass = mod.TLTSettingTab;
+  const tab = TabClass ? new TabClass(app, inst) : (inst.settingTabs || [])[0];
+  if (!tab) { console.error("拿不到设置页类 ✗"); process.exitCode = 1; }
+  else {
+    const defs = typeof tab.getSettingDefinitions === "function" ? tab.getSettingDefinitions() : [];
+    const flat = defs.flatMap((d) => (d.type === "group" ? d.items : [d]));
+    const who = flat.find((x) => x.control?.key === "whoAmI" || x.control?.key === "recentDays");
+    const whoSel = flat.find((x) => x.control?.key === "whoAmI");
+    const opts = whoSel?.control?.options ? Object.keys(whoSel.control.options) : null;
+    console.log("设置页 ✓ 声明式条目", flat.length, "| 我是谁选项数", opts ? opts.length : "无", "| 前几个：", opts ? opts.slice(0, 4).join(",") : "");
+    if (!who) { console.error("声明式设置里没有 whoAmI/recentDays ✗"); process.exitCode = 1; }
+    if (!opts || opts.length < 2) {
+      console.error("「我是谁」下拉没有人员选项 ✗（staff =", inst.store?.staff?.length, "）");
+      process.exitCode = 1;
+    }
+  }
+} catch (e) {
+  console.error("设置页检查抛错 ✗ →", e && e.message ? e.message : e);
   process.exitCode = 1;
 }
 
