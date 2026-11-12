@@ -874,13 +874,15 @@ export default TLTPlugin;
  * 每项都写清「改了会怎样」，动作类集中在各自小节里。
  * 声明式（1.13+ 的设置搜索）与命令式（老客户端 / 需要按钮的地方）两套字段保持一致。
  */
-/** 「我是谁」的候选：crew 里的人员 ∪ 任务里出现过的负责人（两头都算，免得数据没建全时下拉是空的） */
+/**
+ * 「我是谁」的候选：**只从 crew/ 里来**（用户明确：不要从任务 owner 里猜）。
+ * 设置页已改到首次 load 之后注册，所以这里拿到的人员一定是齐的。
+ */
 function whoOptions(plugin: TLTPlugin): Record<string, string> {
-  const names = new Set<string>();
-  for (const x of plugin.store?.staff ?? []) names.add(x.name);
-  for (const t of plugin.store?.tasks ?? []) for (const o of t.owners) names.add(o);
   const out: Record<string, string> = { "": t("不设置") };
-  [...names].filter(Boolean).sort((a, b) => a.localeCompare(b)).forEach((n) => { out[n] = n; });
+  (plugin.store?.staff ?? []).map((x) => x.name).filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((n) => { out[n] = n; });
   return out;
 }
 
@@ -1139,7 +1141,7 @@ export class TLTSettingTab extends PluginSettingTab {
     });
     new Setting(containerEl)
       .setName(t("我是谁"))
-      .setDesc(t("选一个 crew 里的人员（也会列出任务里出现过的负责人）。设了之后，日历右侧「这天要做的」可以只列我名下的任务（不设＝不按人员过滤）。"))
+      .setDesc(t("从 crew 里选自己。设了之后，日历右侧「这天要做的」可以只列我名下的任务（不设＝不按人员过滤）。"))
       .addDropdown((dd) => {
         for (const [v, label] of Object.entries(whoOptions(p))) dd.addOption(v, label);
         dd.setValue(p.settings.whoAmI ?? "").onChange((v) => {

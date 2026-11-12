@@ -942,19 +942,20 @@ export class WorkbenchView extends ItemView {
     const st = this.store.settings;
     const me = (st.whoAmI ?? "").trim();
     const bar = el("div", "tlt-box-filters");
-    if (me) {
-      ([[ "me", T("我的") ], [ "all", T("全部") ]] as const).forEach(([k, label]) => {
-        const b = el("button", "tlt-mini" + ((st.dayWho ?? "me") === k ? " on" : ""), label);
-        b.dataset.daywho = k;
-        bar.appendChild(b);
-      });
-      bar.appendChild(el("span", "tlt-box-sep"));
-    }
     ([["all", T("全部")], ["work", T("工作")], ["personal", T("个人")]] as const).forEach(([k, label]) => {
       const b = el("button", "tlt-mini" + ((st.dayScope ?? "all") === k ? " on" : ""), label);
       b.dataset.dayscope = k;
       bar.appendChild(b);
     });
+    if (me) {
+      // 「我的」是开关（只看我 / 不看人员），别和归属里的「全部」混成一个词
+      bar.appendChild(el("span", "tlt-box-sep"));
+      const mineOn = (st.dayWho ?? "me") === "me";
+      const b = el("button", "tlt-mini" + (mineOn ? " on" : ""), T("我的"));
+      b.dataset.daywho = mineOn ? "all" : "me";       // 点一下＝切到另一边
+      b.title = mineOn ? T("只看我名下的，点一下看全部") : T("看全部，点一下只看我名下的");
+      bar.appendChild(b);
+    }
     if (allUns.length && allUns.length !== uns.length) {
       const hint = el("span", "tlt-box-more", T("已隐藏 {n} 条", { n: allUns.length - uns.length }));
       hint.title = T("共 {n} 条，超出的折叠起来了", { n: allUns.length });

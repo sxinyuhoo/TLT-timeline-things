@@ -1619,6 +1619,8 @@ await t("日视图清单：我的 / 归属 / 近期窗口 / 折叠 10 条（0.9.
   assert.ok(all.includes("我的个人事项"), "默认应该工作+个人都看");
   assert.ok(!all.includes("我的远期活"), "📅 超过 7 天的不该进来");
   assert.ok(view.contentEl.querySelector(".tlt-box-filters"), "要有过滤条");
+  assert.deepEqual([...view.contentEl.querySelectorAll(".tlt-box-filters .tlt-mini")].map((b) => b.textContent),
+    ["全部", "工作", "个人"], "没设「我是谁」时不显示「我的」");
 
   // ② 设了我是谁 + 我的：只留我名下的（未分派不算）
   view.store.settings.whoAmI = "甲";
@@ -1627,6 +1629,8 @@ await t("日视图清单：我的 / 归属 / 近期窗口 / 折叠 10 条（0.9.
   assert.ok(all.includes("我的工作开展中"), "我的要留下");
   assert.ok(!all.includes("别人的开展工作"), "别人的要去掉");
   assert.ok(!all.includes("没分派的开展工作"), "未分派的不算我的（用户明确）");
+  assert.deepEqual([...view.contentEl.querySelectorAll(".tlt-box-filters .tlt-mini")].map((b) => b.textContent),
+    ["全部", "工作", "个人", "我的"], "过滤条顺序：全部 / 工作 / 个人 / 我的，且不重复");
 
   // ③ 归属切工作 / 个人
   view.store.settings.dayScope = "work";
