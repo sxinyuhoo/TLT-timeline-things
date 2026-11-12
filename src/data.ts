@@ -50,6 +50,25 @@ export function splitNoteEntries(note: string): NoteEntry[] {
   return out;
 }
 
+/**
+ * 把"整条备注"按日期排好：通用说明在最前，其余按日期升序，日期相同保持原顺序。
+ * 按"段"搬（一条条目 + 它的续行一起走），内容一个字符都不改——只是顺序。
+ */
+export function sortNoteLines(note: string): string {
+  const blocks: { key: string; lines: string[] }[] = [];
+  for (const ln of note.split(/\r?\n/)) {
+    const m = /^\s*(\d{4}-\d{2}-\d{2})\s*[：:]/.exec(ln);
+    if (m) blocks.push({ key: m[1], lines: [ln] });
+    else if (blocks.length && blocks[blocks.length - 1].key) blocks[blocks.length - 1].lines.push(ln);
+    else if (blocks.length) blocks[blocks.length - 1].lines.push(ln);
+    else blocks.push({ key: "", lines: [ln] });
+  }
+  const general = blocks.filter((b) => !b.key);
+  const dated = blocks.map((b, i) => ({ b, i })).filter((x) => x.b.key)
+    .sort((x, y) => x.b.key.localeCompare(y.b.key) || x.i - y.i).map((x) => x.b);
+  return [...general, ...dated].map((b) => b.lines.join("\n")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /** 取某天的条目正文（没有就空串） */
 export function noteEntryText(note: string, date: string): string {
   return splitNoteEntries(note).find((e) => e.date === date)?.text ?? "";
@@ -111,6 +130,8 @@ export interface Task {
   project: string;
   milestone?: string;
   steps: Step[];
+  /** 这条"日程事件"挂在哪个任务文件上（日志行里的 [todo::]，见历程方案C）：只有日志行会有 */
+  taskFile?: string;
   /** 生命周期时间：创建 / 完成（写回文件，界面默认不显示） */
   created?: string;
   doneAt?: string;
@@ -439,6 +460,7 @@ export function parseLogMonth(content: string, file: string): Task[] {
       title, done: false,
       note: body.length ? body.map((b) => b.replace(/^\s{2,}>\s?/, "")).join("\n").trim() : undefined,
       due: day, st: m[1], en: m[2],
+      taskFile: f["todo"] ? f["todo"].replace(/^\[\[|\]\]$/g, "").trim() || undefined : undefined,
       wl: 0, pw: "m", pri: 1,
       owners: links(f["who"] || ""),
       tags: (f["tags"] || "").split(/[,，]/).map((x) => x.trim()).filter(Boolean),
@@ -455,11 +477,12 @@ export function parseLogMonth(content: string, file: string): Task[] {
   return out;
 }
 
-export function newLogLine(t: { st?: string; en?: string; title: string; project?: string; body?: string }): string {
+export function newLogLine(t: { st?: string; en?: string; title: string; project?: string; body?: string; todo?: string }): string {
   let s = "- ";
   if (t.st) s += `${t.st}${t.en ? "–" + t.en : ""} `;
   s += t.title;
   if (t.project) s += ` [proj:: ${t.project}]`;
+  if (t.todo) s += ` [todo:: ${t.todo}]`;      // 挂到哪条任务上（项目文件路径；老版本插件读不懂会忽略它）
   if (t.body) s += `\n  > ${t.body.replace(/\n/g, "\n  > ")}`;
   return s;
 }

@@ -1,7 +1,7 @@
 import { App, Component, Modal, Notice, TFile, MarkdownRenderer } from "obsidian";
 import { Store } from "../store";
 import { t as T } from "../i18n";
-import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, hhmmToMin, workloadBreakdown, ideaFilterTags, noteGeneralText, noteEntryText, splitNoteEntries } from "../data";
+import { Task, Staff, Idea, Msg, Feed, Period, Pri, todayISO, minToHHMM, hhmmToMin, workloadBreakdown, ideaFilterTags, noteGeneralText, noteEntryText, splitNoteEntries, sortNoteLines } from "../data";
 import { svgIcon } from "./dom";
 import { MarkdownField } from "./md-field";
 
@@ -601,7 +601,8 @@ export class TaskModal extends TltModal {
     title: string; project?: string; milestone?: string; tags: string[];
     scope: "工作" | "个人";
     start?: string; due?: string; est?: number; wl: number; pw: Period; pri: Pri; owners: string[];
-    noteGeneral: string;
+    /** 整条备注：通用说明 + 按天条目都在这里（用户要求"详情页要能看到日历块里记的内容"） */
+    note: string;
   };
 
   constructor(app: App, store: Store, task: Task, onChange: () => void | Promise<void>) {
@@ -619,7 +620,7 @@ export class TaskModal extends TltModal {
       pw: task.pw,
       pri: task.pri,
       owners: [...task.owners],
-      noteGeneral: noteGeneralText(task.note || ""),
+      note: task.note || "",
     };
   }
 
@@ -763,10 +764,10 @@ export class TaskModal extends TltModal {
 
     const noteRow = row(contentEl, T("备注"));
     const noteField = new MarkdownField(this.app, {
-      value: this.draft.noteGeneral,
+      value: sortNoteLines(this.draft.note),
       sourcePath: t.file,
       placeholder: T("备注（可留空；按天条目写成 `日期：内容`）"),
-      onChange: (v) => { this.draft.noteGeneral = v; },
+      onChange: (v) => { this.draft.note = v; },
       minHeight: 64,
     });
     noteRow.appendChild(noteField.el);
@@ -810,7 +811,7 @@ export class TaskModal extends TltModal {
       // 先就地改字段（行号不变），最后再改标题/搬文件——搬完行号就失效了
       if (d.due !== t.due) await this.store.setDue(t, d.due || "");
       if ((d.start || "") !== (t.start || "")) await this.store.setStart(t, d.start || "");
-      if ((d.noteGeneral || "") !== noteGeneralText(t.note || "")) await this.store.setTaskGeneralNote(t, d.noteGeneral || "");
+      if ((d.note || "") !== (t.note || "")) await this.store.setTaskNote(t, d.note || "");   // 整条一起写回去
       if (d.wl !== t.wl) await this.store.setField(t, "wl", d.wl ?? 0);
       if (d.pw !== t.pw) await this.store.setField(t, "pw", d.pw ?? "m");
       if (d.pri !== t.pri) await this.store.setField(t, "pri", d.pri ?? 1);
@@ -868,18 +869,36 @@ export class LogModal extends TltModal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("tlt-modal");
-    // 标题要能改：以前这里是个静态文字，只能编辑正文，改个名字都改不了
-    const title = el("input", "tlt-input wide tlt-log-title");
-    title.value = this.log.title;
-    title.placeholder = T("这条记录叫什么");
-    contentEl.appendChild(title);
+    // 挂任务的日程事件：标题是"任务名"的镜像，只读（改名去任务详情改，改完事件行会一起同步）；
+    // 正文则写入"任务底下这一天的工作记录"，和任务详情里看到的是同一份。
+    const taskFile = this.log.taskFile;
+    const task = taskFile
+      ? (this.store.tasks.find((x) => x.file === taskFile && x.title === this.log.title)
+        ?? this.store.tasks.find((x) => x.file === taskFile))
+      : undefined;
+    let title: HTMLInputElement | null = null;
+    if (task) {
+      contentEl.appendChild(el("div", "tlt-log-title-ro", this.log.title));
+      contentEl.appendChild(el("div", "tlt-hint", T("任务名请在任务详情里改，改完这里和日历上的块会一起更新。")));
+    } else if (taskFile && !task) {
+      contentEl.appendChild(el("div", "tlt-log-title-ro", this.log.title));
+      contentEl.appendChild(el("div", "tlt-hint", T("没对上哪条任务（可能改过名或搬走了），下面记的内容仍会原样保留。")));
+    } else {
+      // 纯记录：标题要能改（以前这里是个静态文字，只能编辑正文，改个名字都改不了）
+      title = el("input", "tlt-input wide tlt-log-title");
+      title.value = this.log.title;
+      title.placeholder = T("这条记录叫什么");
+      contentEl.appendChild(title);
+    }
     contentEl.appendChild(el("div", "tlt-m-meta",
       `${this.log.due} · ${this.log.st || ""}${this.log.en ? "–" + this.log.en : ""}${this.log.project ? " · " + this.log.project : ""}`));
 
     const bodyField = new MarkdownField(this.app, {
-      value: this.log.note || "",
-      sourcePath: this.log.file,
-      placeholder: T("谈了什么 / 决定了什么 / 下一步（会写成文件里的引用块）"),
+      value: task ? noteEntryText(task.note || "", this.log.due || "") : (this.log.note || ""),
+      sourcePath: task ? task.file : this.log.file,
+      placeholder: task
+        ? T("这一天做了什么（记到任务底下这一天的工作记录里）")
+        : T("谈了什么 / 决定了什么 / 下一步（会写成文件里的引用块）"),
       minHeight: 74,
     });
     contentEl.appendChild(bodyField.el);
@@ -898,7 +917,12 @@ export class LogModal extends TltModal {
     };
     const ok = el("button", "tlt-btn pri", T("保存"));
     ok.onclick = () => { void (async () => {
-      const t = title.value.trim();
+      if (task) {                                    // 任务事件：正文＝任务底下那一天的工作记录
+        await this.store.setTaskNoteEntry(task, this.log.due || "", bodyField.value);
+        this.close(); void this.onChange(); new Notice(T("已写进任务这一天的工作记录"));
+        return;
+      }
+      const t = title?.value.trim() ?? this.log.title;
       if (!t) { new Notice(T("标题不能空")); return; }
       await this.store.updateLog(this.log, { title: t, body: bodyField.value });
       this.close(); void this.onChange(); new Notice(T("已写回记录"));

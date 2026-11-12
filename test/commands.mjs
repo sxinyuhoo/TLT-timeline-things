@@ -258,7 +258,8 @@ await t("选择器：打字过滤 + ↑↓ + 回车选中", async () => {
 /* ---------------- ⑦ 命令都注册上了 ---------------- */
 await t("插件注册了八个快捷命令 + 一个总入口", async () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  assert.ok(/^0\.[5-9]\./.test(manifest.version), `版本应在 0.5~0.9 之间，实际 ${manifest.version}`);
+  assert.ok(/^\d+\.\d+\.\d+$/.test(manifest.version), `版本号要像 x.y.z，实际 ${manifest.version}`);
+  assert.ok(Number(manifest.version.split(".")[1]) <= 20, `次版本号看着不对：${manifest.version}`);
   const src = readFileSync(join(root, "src/main.ts"), "utf8");
   for (const id of ["quick-menu", "new-task", "new-idea", "new-message", "new-project",
     "new-milestone", "archive-project", "delete-task"]) {

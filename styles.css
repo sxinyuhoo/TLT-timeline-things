@@ -2345,3 +2345,12 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
   color: var(--tlt-ink3); background: transparent; border: 1px dashed var(--tlt-line2); border-radius: 7px; cursor: pointer;
 }
 .tlt-box-morebtn:hover { color: var(--tlt-ink); border-color: var(--tlt-line3); }
+
+/* 日程事件（方案C：挂任务的块，存在 logs 里）——左边条跟 .plan 一样是实线；
+   那天排了、但任务是在之后才完成的 → "未按期完成"用暖色点出来（文案在 meta 里） */
+.tlt-blk.tevent.missed .tlt-blk-m,
+.tlt-wblk.tevent.missed .tlt-wbm { color: var(--tlt-hot); }
+.tlt-wblk.tevent.missed { border-left-style: solid; }
+
+/* 任务日程事件：标题只读（任务名字的镜像），当文本显示 */
+.tlt-log-title-ro { font-size: 15px; font-weight: 600; color: var(--tlt-ink); padding: 2px 0 4px; }

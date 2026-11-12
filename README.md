@@ -56,7 +56,7 @@ Folders are created on demand. To see it populated first: **Settings → TLT →
 ## What makes it different
 
 1. **Timeline first, project tree second.** You open onto today: what happened hour by hour, what is still due, what got inserted. Projects and milestones organise things behind the scenes.
-2. **No side database.** Tasks are written back into the original note line (`🛫 📅 [wl::] [owner::] [tags::] [st::] [en::]`), people live in frontmatter, a feed is just a list. Remove the plugin and the files still read, search and link.
+2. **No side database.** Tasks are written back into the original note line (`🛫 📅 [wl::] [owner::] [tags::] [st::] [en::]`) — and scheduling a task onto a day writes a plain line into `TLT/logs/` instead of touching the task line, people live in frontmatter, a feed is just a list. Remove the plugin and the files still read, search and link.
 3. **The message center stands alone.** It is a separate view that only deals with messages, so colleagues who do not use the task side can still subscribe to notices.
 
 ## Six tabs

@@ -1,6 +1,6 @@
 import { MarkdownPostProcessorContext, Notice } from "obsidian";
 import type TLTPlugin from "../main";
-import { Task, todayISO } from "../data";
+import { Task, todayISO, addDays } from "../data";
 import { t as T } from "../i18n";
 import { el, TaskModal } from "./modals";
 
@@ -10,10 +10,12 @@ import { el, TaskModal } from "./modals";
  *   ```tlt-daily
  *   date: auto        # auto = 用文件名里的日期（补记历史日记也对），也可以写死 2026-10-29
  *   overdue: true     # 把过期未完成的单列一组
- *   wip: false        # 再加一组「进行中」：已经开始（🛫 已到）但还没到期/没截止的
+ *   wip: true         # 再多一组「进行中」：已经开始（🛫 已到）还没做完的（不写 days 时不设上限）
+ *   mine: true        # wip 开着时生效：整块只留我名下的（要先在设置里填「我是谁」）
  *   tree: true        # 展开任务的子步骤，点子步骤也能勾
  *   who: true         # 显示负责人
  *   scope: all        # all | work | personal
+ *   days: 3           # 看几天（不写＝只看这天）：3＝从这天起三天（「今日待做」变成「接下来 3 天」）
  *   ```
  *
  * 不依赖 Tasks / Dataview 插件：数据来自 TLT 自己的 store，勾选走 store.toggleTask / setStepDone。
@@ -29,10 +31,12 @@ export interface DailyOptions {
   scope: "all" | "work" | "personal";
   /** 只在 wip: true 时生效：开了「进行中」那一组时，只列我名下的（需要设置里先填「我是谁」） */
   mine: boolean;
+  /** 看几天：不写（0）＝只看这天（「进行中」不设上限，回到原行为）；N≥2＝从这天起 N 天 */
+  days: number;
 }
 
 export function parseDailyOptions(source: string): DailyOptions {
-  const o: DailyOptions = { date: "auto", overdue: true, wip: false, tree: true, who: true, scope: "all", mine: true };
+  const o: DailyOptions = { date: "auto", overdue: true, wip: false, tree: true, who: true, scope: "all", mine: true, days: 0 };
   for (const raw of source.split("\n")) {
     const line = raw.trim();
     if (!line || line.startsWith("#") || line.startsWith("//")) continue;
@@ -47,6 +51,10 @@ export function parseDailyOptions(source: string): DailyOptions {
     else if (key === "who") o.who = val !== "false" && val !== "no";
     else if (key === "scope") o.scope = val === "work" || val === "personal" ? val : "all";
     else if (key === "mine") o.mine = val !== "false" && val !== "no";
+    else if (key === "days" || key === "span") {
+      const n = Number(val);
+      o.days = Number.isFinite(n) && n >= 2 ? Math.min(30, Math.floor(n)) : 0;
+    }
   }
   return o;
 }
@@ -64,21 +72,30 @@ const isPersonal = (t: Task) => t.scope === "个人";        // 只看 [scope::]
 function pick(tasks: Task[], o: DailyOptions, date: string, mineName = "") {
   const scopeOk = (t: Task) =>
     o.scope === "all" || (o.scope === "personal" ? isPersonal(t) : !isPersonal(t));
-  const pool = tasks.filter((t) => t.kind !== "log" && scopeOk(t));
+  // mine：wip 开着才生效（用户口径），生效时**整块**只看我名下的（未分派不算）
+  const filterAllMine = o.wip && o.mine && !!mineName;
+  const pool = tasks.filter((t) => t.kind !== "log" && scopeOk(t)
+    && (!filterAllMine || t.owners.includes(mineName)));
+  const windowed = o.days >= 2;
+  const end = windowed ? addDays(date, o.days - 1) : date;        // 「看几天」的右端（含）
   const overdue = pool.filter((t) => !t.done && t.due && t.due < date);
   // 进行中：已经开始（🛫 ≤ 参考日）、还没做完、且没到期。
   // 已经出现的两组不要重复列：📅=今天 的在「今日待做」，🛫=今天且没截止 的在「今天计划做」。
-  // 「进行中」组：只有 wip: true 时才存在；此时若 mine: true 且设置里填了「我是谁」，只列我名下的
-  // （这一段不碰「今日待做 / 计划 / 已完成」三组——那三组本来就该完整）。
-  const filterMine = o.wip && o.mine && !!mineName;
-  const wip = pool.filter((t) => !t.done && !!t.start && t.start <= date
-    && (t.due ? t.due > date : t.start < date)
-    && (!filterMine || t.owners.includes(mineName)));
+  // 「进行中」组：只有 wip: true 时才存在。
+  // 「进行中」：
+  //  · 没写 days（默认）→ 回到原行为：开工了、还没做完，且（没 📅 或 📅 在以后），**不设上限**；
+  //  · 写了 days: N → 只有 📅 落在窗口内（或没写 📅）的才进来，免得三个月后的也挤进来。
+  const wipAll = pool.filter((t) => !t.done && !!t.start && t.start <= date);
+  const wip = wipAll.filter((t) => (t.due ? t.due > date : t.start < date));
+  // 有窗口时：进行中里"有 📅 且在窗口内"的本来就在 todo 里，只有"没写 📅"的要并进来，
+  // 两组不再各列一遍（用户：默认一个口径就行，别重复）
+  const loose = windowed ? wipAll.filter((t) => !t.due && t.start < date) : [];
   const planned = pool.filter((t) => !t.done && !t.due && t.start === date);
-  const todo = pool.filter((t) => !t.done && t.due === date);
+  const todo = pool.filter((t) => !t.done && t.due && (windowed ? (t.due >= date && t.due <= end) : t.due === date));
   // 「已完成」只看**真实的完成时间**（`[done:: 日期]`），不做任何"按截止日"的近似。
   // 那天到期、后来才勾掉的任务，会出现在**它真正被勾掉的那天**的日记里。
-  const done = pool.filter((t) => t.done && t.doneAt === date);
+  const done = pool.filter((t) => t.done && t.doneAt
+    && (windowed ? (t.doneAt >= date && t.doneAt <= end) : t.doneAt === date));
   const rank = (a: Task, b: Task) =>
     (a.due || "9999").localeCompare(b.due || "9999") || b.pri - a.pri || (b.est || 0) - (a.est || 0);
   return {
@@ -87,6 +104,7 @@ function pick(tasks: Task[], o: DailyOptions, date: string, mineName = "") {
     planned: planned.sort(rank),
     todo: todo.sort(rank),
     done: done.sort((a, b) => (a.doneAt || "").localeCompare(b.doneAt || "")),
+    loose,
   };
 }
 
@@ -187,10 +205,16 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
     list.forEach((t) => box.appendChild(row(t, kind)));
   };
 
+  const windowed = o.days >= 2;
+  // 有窗口 + wip：合成一组（loose＝"没写 📅 但已开工"的），不再重复列「进行中」
+  const merged = windowed && o.wip
+    ? [...g.todo, ...g.loose].sort((a, b) =>
+        (a.due || "9999").localeCompare(b.due || "9999") || b.pri - a.pri)
+    : g.todo;
   if (o.overdue) section(T("逾期"), g.overdue, "late");
-  section(T("今日待做"), g.todo, "todo");
+  section(windowed ? T("接下来 {n} 天", { n: o.days }) : T("今日待做"), merged, "todo");
   section(T("今天计划做"), g.planned, "todo");
-  if (o.wip) section(T("进行中"), g.wip, "todo");
+  if (o.wip && !windowed) section(T("进行中"), g.wip, "todo");     // 没窗口时才单列进行中
   section(T("今日已完成"), g.done, "done");
 
   // 这一天的日程记录（日历里"实际发生的事"）：统一排在任务下面，一行一条 bullet。
@@ -212,7 +236,7 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
     box.appendChild(ul);
   }
 
-  if ((!o.overdue || !g.overdue.length) && !g.todo.length && !g.planned.length && !g.done.length && !(o.wip && g.wip.length) && !logs.length) {
+  if ((!o.overdue || !g.overdue.length) && !merged.length && !g.planned.length && !g.done.length && !(o.wip && !windowed && g.wip.length) && !logs.length) {
     box.appendChild(el("div", "tlt-daily-empty", T("这天没有待办，也没有记录")));
   }
 }

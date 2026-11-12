@@ -6,7 +6,7 @@ import type { SortCfg, SortKey } from "../store";
 import type { Idea } from "../data";
 import {
   Task, Msg, Period, todayISO, addDays, noteGeneralText,
-  hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox, floorToHalfHour, nowHalfHour, isPersonal } from "../data";
+  hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox, floorToHalfHour, nowHalfHour, isPersonal, noteEntryText } from "../data";
 import type { StaffDim } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, NoteEntryModal, popMenu, el, BlockWhenModal } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
@@ -112,8 +112,13 @@ function monthGrid(isoDate: string, start: 0 | 1): string[] {
 
 /** 一块日程（计划块或记录块）——日/周/月/年四种视图共用同一份口径 */
 interface CalBlock {
-  kind: "plan" | "log";
+  /** plan＝任务自带时间的老式计划块；tevent＝挂在任务上的日程事件（方案C，存在 logs 里）；log＝纯记录 */
+  kind: "plan" | "log" | "tevent";
   item: Task;
+  /** tevent 专用：这条事件对应的任务（点开走任务详情；老式 plan 块的 item 本身就是任务） */
+  task?: Task;
+  /** tevent 专用：任务的完成日在这条事件之后 → 那天排了但没按期完成 */
+  missed?: boolean;
   title: string;
   a: number;
   b: number;
@@ -866,21 +871,38 @@ export class WorkbenchView extends ItemView {
           meta: `${t.st}–${t.en} · ${t.done ? T("已完成") : T("计划")}${t.wl ? " · " + t.wl + "%" : ""}`,
           done: t.done };
       });
-    const recs = logs.map((l) => {
+    const tEvents: { kind: "tevent"; id: string; item: Task; task: Task; title: string; a: number; b: number; meta: string; done: boolean; missed: boolean }[] = [];
+    const recs: { kind: "log"; id: string; item: Task; title: string; a: number; b: number; meta: string; done: boolean }[] = [];
+    logs.forEach((l) => {
       const a = hhmmToMin(l.st) || DAY_FROM;
       const b = hhmmToMin(l.en) || a + 30;
-      return { kind: "log" as const, id: l.id, item: l, title: l.title, a, b,
+      if (l.taskFile) {
+        // 挂任务的事件：按文件+标题找回任务；找不到就退化成一条普通记录（不报错、不丢内容）
+        const t = this.store.tasks.find((x) => x.file === l.taskFile && x.title === l.title)
+          ?? this.store.tasks.find((x) => x.file === l.taskFile);
+        if (t) {
+          const missed = t.done && !!t.doneAt && t.doneAt > l.due;
+          tEvents.push({
+            kind: "tevent", id: l.id, item: l, task: t, title: l.title, a, b,
+            meta: `${l.st}–${l.en} · ${t.done ? (missed ? T("未按期完成") : T("已完成")) : T("计划")}${t.project ? " · " + t.project : ""}`,
+            done: t.done, missed,
+          });
+          return;
+        }
+      }
+      recs.push({ kind: "log", id: l.id, item: l, title: l.title, a, b,
         meta: `${l.st}–${l.en} · ${T("记录")}${l.project ? " · " + l.project : ""}`,
-        done: false };
+        done: false });
     });
     // 重叠的块并排（同一簇共用车道数），每块配一个稳定的色相
-    const all = [...plans, ...recs].sort((x, y) => x.a - y.a || x.b - y.b);
+    const all = [...plans, ...tEvents, ...recs].sort((x, y) => x.a - y.a || x.b - y.b);
     const lay = this.laneLayout(all.map((x) => ({ a: x.a, b: x.b })));
     const usedHues = new Set<string>();
     all.forEach((x, i) => {
       const { lane, lanes } = lay[i];
-      const blk = el("div", `tlt-blk ${x.kind}` + (x.done ? " done" : ""));
-      if (x.kind === "plan") blk.dataset.task = x.id; else blk.dataset.log = x.id;
+      const blk = el("div", `tlt-blk ${x.kind === "tevent" ? "plan tevent" : x.kind}`
+        + (x.done ? " done" : "") + (x.kind === "tevent" && x.missed ? " missed" : ""));
+      if (x.kind === "plan") blk.dataset.task = x.id; else blk.dataset.log = x.id;   // tevent 也是改那行记录
       blk.style.top = `${((x.a - DAY_FROM) / 60) * HOUR_PX}px`;
       blk.style.height = `${Math.max(26, ((x.b - x.a) / 60) * HOUR_PX)}px`;
       if (lanes > 1) {
@@ -901,10 +923,13 @@ export class WorkbenchView extends ItemView {
       if (hpx < 34) c.addClass("tlt-blk-short");
       else if (hpx < 56) c.addClass("tlt-blk-tight");
       const titleEl = el("div", "tlt-blk-t", x.title);
-      const noteText = x.item.note || "";
-      if (noteText) {                     // 有备注：标题后一个小记号，悬停能看首行
+      const srcTask = x.kind === "tevent" && x.task ? x.task : x.item;
+      const noteText = srcTask.note || "";
+      if (noteText) {                     // 有备注：标题后一个小记号，悬停优先看"这一天"的条目
         const pen = el("span", "tlt-blk-note", "✎");
-        pen.title = noteGeneralText(noteText).split("\n")[0] || noteText.split("\n")[0];
+        const day = x.kind === "tevent" ? (x.item.due || "") : (x.item.plan || "");
+        const dayNote = day ? noteEntryText(noteText, day).trim() : "";
+        pen.title = dayNote || noteGeneralText(noteText).split("\n")[0] || noteText.split("\n")[0];
         titleEl.appendChild(pen);
       }
       c.append(titleEl, el("div", "tlt-blk-m", x.meta));
@@ -981,7 +1006,7 @@ export class WorkbenchView extends ItemView {
     } else b1.appendChild(el("div", "tlt-empty", T("都排上了")));
     side.appendChild(b1);
 
-    const plan = this.store.tasks.filter((t) => t.due === sel && t.st).length;
+    const plan = plans.length + tEvents.length;      // 老式计划块 + 新式日程事件
     const b2 = el("div", "tlt-box");
     b2.appendChild(el("div", "tlt-box-h", T("这天 · 计划与实际")));
     [[T("计划"), plan], [T("记录"), logs.length]].forEach(([n, v]) => {
@@ -1043,7 +1068,11 @@ export class WorkbenchView extends ItemView {
     const rank = (t: Task) => (t.due === k ? 0 : t.due && t.due < k ? 1 : 2);
     return this.store.tasks
       .filter((t) => {
-        if (t.done || t.st) return false;
+        if (t.done) return false;
+        // 老式排期（任务自带时间）：只在它自己那天算"已排"，别的天照样可以再排一条
+        if (t.st && dayOfBlock(t) === k) return false;
+        // 新式：这天已经给它排过日程事件了，就别再出现在候选里
+        if (this.store.logs.some((l) => l.due === k && l.taskFile === t.file && l.title === t.title)) return false;
         if (!inScope(t)) return false;
         if (mineOnly && !t.owners.includes(me)) return false;
         const dueOk = t.due === k || (span && !!t.start && !!t.due && t.start <= k && t.due >= k);
@@ -2121,14 +2150,26 @@ export class WorkbenchView extends ItemView {
         a: hhmmToMin(t.st) || 9 * 60, b: hhmmToMin(t.en) || (hhmmToMin(t.st) || 9 * 60) + 60,
         st: t.st, en: t.en, done: t.done,
       }));
-    const recs: CalBlock[] = this.store.logs
-      .filter((l) => l.due === date)
-      .map((l) => ({
-        kind: "log" as const, item: l, title: l.title,
+    const tEvents: CalBlock[] = [];
+    const recs: CalBlock[] = [];
+    this.store.logs.filter((l) => l.due === date).forEach((l) => {
+      const base = {
+        item: l, title: l.title,
         a: hhmmToMin(l.st) || 9 * 60, b: hhmmToMin(l.en) || (hhmmToMin(l.st) || 9 * 60) + 60,
-        st: l.st, en: l.en, done: false,
-      }));
-    return [...plans, ...recs].sort((x, y) => x.a - y.a || x.b - y.b);
+        st: l.st, en: l.en,
+      };
+      if (!l.taskFile) { recs.push({ kind: "log", ...base, done: false }); return; }   // 纯记录
+      // 挂任务的事件：按"文件 + 标题"找回任务（改过名找不到就退化成一条普通记录，不报错）
+      const t = this.store.tasks.find((x) => x.file === l.taskFile && x.title === l.title)
+        ?? this.store.tasks.find((x) => x.file === l.taskFile);
+      if (!t) { recs.push({ kind: "log", ...base, done: false }); return; }
+      const doneDay = t.doneAt || "";
+      tEvents.push({
+        kind: "tevent", ...base, task: t, done: t.done,
+        missed: t.done && !!doneDay && doneDay > l.due,      // 完成日在这天之后 → 那天排了没做完
+      });
+    });
+    return [...plans, ...tEvents, ...recs].sort((x, y) => x.a - y.a || x.b - y.b);
   }
 
   /** 一整年每天的块数（年视图热力图用；一次算好，别一天一天去扫） */
@@ -2143,6 +2184,7 @@ export class WorkbenchView extends ItemView {
   /** 打开一块日程对应的详情 */
   private openBlock(b: CalBlock) {
     if (b.kind === "plan") new TaskModal(this.app, this.store, b.item, () => this.refresh()).open();
+    else if (b.kind === "tevent" && b.task) new TaskModal(this.app, this.store, b.task, () => this.refresh()).open();
     else new LogModal(this.app, this.store, b.item, () => this.refresh()).open();
   }
 
@@ -2285,7 +2327,7 @@ export class WorkbenchView extends ItemView {
         const whpx = Math.max(24, ((x.b - x.a) / 60) * HOUR);
         if (whpx < 26) blk.classList.add("tlt-wblk-short");
         else if (whpx < 40) blk.classList.add("tlt-wblk-tight");
-        blk.title = `${x.title}\n${x.st || ""}${x.en ? "–" + x.en : ""} · ${x.kind === "plan" ? T("计划") : T("记录")}`;
+        blk.title = `${x.title}\n${x.st || ""}${x.en ? "–" + x.en : ""} · ${x.kind === "log" ? T("记录") : T("计划")}`;
         blk.append(el("b", "tlt-wbt", x.title),
           el("span", "tlt-wbm", `${x.st || ""}${x.en ? "–" + x.en : ""}`));
         blk.appendChild(el("span", "tlt-wgrip"));      // 下缘把人拖：只改结束时间
@@ -3237,7 +3279,7 @@ export class WorkbenchView extends ItemView {
   private wireDrag(
     blk: HTMLElement,
     body: HTMLElement,
-    opts: { kind: "plan" | "log"; id: string; a: number; b: number; onMenu: (at: { x: number; y: number }) => void },
+    opts: { kind: "plan" | "log" | "tevent"; id: string; a: number; b: number; onMenu: (at: { x: number; y: number }) => void },
   ) {
     const grip = el("div", "tlt-blk-grip");
     grip.title = T("拖动改结束时间");
@@ -3327,7 +3369,7 @@ export class WorkbenchView extends ItemView {
   }
 
   /** 落盘：计划块写回任务的 [st::]/[en::]，记录块改行首的时间段 */
-  private async saveBlockTime(kind: "plan" | "log", id: string, a: number, b: number) {
+  private async saveBlockTime(kind: "plan" | "log" | "tevent", id: string, a: number, b: number) {
     const st = minToHHMM(a), en = minToHHMM(b);
     if (kind === "plan") {
       const t = this.store.tasks.find((x) => x.id === id);
@@ -3354,7 +3396,7 @@ export class WorkbenchView extends ItemView {
    * 计划块：日期写 [plan::]（排期日），时间写 [st::]/[en::]——和拖动落盘同一套口径。
    * 记录块：日期=它记在哪一天，时间=行首那一段。
    */
-  private openBlockWhen(kind: "plan" | "log", item: Task) {
+  private openBlockWhen(kind: "plan" | "log" | "tevent", item: Task) {
     const day = kind === "plan" ? (item.plan || todayISO()) : (item.due || todayISO());
     new BlockWhenModal(this.app, T("改日程"), { day, st: item.st || "09:00", en: item.en || "10:00" },
       async (d, st, en) => {
@@ -3388,7 +3430,7 @@ export class WorkbenchView extends ItemView {
     }
   }
 
-  private blockMenu(kind: "plan" | "log", item: Task, at: { x: number; y: number }) {
+  private blockMenu(kind: "plan" | "log" | "tevent", item: Task, at: { x: number; y: number }) {
     const items: { label: string; onClick: () => void | Promise<void>; danger?: boolean }[] = [];
     if (kind === "plan") {
       items.push({ label: T("打开任务"), onClick: () => new TaskModal(this.app, this.store, item, () => this.refresh()).open() });
@@ -3397,12 +3439,47 @@ export class WorkbenchView extends ItemView {
         const day = item.plan || todayISO();
         new NoteEntryModal(this.app, this.store, item, day, () => this.refresh()).open();
       } });
-      items.push({ label: T("取消排期"), danger: true, onClick: async () => {
-        await this.store.setField(item, "plan", null);
-        await this.store.setField(item, "st", null);
-        await this.store.setField(item, "en", null);
-        new Notice(T("已取消排期"), 2500);
-        await this.refresh();
+      items.push({ label: T("取消排期"), danger: true, onClick: () => {
+        const day = item.plan || dayOfBlock(item);
+        const hasNote = !!day && !!noteEntryText(item.note || "", day).trim();
+        new ConfirmModal(this.app, {
+          title: T("取消排期"),
+          body: hasNote
+            ? T("任务本身保留；**这一天的备注**（{d}）也会一起删掉。", { d: day })
+            : T("任务本身保留，只清掉排期日与时间段。"),
+          ok: T("取消排期"),
+        }, async (ok) => {
+          if (!ok) return;
+          await this.store.setField(item, "plan", null);
+          await this.store.setField(item, "st", null);
+          await this.store.setField(item, "en", null);
+          if (day && hasNote) await this.store.setTaskNoteEntry(item, day, "");
+          new Notice(T("已取消排期"), 2500);
+          await this.refresh();
+        }).open();
+      } });
+    } else if (kind === "tevent") {
+      // 挂在任务上的日程事件（方案C 存在 logs 里）：打开任务 / 改日期时间 / 写这一天的工作记录 / 删掉这个块
+      const task = this.store.tasks.find((x) => x.file === item.taskFile && x.title === item.title)
+        ?? this.store.tasks.find((x) => x.file === item.taskFile);
+      if (task) items.push({ label: T("打开任务"), onClick: () => new TaskModal(this.app, this.store, task, () => this.refresh()).open() });
+      items.push({ label: T("改日期 / 时间…"), onClick: () => this.openBlockWhen("tevent", item) });
+      items.push({ label: T("删除这个日程块"), danger: true, onClick: () => {
+        const day = item.due || this.viewDate;
+        const hasNote = !!task && !!noteEntryText(task.note || "", day).trim();
+        new ConfirmModal(this.app, {
+          title: T("删掉这个日程块"),
+          body: hasNote
+            ? T("任务本身保留；**这一天的备注**（{d}）也会一起删掉。", { d: day })
+            : T("任务本身保留，只删掉这一天排的块。"),
+          ok: T("删除"),
+        }, async (ok) => {
+          if (!ok) return;
+          await this.store.deleteLog(item);
+          if (task && hasNote) await this.store.setTaskNoteEntry(task, day, "");
+          new Notice(T("已删掉这个日程块（任务本身保留）"), 2500);
+          await this.refresh();
+        }).open();
       } });
     } else {
       items.push({ label: T("编辑记录"), onClick: () => new LogModal(this.app, this.store, item, () => this.refresh()).open() });
@@ -3440,10 +3517,11 @@ export class WorkbenchView extends ItemView {
     start = floorToHalfHour(start);
     if (start + 60 > DAY_TO) { new Notice(T("这天排满了，换一天试试")); return; }
     const end = Math.min(DAY_END_WRITE, start + 60);  // 默认一小时，要细的自己拖
-    // 只排时间：截止日是"什么时候要交"，跟"哪天做"没有关系，一个字都不动
-    await this.store.setField(t, "plan", day);
-    await this.store.setField(t, "st", minToHHMM(start));
-    await this.store.setField(t, "en", minToHHMM(end));
+    // 方案C：排期＝往那天写一条**日程事件**（logs 里一行，带 [todo:: 任务文件]），
+    // 任务行一个字节都不动——所以昨天排过的块还在昨天，今天再排就是"两个块"。
+    await this.store.addLog(day, {
+      st: minToHHMM(start), en: minToHHMM(end), title: t.title, project: t.project, todo: t.file,
+    });
     this.scrollToMin = start;
     await this.refresh();
     new Notice(T("已排入 {a}–{b}", { a: minToHHMM(start), b: minToHHMM(end) }));

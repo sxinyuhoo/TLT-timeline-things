@@ -282,7 +282,7 @@ await t("当天日程记录：以 bullet 显示、排在任务下面；空文案
   assert.ok(!host.querySelector(".tlt-daily-logs"), "没记录就别画列表");
 });
 
-await t("tlt-daily：mine 只在 wip: true 时起作用，且只过滤「进行中」那一组", async () => {
+await t("tlt-daily：wip 开着时 mine 过滤**整块**；wip 没开时 mine 不生效", async () => {
   document.body.empty();
   const n0 = new Date();
   const TS = `${n0.getFullYear()}-${String(n0.getMonth() + 1).padStart(2, "0")}-${String(n0.getDate()).padStart(2, "0")}`;
@@ -292,7 +292,9 @@ await t("tlt-daily：mine 只在 wip: true 时起作用，且只过滤「进行�
   const YS = (() => { const d = new Date(n0.getTime() - 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   fps.files["TLT/tasks/日记人员.md"] = `# 日记人员（测试）\n\n## 一期\n\n`
     + `- [ ] 我的开展中 🛫 ${YS} [owner:: [[甲]]] [est:: 1]\n`
-    + `- [ ] 别人的开展中 🛫 ${YS} [owner:: [[乙]]] [est:: 1]\n`;
+    + `- [ ] 别人的开展中 🛫 ${YS} [owner:: [[乙]]] [est:: 1]\n`
+    + `- [ ] 别人的今天到期 📅 ${TS} [owner:: [[乙]]] [est:: 1]\n`
+    + `- [ ] 我的今天到期 📅 ${TS} [owner:: [[甲]]] [est:: 1]\n`;
   const { app: a2, store } = await makeStore();
   await store.load();
   store.settings.whoAmI = "甲";
@@ -302,12 +304,17 @@ await t("tlt-daily：mine 只在 wip: true 时起作用，且只过滤「进行�
 
   renderDaily(plugin, host, "wip: true", path);
   assert.ok(host.textContent.includes("进行中"), "wip:true 要有「进行中」组");
-  assert.ok(host.textContent.includes("我的开展中"), "我的要在");
-  assert.ok(!host.textContent.includes("别人的开展中"), "别人的不该出现在「进行中」组");
+  assert.ok(host.textContent.includes("我的开展中") && host.textContent.includes("我的今天到期"), "我的要在");
+  assert.ok(!host.textContent.includes("别人的开展中"), "整块过滤：别人的「进行中」不该在");
+  assert.ok(!host.textContent.includes("别人的今天到期"), "整块过滤：别人的「今日待做」也不该在（0.9.99 只挡了进行中，这次修）");
 
   host.empty();
   renderDaily(plugin, host, "wip: true\nmine: false", path);
-  assert.ok(host.textContent.includes("别人的开展中"), "mine:false 时别人的要回来");
+  assert.ok(host.textContent.includes("别人的开展中") && host.textContent.includes("别人的今天到期"), "mine:false 时别人的要回来");
+
+  host.empty();
+  renderDaily(plugin, host, "mine: true", path);              // 没有 wip：mine 不生效（用户口径）
+  assert.ok(host.textContent.includes("别人的今天到期"), "wip 没开时 mine 不生效，别人的还在");
 
   host.empty();
   renderDaily(plugin, host, "wip: false", path);         // 没有「进行中」组时，mine 不参与
@@ -315,6 +322,70 @@ await t("tlt-daily：mine 只在 wip: true 时起作用，且只过滤「进行�
   assert.ok(host.textContent.includes("这天没有待办") || host.textContent.includes("今天的待办") || true, "");
   store.settings.whoAmI = "";
   delete fps.files["TLT/tasks/日记人员.md"]; delete fps.files["TLT/crew/甲.md"]; delete fps.files["TLT/crew/乙.md"];
+});
+
+await t("days 管「进行中」的窗口：不写＝不设上限；写入天数据才收窗口", async () => {
+  fixture();
+  fps.files["TLT/tasks/进行中窗口.md"] = `# 进行中窗口（测试）\n\n## 一期\n\n`
+    + `- [ ] 明天到期的开展中 🛫 2026-10-20 📅 2026-10-30 [est:: 1]\n`
+    + `- [ ] 很久以后到期的开展中 🛫 2026-10-20 📅 2026-12-01 [est:: 1]\n`
+    + `- [ ] 没截止的开展中 🛫 2026-10-20 [est:: 1]\n`;
+  const { app, store } = await makeStore();
+  await store.load();
+  const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() {} };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const path = "70-生活/diary/2026/20261029.md";
+
+  renderDaily(plugin, host, "wip: true", path);                 // 不写 days＝进行中不设上限
+  assert.ok(host.textContent.includes("没截止的开展中"), "没截止的开展中要在（开工即长期）");
+  assert.ok(host.textContent.includes("明天到期的开展中"), "不写 days 时，明天到期的开展中也要在");
+  assert.ok(host.textContent.includes("很久以后到期的开展中"), "不写 days 时不设上限，三个月后的也在");
+
+  host.empty();
+  renderDaily(plugin, host, "wip: true\ndays: 7", path);        // 写了才收窗口
+  assert.ok(host.textContent.includes("明天到期的开展中"), "days:7 时一周内到期的要进来");
+  assert.ok(host.textContent.includes("没截止的开展中"), "没写 📅 的开工中要并进同一组");
+  assert.ok(!host.textContent.includes("很久以后到期的开展中"), "12-01 超窗口，不该进来");
+  // 有窗口时不该再有单独的「进行中」组（那就是重复）
+  const heads7 = [...host.querySelectorAll(".tlt-daily-h")].map((h) => h.textContent);
+  assert.ok(!heads7.some((x) => x.startsWith("进行中")), `有窗口时不该再单列进行中：${heads7.join(" / ")}`);
+  assert.ok(heads7.some((x) => x.startsWith("接下来 7 天")), "窗口那组要在");
+  // 同一个任务只能出现一次
+  const dupTitles = [...host.querySelectorAll(".tlt-daily-t")].map((t) => t.textContent);
+  assert.equal(new Set(dupTitles).size, dupTitles.length, `同一任务不该重复出现：${dupTitles.join(" / ")}`);
+  delete fps.files["TLT/tasks/进行中窗口.md"];
+});
+
+await t("days 选项：days: 3 时「今日待做」变成「接下来 3 天」，把后两天的也列出来", async () => {
+  fixture();
+  fps.files["TLT/tasks/看几天.md"] = `# 看几天（测试）\n\n## 一期\n\n`
+    + `- [ ] 当天的活 📅 2026-10-29 [est:: 1]\n`
+    + `- [ ] 后天的活 📅 2026-10-31 [est:: 1]\n`
+    + `- [ ] 范围外的活 📅 2026-11-02 [est:: 1]\n`;
+  const { app, store } = await makeStore();
+  await store.load();
+  const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() {} };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const path = "70-生活/diary/2026/20261029.md";
+
+  renderDaily(plugin, host, "", path);                       // 默认 days: 1
+  assert.ok(host.textContent.includes("今日待做"), "默认标题还是「今日待做」");
+  assert.ok(host.textContent.includes("当天的活"), "当天的要在");
+  assert.ok(!host.textContent.includes("后天的活"), "默认只看这天");
+
+  host.empty();
+  renderDaily(plugin, host, "days: 3", path);
+  assert.ok(host.textContent.includes("接下来 3 天"), `标题要变成「接下来 3 天」：${host.textContent.slice(0, 40)}`);
+  assert.ok(host.textContent.includes("当天的活"), "当天的要在");
+  assert.ok(host.textContent.includes("后天的活"), "后天的也要在（10-29 起三天 = 29/30/31）");
+  assert.ok(!host.textContent.includes("范围外的活"), "11-02 超范围，不该出现");
+  // 超范围的数字也要被收住
+  host.empty();
+  renderDaily(plugin, host, "days: 99", path);
+  assert.ok(host.textContent.includes("接下来 30 天"), "days 上限 30");
+  delete fps.files["TLT/tasks/看几天.md"];
 });
 
 await t("工作台里改完（重读数据）后，日记块跟着更新——用户报的 bug", async () => {
@@ -444,7 +515,7 @@ await t("进行中（wip: true）：已经开始、还没到期的单列一组�
   assert.ok(![...off.querySelectorAll(".tlt-daily-h")].some((h) => h.textContent.startsWith("进行中")), "默认不该有进行中分组");
 
   const on = document.createElement("div"); document.body.appendChild(on);
-  renderDaily(plugin, on, "wip: true", "70-生活/diary/2026/20261029.md");
+  renderDaily(plugin, on, "wip: true", "70-生活/diary/2026/20261029.md");   // 不写 days＝进行中不设上限，11-06 到期的也在
   const heads = [...on.querySelectorAll(".tlt-daily-h")].map((h) => h.textContent);
   assert.ok(heads.some((x) => x.startsWith("进行中") && x.includes("1")), `应有一组进行中 1 条：${heads.join(" / ")}`);
   const row = [...on.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes("在办的事"));

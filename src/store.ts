@@ -890,7 +890,7 @@ export class Store {
   async setTitle(t: Task, title: string) {
     const body = title.trim();
     if (!body) return false;
-    return this.patchLine(t.file, t.line, (l) => {
+    const ok = await this.patchLine(t.file, t.line, (l) => {
       const m = /^(\s*[-*+]\s+\[[ xX]\]\s+)(.*)$/.exec(l);
       if (!m) return l;
       const rest = m[2];
@@ -899,6 +899,28 @@ export class Store {
       const tail = [dates, fields].filter(Boolean).join(" ");
       return `${m[1]}${body}${tail ? " " + tail : ""}`;
     }, t.title);
+    // 方案C：日程事件行里的标题是任务的镜像，改名后一起同步（不然块上还挂着老名字）
+    if (ok) await this.syncTaskEventTitles(t, body);
+    return ok;
+  }
+
+  /** 任务改名后：把它名下所有日程事件行里的标题换成新的（按 [todo:: 任务文件] 认领，顺带修好历史不同步的） */
+  async syncTaskEventTitles(t: Task, title: string): Promise<number> {
+    let n = 0;
+    const paths = [...new Set(this.logs.filter((l) => l.taskFile === t.file).map((l) => l.file))];
+    for (const path of paths) {
+      const file = await this.fileByPath(path);
+      if (!file) continue;
+      await this.app.vault.process(file, (data) => data.split(/\r?\n/).map((line) => {
+        if (!line.includes(`[todo:: ${t.file}]`)) return line;
+        const m = /^(\s*[-*+]\s+(?:\d{2}:\d{2}\s*(?:[–-]|~)\s*\d{2}:\d{2}\s+)?)(.*)$/.exec(line);
+        if (!m) return line;
+        const fields = (m[2].match(/\[[^[\]]+::\s*(?:\[\[[^\]]*\]\]|[^\]])*\]/g) || []).join(" ");
+        n += 1;
+        return `${m[1]}${title}${fields ? " " + fields : ""}`;
+      }).join("\n"));
+    }
+    return n;
   }
 
   /** 把一条任务（连同缩进步骤）搬到另一个项目/里程碑下 */
@@ -989,7 +1011,7 @@ export class Store {
   }
 
   /** 追加记录到月文件（按 ## 日期分节） */
-  async addLog(dateISO: string, rec: { st?: string; en?: string; title: string; project?: string; body?: string }) {
+  async addLog(dateISO: string, rec: { st?: string; en?: string; title: string; project?: string; body?: string; todo?: string }) {
     await this.ensureFolder(this.settings.logsFolder);
     const month = dateISO.slice(0, 7);
     const path = normalizePath(`${this.settings.logsFolder}/${month}.md`);

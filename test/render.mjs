@@ -1341,13 +1341,16 @@ await t("今天的排期从「现在」开始，并跳过已占用的时段", as
   await view.scheduleTask(t0);
   await view.store.load();
   const after = view.store.tasks.find((t) => t.id === t0.id);
+  const ev = view.store.logs.find((l) => l.due === D && l.taskFile === t0.file && l.title === t0.title);
   if (want + 60 > 24 * 60) {             // 深夜跑测试：这天确实排满了（时间轴是全天的，截止 24:00），不该硬塞
-    assert.ok(!after.st, "排满时不该写入时间");
+    assert.ok(!ev, "排满时不该写事件");
     return;
   }
-  assert.equal(toMin(after.st), want, `应排在 ${Math.floor(want / 60)}:${String(want % 60).padStart(2, "0")}（现在=${now.getHours()}:${String(now.getMinutes()).padStart(2, "0")}），实际 ${after.st}`);
-  assert.ok(after.en && toMin(after.en) > toMin(after.st), "应写入结束时间");
-  assert.ok(toMin(after.st) >= 9 * 60, "再早也不该早于 9 点");
+  assert.ok(ev, "排期应该写成一条日程事件（logs 里一行）");
+  assert.equal(toMin(ev.st), want, `应排在 ${Math.floor(want / 60)}:${String(want % 60).padStart(2, "0")}（现在=${now.getHours()}:${String(now.getMinutes()).padStart(2, "0")}），实际 ${ev.st}`);
+  assert.ok(ev.en && toMin(ev.en) > toMin(ev.st), "应写入结束时间");
+  assert.ok(!after.st && !after.plan, "方案C：任务行不该被写时间/排期");
+  assert.ok(toMin(ev.st) >= 9 * 60, "再早也不该早于 9 点");
 });
 
 await t("日历：勾掉任务之后，它的计划块还在（只是标成已完成）", async () => {
@@ -1664,6 +1667,114 @@ await t("日视图清单：我的 / 归属 / 近期窗口 / 折叠 10 条（0.9.
   Object.assign(view.store.settings, { whoAmI: "", dayWho: "me", dayScope: "all", recentDays: 7, dayTaskScope: "due" });
   delete files["TLT/tasks/清单口径.md"]; delete files["TLT/tasks/清单批量.md"];
   delete files["TLT/crew/甲.md"]; delete files["TLT/crew/乙.md"];
+});
+
+await t("任务详情的备注＝整条（通用说明 + 按天条目都看得到、改得动）；日程块菜单不再重复提供写当天备注", async () => {
+  document.body.empty();
+  files["TLT/tasks/备注整合.md"] = `# 备注整合（测试）\n\n## 一期\n\n- [ ] 带两天备注的活 📅 ${D} [created:: ${D}]\n  > 通用：进门找前台\n  > ${D}：今天和甲方对了口径\n`;
+  await store.load();
+  const task = store.tasks.find((x) => x.title === "带两天备注的活");
+  assert.ok(task, "夹具任务要在");
+  const modal = new TaskModal(app, store, task, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 80));
+  const box = modal.contentEl.querySelector(".tlt-mdf-ta");
+  assert.ok(box, "详情里要有备注输入框");
+  const shown = box.value ?? box.textContent;
+  assert.ok(shown.includes("通用：进门找前台"), `详情要能看到通用说明：${shown}`);
+  assert.ok(shown.includes(`${D}：今天和甲方对了口径`), `详情要能看到当天的条目（用户报的 bug）：${shown}`);
+
+  // 改一改再保存：整条一起写回去，按天条目不能丢
+  box.value = shown + `\n> ${D}：又补了一句`;
+  box.dispatchEvent(new dom.window.MouseEvent("input", { bubbles: true }));
+  [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent === "保存")
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 250));
+  const text = files["TLT/tasks/备注整合.md"];
+  assert.ok(text.includes("通用：进门找前台") && text.includes("今天和甲方对了口径") && text.includes("又补了一句"),
+    `保存后三条都在：\n${text}`);
+  delete files["TLT/tasks/备注整合.md"];
+});
+
+await t("删掉日程块时，那一天记的备注也一起清掉（其他天的备注不动）", async () => {
+  document.body.empty();
+  const day = (n) => { const d = new Date(Date.parse(D) + n * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  const d1 = day(1), d2 = day(2);
+  files["TLT/tasks/删块清备注.md"] = `# 删块清备注（测试）\n\n## 一期\n\n- [ ] 两天都排的活 📅 ${day(3)} [created:: ${D}]\n  > ${d1}：第一天记的内容\n  > ${d2}：第二天记的内容\n`;
+  files[`TLT/logs/${d1.slice(0, 7)}.md`] = `# 记录 ${d1.slice(0, 7)}\n\n## ${d1}\n\n- 09:30–10:30 两天都排的活 [todo:: TLT/tasks/删块清备注.md]\n\n## ${d2}\n\n- 14:00–15:00 两天都排的活 [todo:: TLT/tasks/删块清备注.md]\n`;
+  await store.load();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "today";
+  view.viewDate = d1;
+  await view.render();
+  const blk = [...view.contentEl.querySelectorAll(".tlt-blk.tevent")].find((b) => (b.textContent || "").includes("两天都排的活"));
+  assert.ok(blk, "第一天要有任务日程块");
+  blk.dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true, clientX: 100, clientY: 300 }));
+  await new Promise((r) => window.setTimeout(r, 20));
+  const del = [...document.querySelectorAll(".tlt-menu-i")].find((b) => b.textContent.includes("删除这个日程块"));
+  assert.ok(del, "菜单里要有「删除这个日程块」");
+  del.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 80));
+  const confirm = document.querySelector(".tlt-modal");
+  assert.ok(confirm && confirm.textContent.includes("备注"), `删之前要提示会连备注一起删：${confirm ? confirm.textContent.slice(0, 80) : "没有弹窗"}`);
+  [...confirm.querySelectorAll("button")].find((b) => b.textContent === "删除")
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 250));
+  await store.load();
+  assert.ok(!store.logs.some((l) => l.due === d1 && l.taskFile === "TLT/tasks/删块清备注.md"), "第一天的日程事件要删掉");
+  const text = files["TLT/tasks/删块清备注.md"];
+  assert.ok(!text.includes("第一天记的内容"), `第一天那行备注也要清掉：\n${text}`);
+  assert.ok(text.includes("第二天记的内容"), `第二天那行备注要留着：\n${text}`);
+  assert.ok(text.includes("- [ ] 两天都排的活"), "任务本身要保留");
+  delete files["TLT/tasks/删块清备注.md"];
+  delete files[`TLT/logs/${d1.slice(0, 7)}.md`];
+});
+
+await t("任务事件：详情里标题只读、正文写进任务的当天工作记录；改名后事件行标题跟着同步；备注按日期排序", async () => {
+  document.body.empty();
+  const d1 = "2026-11-10", d2 = "2026-11-12";
+  files["TLT/tasks/事件三连.md"] = `# 事件三连（测试）\n\n## 一期\n\n- [ ] 原名任务 📅 2026-11-20 [created:: ${d1}]\n  > ${d2}：十二号的记录\n  > ${d1}：十号的记录\n`;
+  files["TLT/logs/2026-11.md"] = `# 记录 2026-11\n\n## ${d1}\n\n- 09:30–10:30 原名任务 [todo:: TLT/tasks/事件三连.md]\n`;
+  await store.load();
+
+  // ① 任务事件的详情：标题只读 + 正文赋值＝任务当天条目
+  let task = store.tasks.find((x) => x.title === "原名任务");
+  let log = store.logs.find((l) => l.taskFile === "TLT/tasks/事件三连.md");
+  assert.ok(task && log, "夹具要在");
+  let modal = new LogModal(app, store, log, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 80));
+  assert.ok(!modal.contentEl.querySelector("input.tlt-log-title"), "任务事件的详情不该给标题输入框（改名只能去任务详情）");
+  assert.ok(modal.contentEl.querySelector(".tlt-log-title-ro")?.textContent.includes("原名任务"), "标题要只读显示出来");
+  const body1 = modal.contentEl.querySelector(".tlt-mdf-ta");
+  assert.equal((body1.value || "").trim(), "十号的记录", `正文要预填任务当天条目，实际 ${body1.value}`);
+  body1.value = "十号：改了内容";
+  body1.dispatchEvent(new dom.window.MouseEvent("input", { bubbles: true }));
+  [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent === "保存")
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 250));
+  let text = files["TLT/tasks/事件三连.md"];
+  assert.ok(text.includes("十号：改了内容"), `保存要写进任务备注：\n${text}`);
+  assert.ok(files["TLT/logs/2026-11.md"].includes("- 09:30–10:30 原名任务 [todo::"), "事件行本身不该被动");
+
+  // ② 改名：事件行标题跟着同步
+  await store.load();
+  task = store.tasks.find((x) => x.title === "原名任务");
+  await store.setTitle(task, "新名字任务");
+  await new Promise((r) => window.setTimeout(r, 120));
+  assert.ok(files["TLT/logs/2026-11.md"].includes("新名字任务 [todo::"), `事件行标题要同步：\n${files["TLT/logs/2026-11.md"]}`);
+
+  // ③ 详情里备注按日期排序（11-10 在 11-12 前面）
+  await store.load();
+  task = store.tasks.find((x) => x.title === "新名字任务");
+  const tm = new TaskModal(app, store, task, () => {});
+  tm.open();
+  await new Promise((r) => window.setTimeout(r, 80));
+  const box = tm.contentEl.querySelector(".tlt-mdf-ta");
+  const val = box.value || "";
+  assert.ok(val.indexOf("十号") < val.indexOf("十二号"), `备注要按日期升序：${val}`);
+  delete files["TLT/tasks/事件三连.md"]; delete files["TLT/logs/2026-11.md"];
 });
 
 await t("左栏可折叠写进设置；消息中心是浮层（点 ✕ 关、点工作台也关）", async () => {
@@ -2922,7 +3033,7 @@ await t("任务详情：有开始日但没截止日的旧任务，保存不该�
   assert.match(text, /- \[ \] 只有开始日 🛫 \S+/, "开始日要留着");
 });
 
-await t("排进时间表：只写排期日和时段，绝不改截止日；块挂在排期日那天", async () => {
+await t("排进时间表（方案C）：写成日程事件、任务行一字不动；连排两天＝两个块并存", async () => {
   document.body.empty();
   const day = (n) => { const d = new Date(Date.parse(D) + n * 86400000); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
   const later = day(3);
@@ -2931,29 +3042,47 @@ await t("排进时间表：只写排期日和时段，绝不改截止日；块�
   const view = mount(WorkbenchView);
   await view.onOpen();
   view.tab = "today";
-  view.viewDate = D;
-  await view.render();
   const task = store.tasks.find((x) => x.title === "交期在后头的活");
-  const target = day(1);                       // 排到明天：今天的空档跟"现在几点"有关，测试要稳
-  view.viewDate = target;
+  const d1 = day(1), d2 = day(2);
+
+  // ① 排到明天
+  view.viewDate = d1;
   await view.render();
   await view.scheduleTask(task);
   await new Promise((r) => window.setTimeout(r, 150));
-
   const text = files["TLT/tasks/示例项目.md"];
   assert.match(text, new RegExp(`📅 ${later}`), `截止日一个字都不能动：\n${text}`);
-  assert.match(text, new RegExp(`\\[plan:: ${target}\\]`), `要写下排期日（${target}）：\n${text}`);
-  assert.match(text, /\[st:: \d{2}:\d{2}\]/, "要写开始时间");
-  assert.match(text, /\[en:: \d{2}:\d{2}\]/, "要写结束时间");
-
-  // 排完：块出现在"排期日"，不是截止日那天
+  assert.ok(!/\[plan::/.test(text), `方案C：不再往任务行写排期日：\n${text}`);
+  assert.ok(!/\[st::/.test(text), `方案C：不再往任务行写时间：\n${text}`);
   await store.load();
+  const ev1 = store.logs.find((l) => l.due === d1 && l.taskFile === "TLT/tasks/示例项目.md");
+  assert.ok(ev1, `要写下第一天的事件（logs/${d1.slice(0, 7)}.md）：${store.logs.map((l) => l.title + "@" + l.due).join(" / ")}`);
+  assert.ok(/\[todo:: TLT\/tasks\/示例项目\.md\]/.test(files[`TLT/logs/${d1.slice(0, 7)}.md`] || ""), "事件行要带 [todo:: 任务文件]");
+
+  // ② 再排到后天：两个事件并存，两个块都能看到（这就是"搬走"被修掉的地方）
+  view.viewDate = d2;
   await view.render();
-  const here = [...document.querySelectorAll(".tlt-blk.plan")].find((b) => (b.textContent || "").includes("交期在后头的活"));
-  assert.ok(here, "块该排在排期日那天");
+  await view.scheduleTask(task);
+  await new Promise((r) => window.setTimeout(r, 150));
+  await store.load();
+  const evs = store.logs.filter((l) => l.taskFile === "TLT/tasks/示例项目.md");
+  assert.equal(evs.length, 2, `两天各一条事件，实际 ${evs.length}`);
+  for (const [dd, label] of [[d1, "第一天"], [d2, "第二天"]]) {
+    view.viewDate = dd;
+    await view.render();
+    const blk = [...document.querySelectorAll(".tlt-blk.tevent")].find((b) => (b.textContent || "").includes("交期在后头的活"));
+    assert.ok(blk, `${label}的块要还在（${dd}）`);
+  }
+  // 排过的日子不再出现在"点一下排进时间表"候选里
+  view.viewDate = d1;
+  await view.render();
+  assert.ok(![...view.contentEl.querySelectorAll(".tlt-chipq")].some((c) => c.title.includes("交期在后头的活")),
+    "当天已排过的事件，不该再出现在候选清单里");
+
+  // ③ 截止日那天不出现块
   view.viewDate = later;
   await view.render();
-  const there = [...document.querySelectorAll(".tlt-blk.plan")].find((b) => (b.textContent || "").includes("交期在后头的活"));
+  const there = [...document.querySelectorAll(".tlt-blk")].find((b) => (b.textContent || "").includes("交期在后头的活"));
   assert.ok(!there, "截止日那天不该出现这个块（排期和截止是两回事）");
 });
 
@@ -3155,11 +3284,14 @@ await t("一键排进日历：默认一小时", async () => {
   await view.render();
   await view.scheduleTask(task);
   await new Promise((r) => window.setTimeout(r, 150));
+  // 方案C：排期写进 logs 的事件行（任务行不动）
+  await store.load();
+  const ev = store.logs.find((l) => l.due === day2(D, 1) && l.taskFile === "TLT/tasks/示例项目.md" && l.title === "排一下");
+  assert.ok(ev, "排完要有一条事件：" + store.logs.map((l) => `${l.title}@${l.due}`).join(" / "));
+  const mins = (v) => Number(v.slice(0, 2)) * 60 + Number(v.slice(3, 5));
+  assert.equal(mins(ev.en) - mins(ev.st), 60, `默认该是一小时：${ev.st}–${ev.en}`);
   const line = files["TLT/tasks/示例项目.md"].split("\n").find((l) => l.includes("排一下"));
-  const st = /\[st:: (\d{2}):(\d{2})\]/.exec(line);
-  const en = /\[en:: (\d{2}):(\d{2})\]/.exec(line);
-  const mins = (m) => Number(m[1]) * 60 + Number(m[2]);
-  assert.equal(mins(en) - mins(st), 60, `默认该是一小时：${line}`);
+  assert.ok(!/\[st::/.test(line), `任务行不该被写时间：${line}`);
 });
 
 await t("消息详情：删除在最左，删完详情框自动关掉", async () => {
@@ -3976,7 +4108,7 @@ await t("任务详情：备注排在子项下面", async () => {
   // 用 DOM 位置判断先后：可见的「备注」在「子项」下面
   const after = !!(steps.compareDocumentPosition(note) & window.Node.DOCUMENT_POSITION_FOLLOWING);
   assert.ok(after, "备注框应该排在子项区之后");
-  assert.equal(m.draft.noteGeneral, "通用说明：写在下面就对", "备注要预填通用说明");
+  assert.ok((m.draft.note || "").includes("通用说明：写在下面就对"), `备注要预填整条（含通用说明）：${m.draft.note}`);
   m.close();
 });
 
