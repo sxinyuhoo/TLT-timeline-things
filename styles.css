@@ -1545,7 +1545,7 @@ body.tlt-light .tlt-root .tlt-card:hover { box-shadow: 0 4px 14px rgba(28, 34, 5
 .tlt-tl-r { display: flex; align-items: baseline; gap: 8px; font-size: 10.5px; }
 .tlt-tl-k { flex: none; width: 34px; color: var(--tlt-ink5); }
 .tlt-tl-v { color: var(--tlt-ink2); }
-.tlt-steps.in-modal { margin: 0; }
+.tlt-steps.in-modal { margin: 0; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; }
 .tlt-steps.in-modal .tlt-step { font-size: 11.5px; padding: 2px 0; }
 .tlt-steps.in-modal .tlt-step-t:hover { text-decoration: underline dotted; }
 
@@ -2354,3 +2354,12 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
 
 /* 任务日程事件：标题只读（任务名字的镜像），当文本显示 */
 .tlt-log-title-ro { font-size: 15px; font-weight: 600; color: var(--tlt-ink); padding: 2px 0 4px; }
+
+/* 任务详情这类长弹窗：内容滚动、底部按钮吸附——子项多了也不会把「保存」挤出去 */
+.modal-content.tlt-modal { max-height: min(78vh, 860px); overflow-y: auto; overscroll-behavior: contain; }
+.modal-content.tlt-modal .tlt-m-foot {
+  position: sticky; bottom: 0; z-index: 3; margin-top: 14px; padding: 10px 0 2px;
+  background: var(--tlt-bg2);
+  box-shadow: 0 -10px 16px -12px rgba(0, 0, 0, .45);
+}
+.tlt-root[data-tier="phone"] .modal-content.tlt-modal { max-height: 86vh; }

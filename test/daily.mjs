@@ -388,6 +388,56 @@ await t("days 选项：days: 3 时「今日待做」变成「接下来 3 天」�
   delete fps.files["TLT/tasks/看几天.md"];
 });
 
+await t("提前完成：我的任务今天做完就出现在今天（mine 生效时也只看我的）", async () => {
+  fixture();
+  const n0 = new Date();
+  const TS = `${n0.getFullYear()}-${String(n0.getMonth() + 1).padStart(2, "0")}-${String(n0.getDate()).padStart(2, "0")}`;
+  const plus = (k) => { const d = new Date(n0.getTime() + k * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const future = plus(5), yesterday = plus(-1);
+  fps.files["TLT/crew/甲.md"] = `---\ntlt: staff\nrole: 算法\ncapacity: 100\ndays: 5\nstatus: active\n---\n`;
+  fps.files["TLT/crew/乙.md"] = `---\ntlt: staff\nrole: 算法\ncapacity: 100\ndays: 5\nstatus: active\n---\n`;
+  fps.files["TLT/tasks/提前完成.md"] = `# 提前完成（测试）\n\n## 一期\n\n`
+    + `- [x] 我提前做完的（截止在后头） 📅 ${future} [owner:: [[甲]]] [done:: ${TS}] [est:: 1]\n`
+    + `- [x] 别人的活我今天勾了 📅 ${future} [owner:: [[乙]]] [done:: ${TS}] [est:: 1]\n`
+    + `- [x] 没分派但我做完了 📅 ${future} [done:: ${TS}] [est:: 1]\n`
+    + `- [x] 我昨天做完的 📅 ${future} [owner:: [[甲]]] [done:: ${yesterday}] [est:: 1]\n`
+    + `- [ ] 还没做的 📅 ${future} [owner:: [[甲]]] [est:: 1]\n`;
+  const { app, store } = await makeStore();
+  await store.load();
+  store.settings.whoAmI = "甲";
+  const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() {} };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const path = `70-生活/diary/2026/${TS.replace(/-/g, "")}.md`;
+
+  for (const opts of ["", "wip: true\nmine: true", "wip: true\nmine: true\ndays: 7"]) {
+    host.empty();
+    renderDaily(plugin, host, opts, path);
+    const head = [...host.querySelectorAll(".tlt-daily-h")].find((h) => h.textContent.startsWith("今日已完成"));
+    assert.ok(head, `[${opts || "默认"}] 要有「今日已完成」组`);
+    assert.ok(host.textContent.includes("我提前做完的（截止在后头）"), `[${opts || "默认"}] 截止在后头、今天做完的要在`);
+    assert.ok(!host.textContent.includes("我昨天做完的"), `[${opts || "默认"}] 昨天做完的不该在今天出现`);
+    if (opts.includes("mine")) {
+      assert.ok(!host.textContent.includes("别人的活我今天勾了"), `[${opts}] mine 生效时别人名下的不显示`);
+      assert.ok(!host.textContent.includes("没分派但我做完了"), `[${opts}] mine 生效时没分派的不算我的`);
+    }
+    const n = Number(head.querySelector("b")?.textContent || "0");
+    const want = opts.includes("mine") ? 1 : 3;
+    assert.equal(n, want, `[${opts || "默认"}] 今日已完成应 ${want} 条，实际 ${n}`);
+  }
+
+  // 明天那块：今天做完的"明天到期"任务不该再出现
+  host.empty();
+  fps.files["TLT/tasks/提前完成2.md"] = `# 提前完成2\n\n## 一期\n\n- [x] 今天做完明天到期的 📅 ${plus(1)} [owner:: [[甲]]] [done:: ${TS}] [est:: 1]\n`;
+  await store.load();
+  renderDaily(plugin, host, "wip: true\nmine: true\ndays: 7", `70-生活/diary/2026/${plus(1).replace(/-/g, "")}.md`);
+  assert.ok(!host.textContent.includes("今天做完明天到期的"), "明天那块里不该再出现它（它属于完成的那一天）");
+
+  store.settings.whoAmI = "";
+  delete fps.files["TLT/tasks/提前完成.md"]; delete fps.files["TLT/tasks/提前完成2.md"];
+  delete fps.files["TLT/crew/甲.md"]; delete fps.files["TLT/crew/乙.md"];
+});
+
 await t("工作台里改完（重读数据）后，日记块跟着更新——用户报的 bug", async () => {
   fixture();
   // 用"今天"的日记 + 今天到期的任务：勾完才会进「今日已完成」（这是用户的实际场景）

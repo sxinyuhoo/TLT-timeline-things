@@ -302,6 +302,7 @@ export class WorkbenchView extends ItemView {
     this.roRaf = window.requestAnimationFrame(() => {
       this.roRaf = 0;
       try { this.fitCalendarHeight(); } catch { /* 布局还没稳，下一帧再说 */ }
+      this.reapplyStoredScroll();     // fit 改高度可能把 scrollTop 夹小，补回用户上次的位置
       this.applyCalendarFocus();
     });
   }
@@ -371,7 +372,7 @@ export class WorkbenchView extends ItemView {
     // 否则"很久以前那次日视图的 0"会在下一次打开日视图时把自动居中顶掉（用户报过）
     // 只在"真的滚过"或"容器确有高度"时才记：视图隐藏/还没布局时 clientHeight 是 0，
     // 这时抓到的是假值 0，记下来之后每次回来都会"恢复"到顶部（用户报的就是这个）。
-    if (prevGrid && this.renderedDay && (prevGrid.clientHeight > 80 || prevGrid.scrollTop > 4)) {
+    if (prevGrid && this.renderedDay && prevGrid.scrollTop > 4 && (prevGrid.clientHeight > 80 || prevGrid.scrollTop > 4)) {
       this.dayScroll = { day: this.renderedDay, top: prevGrid.scrollTop };
     } else if (!prevGrid) {
       this.dayScroll = null;      // 上一屏压根不在日视图 → 旧位置作废；还在日视图只是没量到高度 → 留着别丢
@@ -849,7 +850,10 @@ export class WorkbenchView extends ItemView {
     const wrap = el("div", "tlt-daywrap");
     const grid = el("div", "tlt-daygrid");
     grid.dataset.slotgrid = "1";
-    grid.addEventListener("scroll", () => { this.dayScroll = { day: this.viewDate, top: grid.scrollTop }; }, { passive: true });
+    grid.addEventListener("scroll", () => {
+      if (grid.scrollTop <= 4) return;                 // 0（含被容器夹回去的 0）不算"用户滚过"
+      this.dayScroll = { day: this.viewDate, top: grid.scrollTop };
+    }, { passive: true });
     const inner = el("div", "tlt-dayinner");
     inner.style.height = `${((DAY_TO - DAY_FROM) / 60) * HOUR_PX}px`;
     for (let mnt = DAY_FROM; mnt < DAY_TO; mnt += 60) {
@@ -2279,7 +2283,10 @@ export class WorkbenchView extends ItemView {
     else p.appendChild(head);
     p.appendChild(scroll);
     // 边滚边记：拖动落盘会整页重渲，靠渲染前后各记一次不够稳（fit 改高度会把 scrollTop 清 0）
-    scroll.addEventListener("scroll", () => { this.weekScroll = { day: this.viewDate, top: scroll.scrollTop }; }, { passive: true });
+    scroll.addEventListener("scroll", () => {
+      if (scroll.scrollTop <= 4) return;               // 同上：夹成 0 的那次不记
+      this.weekScroll = { day: this.viewDate, top: scroll.scrollTop };
+    }, { passive: true });
     scroll.style.height = `${HOUR * hours + 8}px`;     // 先按完整时间轴给高，挂进 DOM 后再收进可用高度（内部滚）
     // 打开时把"要看的时刻"放到视口中部偏上：周视图固定 08:30（早上到上午最常看；挂载后由 fitCalendarHeight 应用）
     this.renderedWeek = this.viewDate;
@@ -2649,6 +2656,7 @@ export class WorkbenchView extends ItemView {
   /** 视图拿到/换掉真实尺寸时（Obsidian 会调）：高度重算 + 补做一次"定位到现在" */
   onResize(): void {
     this.fitCalendarHeight();
+    this.reapplyStoredScroll();
     this.applyCalendarFocus();
   }
 
@@ -3421,10 +3429,10 @@ export class WorkbenchView extends ItemView {
   private reapplyStoredScroll() {
     if (this.focusPending !== null) return;              // 正在显式定位（跳转/首次打开），别抢
     if (this.tab !== "today") return;
-    if (this.calView === "d" && this.dayScroll && this.dayScroll.day === this.viewDate) {
+    if (this.calView === "d" && this.dayScroll && this.dayScroll.day === this.viewDate && this.dayScroll.top > 4) {
       const g = this.contentEl.querySelector<HTMLElement>(".tlt-daygrid");
       if (g && g.clientHeight > 80 && Math.abs(g.scrollTop - this.dayScroll.top) > 2) g.scrollTop = this.dayScroll.top;
-    } else if (this.calView === "w" && this.weekScroll && this.weekScroll.day === this.viewDate) {
+    } else if (this.calView === "w" && this.weekScroll && this.weekScroll.day === this.viewDate && this.weekScroll.top > 4) {
       const w = this.contentEl.querySelector<HTMLElement>(".tlt-wscroll");
       if (w && w.clientHeight > 80 && Math.abs(w.scrollTop - this.weekScroll.top) > 2) w.scrollTop = this.weekScroll.top;
     }

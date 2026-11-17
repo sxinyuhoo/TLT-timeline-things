@@ -74,6 +74,7 @@ function pick(tasks: Task[], o: DailyOptions, date: string, mineName = "") {
     o.scope === "all" || (o.scope === "personal" ? isPersonal(t) : !isPersonal(t));
   // mine：wip 开着才生效（用户口径），生效时**整块**只看我名下的（未分派不算）
   const filterAllMine = o.wip && o.mine && !!mineName;
+  // mine：wip 开着才生效（用户口径），生效时整块（含已完成）只看我名下的
   const pool = tasks.filter((t) => t.kind !== "log" && scopeOk(t)
     && (!filterAllMine || t.owners.includes(mineName)));
   const windowed = o.days >= 2;
@@ -94,8 +95,10 @@ function pick(tasks: Task[], o: DailyOptions, date: string, mineName = "") {
   const todo = pool.filter((t) => !t.done && t.due && (windowed ? (t.due >= date && t.due <= end) : t.due === date));
   // 「已完成」只看**真实的完成时间**（`[done:: 日期]`），不做任何"按截止日"的近似。
   // 那天到期、后来才勾掉的任务，会出现在**它真正被勾掉的那天**的日记里。
-  const done = pool.filter((t) => t.done && t.doneAt
-    && (windowed ? (t.doneAt >= date && t.doneAt <= end) : t.doneAt === date));
+  // 已完成：只认**这一天真正完成**的（`[done:: 这天]`），不看 days 窗口。
+  // 于是：① 截止日还没到、今天提前做完的 → 出现在「今天」；② 明天那块里不会再出现它
+  // （它属于"完成的那一天"）；③ mine 生效时同样只看我的。
+  const done = pool.filter((t) => t.done && t.doneAt === date);
   const rank = (a: Task, b: Task) =>
     (a.due || "9999").localeCompare(b.due || "9999") || b.pri - a.pri || (b.est || 0) - (a.est || 0);
   return {

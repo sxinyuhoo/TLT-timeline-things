@@ -1777,6 +1777,62 @@ await t("任务事件：详情里标题只读、正文写进任务的当天工�
   delete files["TLT/tasks/事件三连.md"]; delete files["TLT/logs/2026-11.md"];
 });
 
+await t("日视图滚动记忆：被夹成 0 的那次不记（否则每天打开都停在 0 点）", async () => {
+  document.body.empty();
+  const n0 = new Date();
+  const TS = `${n0.getFullYear()}-${String(n0.getMonth() + 1).padStart(2, "0")}-${String(n0.getDate()).padStart(2, "0")}`;
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  files["TLT/tasks/滚动门槛.md"] = `# 滚动门槛（测试）\n\n## 一期\n\n- [ ] 门槛用例 📅 ${TS} [created:: ${TS}]\n`;
+  await view.store.load();
+  view.tab = "today"; view.calView = "d"; view.viewDate = TS;
+  await view.render();
+  await new Promise((r) => setTimeout(r, 360));
+  const g = view.contentEl.querySelector(".tlt-daygrid");
+  Object.defineProperty(g, "clientHeight", { value: 400, configurable: true });
+
+  // ① 用户滚到 700：记住
+  g.scrollTop = 700;
+  g.dispatchEvent(new dom.window.Event("scroll"));
+  assert.equal(view.dayScroll?.top, 700, `滚到 700 要记住，实际 ${JSON.stringify(view.dayScroll)}`);
+
+  // ② 容器把 scrollTop 夹成 0 时触发的那次 scroll：不能覆盖记忆
+  g.scrollTop = 0;
+  g.dispatchEvent(new dom.window.Event("scroll"));
+  assert.equal(view.dayScroll?.top, 700, `被夹成 0 的那次不该覆盖记忆，实际 ${JSON.stringify(view.dayScroll)}`);
+
+  // ③ 恢复：把 0 补回 700（jsdom 里"定位到现在"会一直重试，先把 focusPending 清掉模拟稳定状态）
+  view.focusPending = null;
+  view.reapplyStoredScroll();
+  assert.equal(g.scrollTop, 700, `补恢复要回到 700，实际 ${g.scrollTop}`);
+  delete files["TLT/tasks/滚动门槛.md"];
+});
+
+await t("任务详情：子项多了也不会把「保存」挤出去（弹窗限高可滚 + 底栏吸底 + 子项区自己滚）", async () => {
+  const css = (await import("node:fs")).readFileSync("styles.css", "utf8");
+  assert.ok(/\.modal-content\.tlt-modal\s*\{[^}]*max-height:[^}]*\}/.test(css), "弹窗内容区要限高");
+  assert.ok(/\.modal-content\.tlt-modal\s*\{[^}]*overflow-y:\s*auto/.test(css), "弹窗内容区要能滚");
+  assert.ok(/\.modal-content\.tlt-modal \.tlt-m-foot\s*\{[^}]*position:\s*sticky[^}]*bottom:\s*0/.test(css), "底栏要吸底");
+  assert.ok(/\.tlt-steps\.in-modal\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/.test(css), "弹窗里的子项区自己限高滚动");
+
+  // 结构前提：底栏必须是弹窗内容区的直接子元素（sticky 才贴着这个滚动容器）
+  document.body.empty();
+  files["TLT/tasks/子项很多.md"] = `# 子项很多（测试）\n\n## 一期\n\n- [ ] 子项很多的活 📅 ${D} [created:: ${D}]\n`
+    + Array.from({ length: 30 }, (_, i) => `  - [ ] 子项 ${i + 1}`).join("\n") + "\n";
+  await store.load();
+  const task = store.tasks.find((x) => x.title === "子项很多的活");
+  const m = new TaskModal(app, store, task, () => {});
+  m.open();
+  await new Promise((r) => window.setTimeout(r, 80));
+  const foot = m.contentEl.querySelector(".tlt-m-foot");
+  assert.ok(foot && foot.parentElement === m.contentEl, "底栏要直接挂在 tlt-modal 上");
+  assert.ok(m.contentEl.querySelectorAll(".tlt-step").length >= 20, "夹具的 30 个子项要渲染出来");
+  const steps = m.contentEl.querySelector(".tlt-steps.in-modal");
+  assert.ok(steps && steps.classList.contains("in-modal"), "子项区要有 in-modal 类（限高规则靠它）");
+  m.close();
+  delete files["TLT/tasks/子项很多.md"];
+});
+
 await t("左栏可折叠写进设置；消息中心是浮层（点 ✕ 关、点工作台也关）", async () => {
   document.body.empty();
   const view = mount(WorkbenchView);
@@ -4700,19 +4756,19 @@ await t("截止日期：选开始日就跟着填截止日（日历才会开在�
   modal.open();
   await new Promise((r) => window.setTimeout(r, 60));
   const [startEl, dueEl] = [...modal.contentEl.querySelectorAll(".tlt-dline input[type=date]")];
-  // 选开始日：挑一个和"默认截止日（明天）"不相干的日期，否则 follow() 会提前 return
-  startEl.value = "2026-11-13";
+  // 选开始日：挑一个和"默认截止日（今天/明天）"不相干的远期日期，否则 follow() 会提前 return
+  startEl.value = "2027-12-20";
   startEl.dispatchEvent(new startEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
-  assert.equal(dueEl.value, "2026-11-13", `选开始日后截止框应跟着填，实际 ${dueEl.value}`);
+  assert.equal(dueEl.value, "2027-12-20", `选开始日后截止框应跟着填，实际 ${dueEl.value}`);
   assert.ok(dueEl.classList.contains("is-auto"), "自动跟随的值要有淡显标记");
-  assert.equal(modal.draft.due, "2026-11-13", "跟着填的值也要进任务（所见即所得）");
+  assert.equal(modal.draft.due, "2027-12-20", "跟着填的值也要进任务（所见即所得）");
   // 用户自己改截止日 → 之后不再跟
-  dueEl.value = "2026-11-20";
+  dueEl.value = "2027-12-25";
   dueEl.dispatchEvent(new dueEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
-  assert.equal(modal.draft.due, "2026-11-20");
+  assert.equal(modal.draft.due, "2027-12-25");
   startEl.value = "2026-12-01";
   startEl.dispatchEvent(new startEl.ownerDocument.defaultView.Event("change", { bubbles: true }));
-  assert.equal(dueEl.value, "2026-11-20", "用户自己定过截止日后，不该被开始日再改");
+  assert.equal(dueEl.value, "2027-12-25", "用户自己定过截止日后，不该被开始日再改");
 });
 
 await t("截止日期：开始日变了，截止日跟着换（用户还没自己定过）", async () => {
