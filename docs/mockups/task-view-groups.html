@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>TLT · 任务页状态分组与折叠（原型）</title>
+<style>
+  :root{
+    --bg:#0E0E12; --bg2:#15151C; --surface:#1A1A23; --surface2:#20202B; --surface3:#262633;
+    --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.14); --line3:rgba(255,255,255,.22);
+    --ink:#E9EAEF; --ink2:#C2C3CE; --ink3:#A6A9B6; --ink4:#8A8E9C; --ink5:#6E7280;
+    --acc:#5B6CFF; --hot:#E5534B; --warn:#D9A05F; --ok:#4FB59A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;
+    padding:20px}
+  .wrap{display:flex;gap:18px;align-items:flex-start;max-width:1240px}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:14px 15px}
+  h1{font-size:15px;margin:0 0 4px}
+  .sub{color:var(--ink4);font-size:11.5px;margin-bottom:14px}
+  h3{font-size:12px;color:var(--ink3);margin:0 0 8px;font-weight:600;letter-spacing:.02em}
+
+  /* ---------------- 左侧：任务页 ---------------- */
+  .pane{width:660px;flex:none}
+  .pane-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .seg{display:flex;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:3px}
+  .seg button{font:inherit;font-size:11px;color:var(--ink4);background:transparent;border:0;border-radius:6px;
+    padding:4px 9px;cursor:pointer}
+  .seg button.on{background:rgba(91,108,255,.18);color:#E7E9FF}
+  .sortbtn{font:inherit;font-size:11px;color:var(--ink4);background:transparent;border:1px solid var(--line2);
+    border-radius:999px;padding:4px 10px;cursor:pointer}
+  .spacer{flex:1}
+
+  .grp{margin-bottom:8px;border:1px solid var(--line);border-radius:9px;background:var(--surface);overflow:hidden}
+  .grp-h{display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;user-select:none}
+  .grp-h:hover{background:var(--surface2)}
+  .chev{width:10px;height:10px;flex:none;border-right:1.5px solid var(--ink4);border-bottom:1.5px solid var(--ink4);
+    transform:rotate(-45deg);transition:transform .15s ease;margin-left:1px}
+  .grp.open .chev{transform:rotate(45deg)}
+  .grp-n{font-size:12px;color:var(--ink2)}
+  .grp-c{font-size:11px;color:var(--ink4);background:var(--surface3);border-radius:999px;padding:0 6px}
+  .grp-recent{margin-left:auto;font-size:10.5px;color:var(--ink5)}
+  .grp-b{display:none;padding:2px 8px 8px}
+  .grp.open .grp-b{display:block}
+
+  /* 任务行 */
+  .row{display:flex;align-items:center;gap:9px;padding:5px 3px;border-radius:7px;position:relative}
+  .row:hover{background:var(--surface2)}
+  .row + .row{border-top:1px solid var(--line)}
+  .bar{width:2px;height:17px;border-radius:2px;flex:none}
+  .bar.run{background:var(--acc)}
+  .bar.todo{background:transparent;border-left:2px dashed var(--ink5)}
+  .bar.late{background:var(--hot)}
+  .ring{width:19px;height:19px;flex:none}
+  .t{font-size:12px;color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .t.done{color:var(--ink5);text-decoration:line-through}
+  .pd{width:5px;height:5px;border-radius:50%;background:var(--warn);flex:none}
+  .pd.u{width:6px;height:6px;background:var(--hot)}
+  .rail{display:flex;align-items:center;gap:6px;flex:none;color:var(--ink5);font-size:10.5px;
+    font-variant-numeric:tabular-nums}
+  .track{width:92px;height:3px;border-radius:2px;background:var(--line2);position:relative;overflow:hidden}
+  .track i{position:absolute;left:0;top:0;bottom:0;background:var(--acc)}
+  .track.dash{background:transparent;border-top:1px dashed var(--ink5);height:1px}
+  .st{width:88px;text-align:right}
+  .st.todo{color:var(--ink4)}
+  .st.late{color:var(--hot)}
+  .st.done{color:var(--ok)}
+
+  /* 组内细分隔线 */
+  .sep{display:flex;align-items:center;gap:8px;margin:7px 2px 3px;color:var(--ink5);font-size:10.5px}
+  .sep::before,.sep::after{content:"";height:1px;background:var(--line);flex:1}
+  .sep b{font-weight:500;color:var(--ink4)}
+
+  /* ---------------- 右侧：其它三处 ---------------- */
+  .side{flex:1;min-width:380px;display:flex;flex-direction:column;gap:14px}
+  .mini{margin-bottom:12px}
+  .mini:last-child{margin-bottom:0}
+  .mh{font-size:11px;color:var(--ink4);margin-bottom:6px}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--line);
+    border-radius:999px;padding:4px 10px;font-size:11px;color:var(--ink2);margin:0 6px 6px 0}
+  .chip .bar{height:12px}
+  .legend{display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--ink3)}
+  .legend div{display:flex;align-items:center;gap:8px}
+  .note{font-size:11px;color:var(--ink5);line-height:1.65;margin-top:8px}
+  .pill{font-size:10px;color:var(--ink4);border:1px dashed var(--line2);border-radius:999px;padding:0 6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 左：任务页 ============ -->
+  <div class="pane card">
+    <h1>任务页 · 状态分组 + 折叠（原型）</h1>
+    <div class="sub">原型里的计数=实际展示的行数（不是全量数据）；默认全部折叠；点头部展开；展开状态<b style="color:var(--ink3)">按组名共享</b>（切维度、换项目都记得）。点一下试试 👇</div>
+
+    <div class="pane-head">
+      <div class="seg" id="seg">
+        <button class="on" data-dim="m">本月</button>
+        <button data-dim="w">本周</button>
+        <button data-dim="run">开展中</button>
+      </div>
+      <span class="spacer"></span>
+      <button class="sortbtn">排序：截止时间 ↑</button>
+    </div>
+
+    <div id="groups"></div>
+    <div class="note" style="margin-top:10px">
+      头部右侧的「最近 11-27」就是 <b>折叠头显示最近截止日</b>：不展开也能知道这一组最急到哪天。不想要可以去掉。<br>
+      空组仍显示标题 + 灰字「没有」（这里省略了以省地方）。
+    </div>
+  </div>
+
+  <!-- ============ 右：其它三处 ============ -->
+  <div class="side">
+    <div class="card">
+      <h3>状态标记：只用「线」，不碰任何圆点</h3>
+      <div class="legend">
+        <div><span class="bar todo"></span><span>未开始 —— 虚线（轨道也不填色）</span></div>
+        <div><span class="bar run"></span><span>进行中 —— 实线 + 轨道填充到今天</span></div>
+        <div><span class="bar late"></span><span>逾期 —— 红色（沿用现状的红色文字，不新增图形）</span></div>
+        <div><span class="bar" style="background:transparent"></span><span>已完成 —— 删除线 + 淡显（现状）</span></div>
+      </div>
+      <div class="note">
+        为什么不用点：<b>子项</b>（空心圆→实心圆）、<b>优先级 高/紧急</b>（橙点/红点带光晕）、
+        <b>分组头与里程碑</b>（方块）已经把"圆/方点"这一通道占满了；再上点必然撞。
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>同一套标记，另外三处长这样</h3>
+
+      <div class="mini">
+        <div class="mh">① 里程碑卡片展开后的任务列表（状态是混的，所以要标）</div>
+        <div class="row"><span class="bar run"></span><span class="t">养护场景算法后续提升计划</span>
+          <span class="rail"><span>11-19</span><span class="track"><i style="width:62%"></i></span><span>11-23</span></span><span class="st">剩 1 天</span></div>
+        <div class="row"><span class="bar todo"></span><span class="t">完成与资源管理平台的需求对接 &amp; 梳理</span>
+          <span class="rail"><span>11-23</span><span class="track dash"></span><span>11-24</span></span><span class="st todo">未开始 · 1 天后</span></div>
+      </div>
+
+      <div class="mini">
+        <div class="mh">② 日历右栏「点一下排进时间表」候选</div>
+        <span class="chip"><span class="bar todo"></span>完成与资源管理平台的需求对接 · 梳理</span>
+        <span class="chip"><span class="bar run"></span>重点车辆（大客/危化品）· 25%</span>
+        <span class="chip"><span class="bar late"></span>行为识别算法计划排期</span>
+        <div class="note">悬停补一句状态；不新开列、不换行。</div>
+      </div>
+
+      <div class="mini">
+        <div class="mh">③ tlt-daily 的行（「今天计划做 / 接下来 N 天」里会混着两种）</div>
+        <div class="row"><span class="bar run"></span><span class="t">一体机算力资源测算</span>
+          <span class="rail"><span>11-14</span><span class="track"><i style="width:78%"></i></span><span>11-17</span></span><span class="st">剩 0 天</span></div>
+        <div class="row"><span class="bar todo"></span><span class="t">行为识别算法计划排期</span>
+          <span class="rail"><span>11-25</span><span class="track dash"></span><span>11-25</span></span><span class="st todo">未开始 · 3 天后</span></div>
+        <div class="note">「进行中」那一组本身只含已开始的任务，所以组内不用再标。</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>折叠记忆的两种粒度</h3>
+      <div class="note" style="margin-top:0">
+        <b>按组名共享（推荐）</b>：记忆的键就是组名（逾期 / 进行中 / 已完成…）。你在「本月」展开了「进行中」，
+        切到「本周」「今天」或某个具体项目下面，它<b>还是展开的</b>；只有一个总记忆。<br>
+        <b>分维度各记一份</b>：本月展开进行中、切到本周又变折叠、切回来才恢复；项目之间也各记各的。
+        好处是"某个维度想全展开、另一个想全收起"，代价是记忆碎片多、容易觉得"它怎么又收起来了"。
+      </div>
+      <div class="note">
+        当前原型用的是<b>按组名共享</b>：上面的维度切换按钮点一下就知道了。
+        <button class="pill" id="reset" style="cursor:pointer;background:transparent">重置记忆</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY = "tlt-mock-group-open";
+const open = new Set(JSON.parse(localStorage.getItem(KEY) || "[]"));
+if (!localStorage.getItem(KEY)) { open.add("todo"); }        // 原型默认展开一组，好让你看到"组内细分隔线"
+
+const D = {
+  m: [
+    { k:"late", n:"本月逾期", c:2, recent:"最近 11-20", rows:[
+      { s:"11-02", d:"11-20", t:"策略算法接口服务设计 &amp; 文档说明", st:"逾期 2 天", cls:"late", bar:"late" },
+      { s:"11-05", d:"11-21", t:"千数万问知识库 MVP 课程大纲", st:"逾期 1 天", cls:"late", bar:"late" },
+    ]},
+    { k:"todo", n:"本月要做", c:7, recent:"最近 11-27", rows:[
+      { s:"11-19", d:"11-23", t:"养护场景算法后续提升计划", st:"剩 1 天", cls:"", bar:"run", pct:62 },
+      { s:"11-02", d:"11-25", t:"重点车辆（1. 大客k3/4 2. 危化品）", st:"剩 3 天", cls:"", bar:"run", pct:75, ring:"25%" },
+      { s:"11-12", d:"11-25", t:"完成人和物的算法训练，并配合视频事业部测试", st:"剩 3 天", cls:"", bar:"run", pct:80 },
+      { sep:"以下 4 条还没开始（11-23 起）" },
+      { s:"11-23", d:"11-23", t:"完成 jev 模型的本地部署与 POC 验证", st:"未开始 · 1 天后", cls:"todo", bar:"todo" },
+      { s:"11-23", d:"11-24", t:"完成与资源管理平台的需求对接 &amp; 梳理", st:"未开始 · 1 天后", cls:"todo", bar:"todo" },
+      { s:"11-25", d:"11-25", t:"行为识别算法计划排期", st:"未开始 · 3 天后", cls:"todo", bar:"todo" },
+      { s:"11-20", d:"11-26", t:"完成 SaaS 化服务适配感动体系，并上线", st:"未开始 · 4 天后", cls:"todo", bar:"todo" },
+    ]},
+    { k:"done", n:"本月已完成", c:1, recent:"最近 11-16", rows:[
+      { s:"11-02", d:"11-16", t:"测试联网营运报告生成月报功能", st:"完成于 11-16", cls:"done", bar:"", done:true },
+    ]},
+    { k:"ms0", n:"未分配里程碑", c:1, recent:"最近 11-27", rows:[
+      { s:"11-09", d:"11-27", t:"视觉增强方案清单梳理", st:"剩 11 天", cls:"", bar:"run" },
+    ]},
+    { k:"pending", n:"待排期（未分配时间）", c:1, recent:"", rows:[
+      { t:"整理 OSM 道路线形匹配的验收口径", st:"待排期", cls:"todo", bar:"" },
+    ]},
+  ],
+  w: [
+    { k:"late", n:"本周逾期", c:0, recent:"", rows:[] },
+    { k:"todo", n:"本周要做", c:2, recent:"最近 11-26", rows:[
+      { s:"11-19", d:"11-23", t:"养护场景算法后续提升计划", st:"剩 1 天", cls:"", bar:"run", pct:62 },
+      { sep:"以下 3 条还没开始" },
+      { s:"11-23", d:"11-24", t:"完成与资源管理平台的需求对接 &amp; 梳理", st:"未开始 · 1 天后", cls:"todo", bar:"todo" },
+    ]},
+    { k:"done", n:"本周已完成", c:0, recent:"最近 11-16", rows:[] },
+  ],
+  run: [
+    { k:"late", n:"已逾期", c:1, recent:"最近 11-20", rows:[
+      { s:"11-02", d:"11-20", t:"策略算法接口服务设计 &amp; 文档说明", st:"逾期 2 天", cls:"late", bar:"late" },
+    ]},
+    { k:"wip", n:"进行中", c:2, recent:"最近 11-26", rows:[
+      { s:"11-19", d:"11-23", t:"养护场景算法后续提升计划", st:"剩 1 天", cls:"", bar:"run", pct:62 },
+      { s:"11-02", d:"11-25", t:"重点车辆（1. 大客k3/4 2. 危化品）", st:"剩 3 天", cls:"", bar:"run", pct:75, ring:"25%" },
+    ]},
+  ],
+};
+
+const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.innerHTML = x; return e; };
+
+function ringSvg(txt){
+  const pct = parseInt(txt, 10) / 100, r = 7, c = 2 * Math.PI * r;
+  return `<svg class="ring" viewBox="0 0 20 20"><circle cx="10" cy="10" r="${r}" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="2.4"/>
+  <circle cx="10" cy="10" r="${r}" fill="none" stroke="#5B6CFF" stroke-width="2.4" stroke-dasharray="${c}" stroke-dashoffset="${Math.max(0, c * (1 - pct))}" transform="rotate(-90 10 10)"/></svg>`;
+}
+
+function render(){
+  const dim = document.querySelector("#seg button.on").dataset.dim;
+  const box = document.getElementById("groups");
+  box.innerHTML = "";
+  for (const g of D[dim]){
+    const grp = el("div", "grp" + (open.has(g.k) ? " open" : ""));
+    const h = el("div", "grp-h");
+    h.append(el("span", "chev"), el("span", "grp-n", g.n), el("span", "grp-c", String(g.c)));
+    if (g.recent) h.append(el("span", "grp-recent", g.recent));
+    h.onclick = () => { open.has(g.k) ? open.delete(g.k) : open.add(g.k);
+      localStorage.setItem(KEY, JSON.stringify([...open])); render(); };
+    grp.append(h);
+    const b = el("div", "grp-b");
+    for (const r of g.rows){
+      if (r.sep){ b.append(el("div", "sep", `<b>${r.sep}</b>`)); continue; }
+      const row = el("div", "row");
+      if (r.bar) row.append(el("span", "bar " + r.bar));
+      if (r.ring) row.append(el("span", "", ringSvg(r.ring)));
+      const t = el("span", "t" + (r.done ? " done" : ""), r.t);
+      row.append(t);
+      if (!r.bar) row.append(el("span", "pill", "待排期"));
+      row.append(el("span", "spacer"));
+      if (r.s || r.d){
+        const rail = el("span", "rail");
+        rail.append(el("span", "", r.s || "今"));
+        const tr = el("span", "track" + (r.cls === "todo" ? " dash" : ""));
+        if (r.pct != null) tr.append(el("i", "", ""));
+        if (r.pct != null) tr.querySelector("i").style.width = r.pct + "%";
+        rail.append(tr, el("span", "", r.d || ""));
+        row.append(rail);
+      }
+      row.append(el("span", "st " + (r.cls || ""), r.st));
+      b.append(row);
+    }
+    b.append(el("div", "note", ""));
+    grp.append(b);
+    box.append(grp);
+  }
+}
+
+document.querySelectorAll("#seg button").forEach((btn) => {
+  btn.onclick = () => { document.querySelectorAll("#seg button").forEach((x) => x.classList.remove("on"));
+    btn.classList.add("on"); render(); };
+});
+document.getElementById("reset").onclick = () => { localStorage.removeItem(KEY); open.clear(); render(); };
+render();
+</script>
+</body>
+</html>

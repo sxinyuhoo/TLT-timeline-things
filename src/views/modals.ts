@@ -419,10 +419,37 @@ function seedDue(
       due.classList.remove("is-auto");
       seeded = false;
     });
+    // 开始日改到截止日之后：截止日顶上去（这一条是**真写**，不是临时填充）
+    start.addEventListener("change", () => {
+      if (!start.value || !due.value || due.value >= start.value) return;
+      seeded = false;
+      due.value = start.value;
+      due.classList.add("is-auto");
+      commit(due.value);
+    });
+    start.addEventListener("blur", () => {
+      if (!start.value || !due.value || due.value >= start.value) return;
+      seeded = false;
+      due.value = start.value;
+      due.classList.add("is-auto");
+      commit(due.value);
+    });
     return;
   }
+  // 硬规则（两种模式都生效）：截止日不许早于开始日——用户把开始日改到截止日之后时，
+  // 截止日跟着顶上去（并标成"自动跟随"），否则很容易存成"12-01 开始、11-20 截止"这种错。
+  const clampDue = () => {
+    if (!start.value || !due.value) return false;
+    if (due.value >= start.value) return false;
+    due.value = start.value;
+    due.classList.add("is-auto");
+    commit(due.value);
+    return true;
+  };
+  start.addEventListener("change", clampDue);
   let userSet = false;
   const follow = () => {
+    if (clampDue()) return;
     if (userSet || !start.value || due.value === start.value) return;
     due.value = start.value;
     due.classList.add("is-auto");
@@ -809,6 +836,8 @@ export class TaskModal extends TltModal {
     save.onclick = () => { void (async () => {
       const d = this.draft;
       // 先就地改字段（行号不变），最后再改标题/搬文件——搬完行号就失效了
+      // 兜底：无论怎么点的，保存时都不许出现"截止早于开始"
+      if (d.start && d.due && d.due < d.start) { d.due = d.start; }
       if (d.due !== t.due) await this.store.setDue(t, d.due || "");
       if ((d.start || "") !== (t.start || "")) await this.store.setStart(t, d.start || "");
       if ((d.note || "") !== (t.note || "")) await this.store.setTaskNote(t, d.note || "");   // 整条一起写回去

@@ -6,7 +6,7 @@ import type { SortCfg, SortKey } from "../store";
 import type { Idea } from "../data";
 import {
   Task, Msg, Period, todayISO, addDays, noteGeneralText,
-  hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox, floorToHalfHour, nowHalfHour, isPersonal, noteEntryText } from "../data";
+  hhmmToMin, minToHHMM, inPeriod, workloadBreakdown, staffWindowDays, D, parseIdeaText, ideaTags, ideaFilterTags, toggleMdCheckbox, floorToHalfHour, nowHalfHour, isPersonal, noteEntryText, taskState } from "../data";
 import type { StaffDim } from "../data";
 import { TaskModal, LogModal, QuickLogModal, QuickTaskModal, StaffModal, AddStaffModal, IdeaModal, MsgModal, TaskPeekModal, MilestonePeekModal, MilestoneModal, ProjectInfoModal, PromptModal, NoteEntryModal, popMenu, el, BlockWhenModal } from "./modals";
 import { confirmArchiveProject, confirmDeleteTask, confirmRestoreProject } from "../archive";
@@ -126,6 +126,37 @@ interface CalBlock {
   en?: string;
   done: boolean;
 }
+/**
+ * 任务的状态竖条（2px，贴行最左缘）。只用"线"不用点（圆点已被子项/优先级/分组头占用）：
+ *   逾期＝红实线 · 进行中＝蓝实线 · 未开始＝灰虚线 · 待排期＝紫点线（和组头同色） · 已完成不画
+ */
+function stateBarOf(t: Task): HTMLElement | null {
+  const st = taskState(t);
+  if (st === "done") return null;
+  const bar = el("i", "tlt-sbar " + st);
+  const word = st === "todo" ? T("未开始") : st === "late" ? T("逾期") : st === "unscheduled" ? T("待排期") : T("进行中");
+  bar.title = word;
+  return bar;
+}
+/** 状态词（给悬停提示用；没有状态可说的返回空串） */
+function stateLabel(t: Task): string {
+  const st = taskState(t);
+  return st === "todo" ? T("未开始") : st === "late" ? T("逾期")
+    : st === "unscheduled" ? T("待排期") : st === "running" ? T("进行中") : "";
+}
+
+/** 一组任务按状态切成"已开始 / 还没开始"；只有两种都有才返回（否则不用插分隔线） */
+function taskRowSplit(list: Task[]): { started: Task[]; notStarted: Task[] } | null {
+  const started: Task[] = [], notStarted: Task[] = [];
+  list.forEach((t) => (taskState(t) === "todo" ? notStarted : started).push(t));
+  return started.length && notStarted.length ? { started, notStarted } : null;
+}
+
+/** 任务行排序兜底：先开始日（早的在前、没写的垫底），再名称 */
+const byStartThenName = (x: Task, y: Task) =>
+  (x.start || "9999-99-99").localeCompare(y.start || "9999-99-99")
+  || x.title.localeCompare(y.title, "zh");
+
 const escapeXml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
 /** 粗略估宽（星图标签 9.5px 字号）：中文按 10px，其余按 5.8px */
 const labelWidth = (s: string) => Array.from(s).reduce((w, ch) => w + (/[\u2e80-\u9fff\uff00-\uffef]/.test(ch) ? 10 : 5.8), 0);
@@ -485,10 +516,23 @@ export class WorkbenchView extends ItemView {
   }
 
   private sortTasks(list: Task[]): Task[] {
+    const cfg = this.sortCfg("task");
+    // 「按截止时间」：截止日为主键，**同一个截止日里再按开始日**（早的开始在前、没开始日的垫底），
+    // 最后按名称。只按名称兜底的话，同一天里的行看着像乱的（用户报过：左列 23/19/12/25/02 跳来跳去）。
+    if (cfg.by === "due") {
+      return [...list].sort((x, y) => {
+        const a = x.due || null, b = y.due || null;
+        if (a !== null && b !== null) {
+          const c = String(a).localeCompare(String(b));
+          if (c !== 0) return c * cfg.dir;
+        } else if (a === null && b !== null) return 1;
+        else if (a !== null && b === null) return -1;
+        return byStartThenName(x, y);
+      });
+    }
     return this.sortBy("task", list, (t) => t.title, (t) => (
-      this.sortCfg("task").by === "pri" ? t.pri
-        : this.sortCfg("task").by === "due" ? (t.due || null)
-        : this.sortCfg("task").by === "created" ? (t.created || null)
+      cfg.by === "pri" ? t.pri
+        : cfg.by === "created" ? (t.created || null)
         : null
     ));
   }
@@ -996,8 +1040,10 @@ export class WorkbenchView extends ItemView {
       uns.forEach((t) => {
         const c = el("span", "tlt-chipq");
         c.dataset.sched = t.id;
-        c.title = t.title;                                  // 只给任务名：怎么用这个框，框头已经写了
         c.textContent = `${t.title}${t.wl ? " · " + t.wl + "%" : ""}`;
+        c.title = `${t.title}${stateLabel(t) ? " · " + stateLabel(t) : ""}`;   // 状态补充在悬停里，不占地方
+        const sb = stateBarOf(t);            // 竖条要最后插：textContent 会把已挂上的子节点清掉
+        if (sb) c.insertBefore(sb, c.firstChild);
         chips.appendChild(c);
       });
       b1.appendChild(chips);
@@ -1529,27 +1575,63 @@ export class WorkbenchView extends ItemView {
     this.qChip(p);
     const selDesc = this.proj ? this.store.projectDesc(this.proj) : "";
     if (selDesc) p.appendChild(el("div", "tlt-pane-sub", selDesc));
-    const groups: [string, Task[], string][] = this.taskDim === "run" ? [
-      [T("已逾期"), m.late, "#D98B5F"],
-      [T("进行中"), [...m.todo, ...m.pending], "#5B6CFF"],
+    // 分组带稳定的 key（折叠记忆按这个共享；label 只是显示名）
+    const groups: [string, string, Task[], string][] = this.taskDim === "run" ? [
+      ["late", T("已逾期"), m.late, "#E5534B"],
+      ["wip", T("进行中"), [...m.todo, ...m.pending], "#5B6CFF"],
     ] : [
-      [T("{l}逾期", { l: label }), m.late, "#D98B5F"],
-      [T("{l}要做", { l: label }), m.todo, "#5B6CFF"],
-      [T("{l}已完成", { l: label }), m.done, "#4FB59A"],
-      [T("未分配里程碑"), m.orphans, "#E0A45E"],
-      [T("待排期（未分配时间）"), m.pending, "#8B7CF6"],
+      ["late", T("{l}逾期", { l: label }), m.late, "#E5534B"],
+      ["todo", T("{l}要做", { l: label }), m.todo, "#5B6CFF"],
+      ["done", T("{l}已完成", { l: label }), m.done, "#4FB59A"],
+      ["orphans", T("未分配里程碑"), m.orphans, "#E8B04B"],
+      ["pending", T("待排期（未分配时间）"), m.pending, "#8B7CF6"],
     ];
-    groups.forEach(([name, list, color]) => {
+    const openKeys = new Set(this.store.settings.taskGroupsOpen ?? []);
+    // 从概览点筛选进来、或在任务页搜索时，自动展开有内容的组（否则点进来一片折叠，像坏了）；
+    // 这只是"临时展开"，不写进记忆。
+    const forceOpen = !!this.quick || !!this.q;
+    groups.forEach(([key, name, list, color]) => {
       const g = el("div", "tlt-mgrp");
+      const open = forceOpen || openKeys.has(key);
       const h = el("div", "tlt-mgh");
+      h.dataset.grpk = key;
+      const chev = el("span", "tlt-mgchev");
+      svgIcon(chev, "chev-r", 11);
       const dot = el("span", "tlt-dot"); dot.style.background = color;
-      h.append(dot, el("span", "", name), el("span", "tlt-mgc", String(list.length)));
+      h.append(chev, dot, el("span", "", name), el("span", "tlt-mgc", String(list.length)));
+      const near = list.map((t) => t.due || "").filter(Boolean).sort()[0];
+      if (near) {
+        const nd = el("span", "tlt-mgnear", T("最近 {d}", { d: near.slice(5) }));
+        h.appendChild(nd);
+      }
       g.appendChild(h);
-      if (!list.length) g.appendChild(el("div", "tlt-empty", T("没有")));
+      const body = el("div", "tlt-mgrp-b");
+      if (!open) g.addClass("shut");
+      if (!list.length) body.appendChild(el("div", "tlt-empty", T("没有")));
       const shown = this.taskDim === "run"
-        ? [...list].sort((x, y) => (x.due || "9999-99-99").localeCompare(y.due || "9999-99-99"))
+        ? [...list].sort((x, y) => (x.due || "9999-99-99").localeCompare(y.due || "9999-99-99") || byStartThenName(x, y))
         : this.sortTasks(list);
-      shown.forEach((t) => g.appendChild(this.taskRow(t)));
+      // 「要做」这一组里两种状态都有（已开始 / 还没开始）→ 中间插一条细分隔线，
+      // 分隔线以上是已开始的、以下是还没开始的（两组各自仍按截止日排）
+      const split = key === "todo" ? taskRowSplit(shown) : null;
+      if (split) {
+        split.started.forEach((t) => body.appendChild(this.taskRow(t)));
+        const firstStart = split.notStarted.map((t) => t.start || "").filter(Boolean).sort()[0];
+        body.appendChild(el("div", "tlt-sep",
+          T("以下 {n} 条还没开始", { n: split.notStarted.length }) + (firstStart ? T("（{d} 起）", { d: firstStart.slice(5) }) : "")));
+        split.notStarted.forEach((t) => body.appendChild(this.taskRow(t)));
+      } else {
+        shown.forEach((t) => body.appendChild(this.taskRow(t)));
+      }
+      g.appendChild(body);
+      h.addEventListener("click", () => {
+        const cur = new Set(this.store.settings.taskGroupsOpen ?? []);
+        if (cur.has(key)) cur.delete(key); else cur.add(key);
+        this.store.settings.taskGroupsOpen = [...cur];
+        g.classList.toggle("shut");                       // 就地开合，不整页重画（免得滚动位置乱跳）
+        const p = this.plugin as unknown as { saveUiState?: () => Promise<void> };
+        void (async () => { try { await p.saveUiState?.(); } catch { /* 存不下不影响这次开合 */ } })();
+      });
       p.appendChild(g);
     });
     return p;
@@ -1876,6 +1958,8 @@ export class WorkbenchView extends ItemView {
   private taskRow(t: Task): HTMLElement {
     const r = el("div", "tlt-task" + (t.done ? " done" : ""));
     r.dataset.task = t.id;
+    const stateBar = stateBarOf(t);          // 2px 竖条：虚线＝未开始、实线＝进行中、红＝逾期（已完成/待排期不画）
+    if (stateBar) r.appendChild(stateBar);
     const cb = el("i", "tlt-cb" + (t.done ? " on" : ""));
     cb.dataset.ck = t.id;
     r.appendChild(cb);

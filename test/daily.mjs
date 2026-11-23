@@ -128,6 +128,28 @@ await t("分组：逾期 / 今日待做 / 今天计划做 / 今日已完成", as
   assert.ok(meta.textContent.includes("1 人天"), "要带人天");
 });
 
+await t("状态竖条：已经开始＝实线(running)、还没到开始日＝虚线(todo)；已完成不画", async () => {
+  for (const k of Object.keys(fps.files)) delete fps.files[k];
+  fps.files["TLT/tasks/竖条演示.md"] = `# 竖条演示\n\n## 一期\n\n`
+    + `- [ ] 已经开工的活 🛫 2026-10-26 📅 2026-10-29 [est:: 1]\n`
+    + `- [ ] 还没到点的活 🛫 2026-11-02 📅 2026-11-03 [est:: 1]\n`
+    + `- [x] 早就做完的活 📅 2026-10-29 [done:: 2026-10-29]\n`;
+  const { store } = await makeStore();
+  await store.load();
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  renderDaily(fakePlugin(store), host, "days: 7", "70-生活/diary/2026/20261029.md");
+
+  const rowOf = (title) => [...host.querySelectorAll(".tlt-daily-row")].find((r) => r.textContent.includes(title));
+  const a = rowOf("已经开工的活"), b = rowOf("还没到点的活"), c = rowOf("早就做完的活");
+  assert.ok(a && b && c, "三条都要在：开工 / 未开始 / 已完成");
+  assert.ok(a.querySelector(".tlt-sbar.running"), `开工的应是实线竖条：${a.innerHTML.slice(0, 80)}`);
+  assert.ok(b.querySelector(".tlt-sbar.todo"), `还没到点的应是虚线竖条：${b.innerHTML.slice(0, 80)}`);
+  assert.ok(!c.querySelector(".tlt-sbar"), "已完成的不用画竖条");
+  assert.equal(b.querySelector(".tlt-sbar").title, "未开始", "竖条要写清状态（悬停）");
+  delete fps.files["TLT/tasks/竖条演示.md"];
+});
+
 await t("日期基准：补记历史日记时按文件名算，不看今天", async () => {
   fixture();
   const { app, store } = await makeStore();
@@ -309,6 +331,11 @@ await t("tlt-daily：wip 开着时 mine 过滤**整块**；wip 没开时 mine �
   assert.ok(!host.textContent.includes("别人的今天到期"), "整块过滤：别人的「今日待做」也不该在（0.9.99 只挡了进行中，这次修）");
 
   host.empty();
+  renderDaily(plugin, host, "wip: true\nmine: true\ndays: 7", path);   // 用户实际那套参数
+  assert.ok(host.textContent.includes("我的开展中"), "wip+mine+days：我的开展中要在");
+  assert.ok(!host.textContent.includes("别人的开展中"), "wip+mine+days：别人的还是不能进来");
+
+  host.empty();
   renderDaily(plugin, host, "wip: true\nmine: false", path);
   assert.ok(host.textContent.includes("别人的开展中") && host.textContent.includes("别人的今天到期"), "mine:false 时别人的要回来");
 
@@ -324,12 +351,13 @@ await t("tlt-daily：wip 开着时 mine 过滤**整块**；wip 没开时 mine �
   delete fps.files["TLT/tasks/日记人员.md"]; delete fps.files["TLT/crew/甲.md"]; delete fps.files["TLT/crew/乙.md"];
 });
 
-await t("days 管「进行中」的窗口：不写＝不设上限；写入天数据才收窗口", async () => {
+await t("days 窗口只管「还没开工的」：已开工的（含 📅 很久以后）一律在，未开工的远期活不进", async () => {
   fixture();
   fps.files["TLT/tasks/进行中窗口.md"] = `# 进行中窗口（测试）\n\n## 一期\n\n`
     + `- [ ] 明天到期的开展中 🛫 2026-10-20 📅 2026-10-30 [est:: 1]\n`
     + `- [ ] 很久以后到期的开展中 🛫 2026-10-20 📅 2026-12-01 [est:: 1]\n`
-    + `- [ ] 没截止的开展中 🛫 2026-10-20 [est:: 1]\n`;
+    + `- [ ] 没截止的开展中 🛫 2026-10-20 [est:: 1]\n`
+    + `- [ ] 还没开工的远期活 🛫 2026-12-01 📅 2026-12-15 [est:: 1]\n`;
   const { app, store } = await makeStore();
   await store.load();
   const plugin = { store, dailyBlocks: new Set(), refreshDailyBlocks() {} };
@@ -343,10 +371,12 @@ await t("days 管「进行中」的窗口：不写＝不设上限；写入天数
   assert.ok(host.textContent.includes("很久以后到期的开展中"), "不写 days 时不设上限，三个月后的也在");
 
   host.empty();
-  renderDaily(plugin, host, "wip: true\ndays: 7", path);        // 写了才收窗口
+  renderDaily(plugin, host, "wip: true\ndays: 7", path);        // 窗口只管还没开工的
   assert.ok(host.textContent.includes("明天到期的开展中"), "days:7 时一周内到期的要进来");
   assert.ok(host.textContent.includes("没截止的开展中"), "没写 📅 的开工中要并进同一组");
-  assert.ok(!host.textContent.includes("很久以后到期的开展中"), "12-01 超窗口，不该进来");
+  // 用户 2026-11-23：日期范围包含今天的任务就是在开展中，不能因为 📅 超过窗口就被挡掉
+  assert.ok(host.textContent.includes("很久以后到期的开展中"), "已开工的即使 📅 在窗口外也要在（曾漏掉）");
+  assert.ok(!host.textContent.includes("还没开工的远期活"), "窗口要挡住的是『还没开工』的远期活");
   // 有窗口时不该再有单独的「进行中」组（那就是重复）
   const heads7 = [...host.querySelectorAll(".tlt-daily-h")].map((h) => h.textContent);
   assert.ok(!heads7.some((x) => x.startsWith("进行中")), `有窗口时不该再单列进行中：${heads7.join(" / ")}`);
@@ -354,6 +384,10 @@ await t("days 管「进行中」的窗口：不写＝不设上限；写入天数
   // 同一个任务只能出现一次
   const dupTitles = [...host.querySelectorAll(".tlt-daily-t")].map((t) => t.textContent);
   assert.equal(new Set(dupTitles).size, dupTitles.length, `同一任务不该重复出现：${dupTitles.join(" / ")}`);
+  // 排序：窗口内到期的 → 窗口外的开展中 → 没截止的（都按 📅 升序，没 📅 的垫底）
+  const ti = (x) => dupTitles.indexOf(x);
+  assert.ok(ti("明天到期的开展中") < ti("很久以后到期的开展中") && ti("很久以后到期的开展中") < ti("没截止的开展中"),
+    `合并组的顺序该是 窗口内 → 窗口外开展中 → 没截止：${dupTitles.join(" / ")}`);
   delete fps.files["TLT/tasks/进行中窗口.md"];
 });
 

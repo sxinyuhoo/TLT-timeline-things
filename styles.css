@@ -2363,3 +2363,27 @@ body.is-mobile .modal.tlt-host .tlt-mact button { min-height: 40px; padding: 9px
   box-shadow: 0 -10px 16px -12px rgba(0, 0, 0, .45);
 }
 .tlt-root[data-tier="phone"] .modal-content.tlt-modal { max-height: 86vh; }
+
+/* ---- 任务状态：统一用"线"，不用圆点（圆点已被子项/优先级/分组头占用）----
+   逾期＝红实线、进行中＝蓝实线、未开始＝灰虚线、待排期＝紫点线（与组头同色）；已完成不画。
+   竖条一律跟"第一行"对齐（行是 flex + wrap，用 align-self:center 会跑到两行的中间去） */
+.tlt-sbar { width: 2px; height: 16px; border-radius: 2px; flex: none; display: inline-block; vertical-align: middle; }
+.tlt-task > .tlt-sbar { align-self: flex-start; margin: 0 4px 0 1px; }
+.tlt-sbar.running { background: var(--tlt-acc); }
+.tlt-sbar.late { background: #E5534B; }
+.tlt-sbar.todo { background: transparent; border-left: 2px dashed var(--tlt-ink4); }
+.tlt-sbar.unscheduled { background: transparent; border-left: 2px dotted #8B7CF6; }
+.tlt-chipq > .tlt-sbar { height: 12px; margin-right: 5px; }
+.tlt-daily-row > .tlt-sbar { align-self: flex-start; margin: 3px 2px 0 0; height: 14px; }   /* 与日记块的勾选框同一条水平线 */
+
+/* 任务页分组：可折叠（默认折叠；展开状态按组名共享，随库记住） */
+.tlt-mgh { cursor: pointer; }
+.tlt-mgchev { display: flex; align-items: center; color: var(--tlt-ink4); transition: transform .15s ease; }
+.tlt-mgrp:not(.shut) .tlt-mgchev { transform: rotate(90deg); }
+.tlt-mgrp.shut .tlt-mgrp-b { display: none; }
+.tlt-mgnear { margin-left: auto; font-size: 9.5px; color: var(--tlt-ink5); font-variant-numeric: tabular-nums; }
+
+/* 组内细分隔线：分隔线以上是已开始的、以下是还没开始的 */
+.tlt-sep { display: flex; align-items: center; gap: 8px; margin: 7px 2px 3px; color: var(--tlt-ink5); font-size: 10px; }
+.tlt-sep::before, .tlt-sep::after { content: ""; height: 1px; background: var(--tlt-line2); flex: 1; }
+

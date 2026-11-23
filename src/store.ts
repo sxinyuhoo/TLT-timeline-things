@@ -46,6 +46,11 @@ export interface TLTSettings {
   publisherName?: string;
   /** 工作台两侧栏是否折叠（视图状态，跟着库走） */
   sideCollapsed?: boolean;
+  /**
+   * 任务页哪些分组是展开的：**按组名共享**（late/todo/done/orphans/pending/wip），
+   * 所以在"本月"里展开了「进行中」，切到"本周"、某个项目下也还是展开的。空/缺省＝全部折叠。
+   */
+  taskGroupsOpen?: string[];
   railCollapsed?: boolean;
   /** 排序口径（老版本共用一份，现在只用于迁移） */
   sortBy?: "name" | "created" | "due";
@@ -92,6 +97,7 @@ export const DEFAULT_SETTINGS: TLTSettings = {
   publisherSalt: "",
   sideCollapsed: false,
   railCollapsed: false,
+  taskGroupsOpen: [],
   sortBy: "name",
   sortDir: 1,
   weekStart: 1,
@@ -124,6 +130,15 @@ export const PATH_KEYS = ["tasksFolder", "teamFolder", "feedsFolder", "logsFolde
 export type PathSettingKey = (typeof PATH_KEYS)[number];
 
 export const PEOPLE_COLORS = ["#F0C24B", "#6C8CFF", "#27C1A3", "#B57BFF", "#F2994A", "#FF7A9C", "#5FD6B4", "#7C8BA1"];
+
+/** 从正文开头的 frontmatter 里取 desc（不依赖 metadataCache 的索引时机） */
+function textDesc(text: string): string {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  if (!m) return "";
+  const line = /^desc:\s*(.*)$/m.exec(m[1]) || /^description:\s*(.*)$/m.exec(m[1]);
+  if (!line) return "";
+  return line[1].trim().replace(/^["']|["']$/g, "");
+}
 
 export class Store {
   /** 由插件注入：store 内部改了设置（如订阅清单）时落盘 */
@@ -245,8 +260,9 @@ export class Store {
       const text = await this.app.vault.cachedRead(file);
       const project = file.basename;
       const pfm = (this.app.metadataCache.getFileCache(file)?.frontmatter || {}) as Record<string, unknown>;
-      // 描述就存在项目文件的 frontmatter（desc），不做别的回退
-      this.projectDescs[project] = asText(pfm["desc"]) || asText(pfm["description"]);
+      // 描述就存在项目文件的 frontmatter（desc）。**优先读正文**：metadataCache 是异步索引出来的，
+      // 刚建/刚改的文件常常还取不到 frontmatter——那样描述会被读成空，改名保存时就把 desc 行删了（用户报过）。
+      this.projectDescs[project] = textDesc(text) || asText(pfm["desc"]) || asText(pfm["description"]);
       this.projectPins[project] = pfm["pin"] === true || pfm["pin"] === "true";
       let milestone: string | undefined;
       const sections: string[] = [];
@@ -559,12 +575,18 @@ export class Store {
       while (this.asFile(this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`)))) i++;
       target = normalizePath(`${this.settings.tasksFolder}/${clean} ${i}.md`);
     }
-    // 标题行也跟着改名（# 项目名 就是项目的显示名）
+    // 标题行也跟着改名（# 项目名 就是项目的显示名）。
+    // 注意：**只有 frontmatter 之后才算标题**；没有标题就插在 frontmatter 之后——
+    // 插到文件最前面会把 --- 顶下去，Obsidian 就不认 frontmatter 了（描述会"消失"）。
     await this.app.vault.process(file, (data) => {
       const lines = data.split(/\r?\n/);
-      const i = lines.findIndex((l) => /^#\s+/.test(l));
-      if (i < 0) return `# ${clean}\n\n${data}`;
-      lines[i] = `# ${clean}`;
+      let fmEnd = -1;
+      if (/^---\s*$/.test(lines[0] ?? "")) {
+        for (let i = 1; i < lines.length; i++) if (/^---\s*$/.test(lines[i])) { fmEnd = i; break; }
+      }
+      const i = lines.findIndex((l, idx) => idx > fmEnd && /^#\s+/.test(l));
+      if (i >= 0) { lines[i] = `# ${clean}`; return lines.join("\n"); }
+      lines.splice(fmEnd + 1, 0, `# ${clean}`, "");
       return lines.join("\n");
     });
     await this.app.fileManager.renameFile(file, target);

@@ -1,6 +1,6 @@
 import { MarkdownPostProcessorContext, Notice } from "obsidian";
 import type TLTPlugin from "../main";
-import { Task, todayISO, addDays } from "../data";
+import { Task, todayISO, addDays, taskState } from "../data";
 import { t as T } from "../i18n";
 import { el, TaskModal } from "./modals";
 
@@ -16,6 +16,8 @@ import { el, TaskModal } from "./modals";
  *   who: true         # 显示负责人
  *   scope: all        # all | work | personal
  *   days: 3           # 看几天（不写＝只看这天）：3＝从这天起三天（「今日待做」变成「接下来 3 天」）
+ *                     #   注意：这个窗口只管**还没开工**的；已经开工的（🛫 已到）只要没做完就会列出来，
+ *                     #   哪怕 📅 还在很久以后——"开展中"就该看得见（用户 2026-11-23）
  *   ```
  *
  * 不依赖 Tasks / Dataview 插件：数据来自 TLT 自己的 store，勾选走 store.toggleTask / setStepDone。
@@ -88,9 +90,12 @@ function pick(tasks: Task[], o: DailyOptions, date: string, mineName = "") {
   //  · 写了 days: N → 只有 📅 落在窗口内（或没写 📅）的才进来，免得三个月后的也挤进来。
   const wipAll = pool.filter((t) => !t.done && !!t.start && t.start <= date);
   const wip = wipAll.filter((t) => (t.due ? t.due > date : t.start < date));
-  // 有窗口时：进行中里"有 📅 且在窗口内"的本来就在 todo 里，只有"没写 📅"的要并进来，
-  // 两组不再各列一遍（用户：默认一个口径就行，别重复）
+  // 有窗口时：进行中里"有 📅 且在窗口内"的本来就在 todo 里，不要重复列。
+  // 要并进来的有两档：①"没写 📅 但已开工"的（loose）；
+  // ②"已开工、📅 在窗口之外"的（farDue）——用户 2026-11-23：任务确实在开展中（日期范围包含今天），
+  //   不能因为截止日还有一周以上就被 days 窗口挡掉；窗口只管**还没开工**的那些。
   const loose = windowed ? wipAll.filter((t) => !t.due && t.start < date) : [];
+  const farDue = windowed ? wipAll.filter((t) => !!t.due && t.due > end) : [];
   const planned = pool.filter((t) => !t.done && !t.due && t.start === date);
   const todo = pool.filter((t) => !t.done && t.due && (windowed ? (t.due >= date && t.due <= end) : t.due === date));
   // 「已完成」只看**真实的完成时间**（`[done:: 日期]`），不做任何"按截止日"的近似。
@@ -108,6 +113,7 @@ function pick(tasks: Task[], o: DailyOptions, date: string, mineName = "") {
     todo: todo.sort(rank),
     done: done.sort((a, b) => (a.doneAt || "").localeCompare(b.doneAt || "")),
     loose,
+    farDue,
   };
 }
 
@@ -128,6 +134,12 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
 
   const row = (t: Task, kind: "late" | "todo" | "done") => {
     const r = el("div", "tlt-daily-row" + (kind === "done" ? " done" : ""));
+    if (kind !== "done") {                                       // 状态竖条：虚线＝未开始、实线＝进行中、红＝逾期、点线紫＝待排期
+      const st = taskState(t, date);
+      const bar = el("i", "tlt-sbar " + st);
+      bar.title = st === "todo" ? T("未开始") : st === "late" ? T("逾期") : st === "unscheduled" ? T("待排期") : T("进行中");
+      r.appendChild(bar);
+    }
     const cb = el("i", "tlt-daily-cb" + (t.done ? " on" : ""));
     // 在阅读视图里点代码块，Obsidian 会顺手切到源码——把事件按住，只做勾选
     const hold = (ev: Event) => { ev.preventDefault(); ev.stopPropagation(); };
@@ -211,7 +223,7 @@ export function renderDaily(plugin: TLTPlugin, host: HTMLElement, source: string
   const windowed = o.days >= 2;
   // 有窗口 + wip：合成一组（loose＝"没写 📅 但已开工"的），不再重复列「进行中」
   const merged = windowed && o.wip
-    ? [...g.todo, ...g.loose].sort((a, b) =>
+    ? [...g.todo, ...g.farDue, ...g.loose].sort((a, b) =>
         (a.due || "9999").localeCompare(b.due || "9999") || b.pri - a.pri)
     : g.todo;
   if (o.overdue) section(T("逾期"), g.overdue, "late");

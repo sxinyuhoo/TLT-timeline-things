@@ -1612,7 +1612,9 @@ await t("日视图清单：我的 / 归属 / 近期窗口 / 折叠 10 条（0.9.
   files["TLT/tasks/清单口径.md"] = `# 清单口径（测试）\n\n## 一期\n\n${lines.join("\n")}\n`;
   await view.store.load();
   view.tab = "today"; view.calView = "d"; view.viewDate = D2;
-  const titles = () => [...view.contentEl.querySelectorAll(".tlt-chipq")].map((c) => c.title);
+  // 候选 chip 的 title 现在会带状态后缀（" · 逾期/进行中/未开始"），断言只关心任务名
+  const titles = () => [...view.contentEl.querySelectorAll(".tlt-chipq")]
+    .map((c) => c.title.replace(/ · (未开始|进行中|逾期)$/, ""));
 
   // ① 不设「我是谁」+ span + 默认全部归属：所有人、工作+个人都进来，但远期被 7 天窗口挡住
   Object.assign(view.store.settings, { whoAmI: "", dayTaskScope: "span", dayWho: "me", dayScope: "all", recentDays: 7 });
@@ -1831,6 +1833,201 @@ await t("任务详情：子项多了也不会把「保存」挤出去（弹窗�
   assert.ok(steps && steps.classList.contains("in-modal"), "子项区要有 in-modal 类（限高规则靠它）");
   m.close();
   delete files["TLT/tasks/子项很多.md"];
+});
+
+await t("项目改名：描述不许丢（没 H1 的项目也不许破坏 frontmatter；索引没跟上也能读到描述）", async () => {
+  document.body.empty();
+  const keep = { ...app.metadataCache };
+  // 模拟"Obsidian 还没把 frontmatter 索引出来"：这是描述被读成空、改名时把 desc 删掉的根因
+  app.metadataCache.getFileCache = () => null;
+  files["TLT/tasks/无标题项目.md"] = `---\ndesc: 这个项目是讲 A 的\n---\n\n## 一期\n\n- [ ] 活一条 📅 ${D} [scope:: 工作]\n`;
+  files["TLT/tasks/有标题项目.md"] = `---\ndesc: 有标题也要留住\n---\n\n# 有标题项目\n\n## 一期\n\n- [ ] 活一条 📅 ${D} [scope:: 工作]\n`;
+  await store.load();
+  assert.equal(store.projectDesc("无标题项目"), "这个项目是讲 A 的", `索引没跟上时也要从正文读到描述：${store.projectDesc("无标题项目")}`);
+
+  // ① 没 H1 的项目：改名不能把 --- 顶下去（顶下去 Obsidian 就不认 frontmatter，描述就"消失"）
+  await store.setProjectInfo("无标题项目", "无标题项目改", "这个项目是讲 A 的");
+  const renamed = files["TLT/tasks/无标题项目改.md"] || "";
+  assert.ok(renamed.startsWith("---"), `frontmatter 必须还在第一行：\n${renamed.slice(0, 80)}`);
+  assert.ok(/^desc: 这个项目是讲 A 的$/m.test(renamed.split("\n").slice(0, 4).join("\n")), `desc 要在 frontmatter 里：\n${renamed.slice(0, 100)}`);
+  assert.ok(!/^# /m.test(renamed.slice(0, 10)), "不许把标题插到 frontmatter 前面");
+
+  // ② 有 H1 的项目：改标题、frontmatter 不动
+  await store.setProjectInfo("有标题项目", "有标题项目改", "有标题也要留住");
+  const r2 = files["TLT/tasks/有标题项目改.md"] || "";
+  assert.ok(r2.startsWith("---") && /^desc: 有标题也要留住$/m.test(r2), `desc 要留着：\n${r2.slice(0, 100)}`);
+  assert.ok(/^# 有标题项目改$/m.test(r2), `H1 要跟着改名：\n${r2.slice(0, 120)}`);
+
+  app.metadataCache.getFileCache = keep.getFileCache;
+  await store.load();
+  delete files["TLT/tasks/无标题项目改.md"]; delete files["TLT/tasks/有标题项目改.md"];
+});
+
+await t("任务详情：开始日改到截止日之后，截止日自动跟着顶上去（保存也不会存成反的）", async () => {
+  document.body.empty();
+  files["TLT/tasks/日期夹紧.md"] = `# 日期夹紧（测试）\n\n## 一期\n\n- [ ] 日期要夹紧 📅 2026-11-20 [created:: 2026-11-11]\n`;
+  await store.load();
+  const task = store.tasks.find((x) => x.title === "日期要夹紧");
+  if (task && !task.start) {
+    files["TLT/tasks/日期夹紧.md"] = files["TLT/tasks/日期夹紧.md"].replace("📅 2026-11-20", "🛫 2026-11-11 📅 2026-11-20");
+    await store.load();
+  }
+  const tk = store.tasks.find((x) => x.title === "日期要夹紧");
+  const modal = new TaskModal(app, store, tk, () => {});
+  modal.open();
+  await new Promise((r) => window.setTimeout(r, 80));
+  const [startEl, dueEl] = [...modal.contentEl.querySelectorAll(".tlt-dline input[type=date]")];
+  assert.equal(startEl.value, "2026-11-11");
+  assert.equal(dueEl.value, "2026-11-20");
+
+  // 开始日改到 12-01（晚于截止 11-20）→ 截止日立刻跟到 12-01
+  startEl.value = "2026-12-01";
+  startEl.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.equal(dueEl.value, "2026-12-01", `截止日应顶到开始日，实际 ${dueEl.value}`);
+  assert.equal(modal.draft.due, "2026-12-01", "草稿里也要更新（所见即所得）");
+
+  // 再把开始日往回收（11-25，早于 12-01）→ 截止日不往回退
+  startEl.value = "2026-11-25";
+  startEl.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.equal(dueEl.value, "2026-12-01", "截止日只在被超过时顶上去，不往回退");
+
+  // 保存后文件里不许出现"截止早于开始"
+  [...modal.contentEl.querySelectorAll("button")].find((b) => b.textContent === "保存")
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 250));
+  const line = (files["TLT/tasks/日期夹紧.md"].split("\n").find((l) => l.includes("日期要夹紧")) || "");
+  const st = /🛫 (\d{4}-\d{2}-\d{2})/.exec(line)?.[1] || "";
+  const du = /📅 (\d{4}-\d{2}-\d{2})/.exec(line)?.[1] || "";
+  assert.ok(st && du && du >= st, `存盘后截止不能早于开始：${line}`);
+  delete files["TLT/tasks/日期夹紧.md"];
+});
+
+await t("按截止时间排序：同一天里再按开始日（早的在前），不许看着像乱的", async () => {
+  document.body.empty();
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  const mk = (title, start, due) => ({ title, start, due, kind: "task", done: false, pri: 1, owners: [], tags: [], steps: [], wl: 0, pw: "m", scope: "工作", project: "P", id: "x", file: "f", line: 0, raw: "" });
+  // 复刻用户截图那一屏：截止日 → 开始日
+  const list = [
+    mk("甲", "2026-11-23", "2026-11-23"),
+    mk("乙", "2026-11-19", "2026-11-23"),
+    mk("丙", "2026-11-23", "2026-11-24"),
+    mk("丁", "2026-11-12", "2026-11-25"),
+    mk("戊", "2026-11-25", "2026-11-25"),
+    mk("己", "2026-11-02", "2026-11-25"),
+    mk("庚", "2026-11-20", "2026-11-26"),
+  ];
+  view.store.settings.sortTasks = { by: "due", dir: 1 };
+  const got = view.sortTasks(list).map((t) => `${t.start}→${t.due}`);
+  assert.deepEqual(got, [
+    "2026-11-19→2026-11-23",   // 同一个截止日：开始早的在前
+    "2026-11-23→2026-11-23",
+    "2026-11-23→2026-11-24",
+    "2026-11-02→2026-11-25",
+    "2026-11-12→2026-11-25",
+    "2026-11-25→2026-11-25",
+    "2026-11-20→2026-11-26",
+  ], `同截止日应按开始日排：${got.join(" / ")}`);
+
+  // 反序：只翻主键（截止日倒序），同一天里仍按开始日升序
+  view.store.settings.sortTasks = { by: "due", dir: -1 };
+  const rev = view.sortTasks(list).map((t) => t.due);
+  assert.deepEqual(rev, ["2026-11-26", "2026-11-25", "2026-11-25", "2026-11-25", "2026-11-24", "2026-11-23", "2026-11-23"],
+    `倒序时截止日要从大到小：${rev.join(",")}`);
+
+  // 没有截止日的照旧垫底
+  view.store.settings.sortTasks = { by: "due", dir: 1 };
+  const withNull = view.sortTasks([...list, mk("无截止", "2026-11-01", undefined)]).map((t) => t.due || "无");
+  assert.equal(withNull[withNull.length - 1], "无", "没截止日的要垫底");
+  view.store.settings.sortTasks = { by: "name", dir: 1 };
+});
+
+await t("任务页分组：默认折叠、按组名共享记忆、组内插细分隔线、最近截止日、状态竖条", async () => {
+  document.body.empty();
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const t0 = (() => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; })();
+  const addD = (k) => { const d = new Date(Date.now() + k * 86400000); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+  const soon = addD(2), later = addD(5);
+  Object.keys(files).forEach((k) => { if (k.startsWith("TLT/tasks/")) delete files[k]; });
+  files["TLT/tasks/分组演示.md"] = `# 分组演示\n\n## 一期\n\n`
+    + `- [ ] 已经开工的活 🛫 ${addD(-3)} 📅 ${soon} [scope:: 工作] [created:: ${t0}]\n`
+    + `- [ ] 还没到点的活 🛫 ${later} 📅 ${later} [scope:: 工作] [created:: ${t0}]\n`
+    + `- [ ] 也还没开始 🛫 ${addD(4)} 📅 ${addD(4)} [scope:: 工作] [created:: ${t0}]\n`;
+  await store.load();
+  const prevOpen = store.settings.taskGroupsOpen;
+  store.settings.taskGroupsOpen = [];
+  const view = mount(WorkbenchView);
+  await view.onOpen();
+  view.tab = "month"; view.taskDim = "m";        // 任务页的页签值就叫 month
+  await view.render();
+
+  const grp = (key) => [...view.contentEl.querySelectorAll(".tlt-mgrp")].find((g) => g.querySelector(`.tlt-mgh[data-grpk="${key}"]`));
+  const todoGrp = grp("todo");
+  assert.ok(todoGrp, "要有「要做」分组，且分组头带 data-grpk");
+  assert.ok(todoGrp.classList.contains("shut"), "默认应该是折叠的");
+  assert.ok(todoGrp.querySelector(".tlt-mgchev"), "折叠头要有箭头");
+
+  // 最近截止日：折叠头右侧要有
+  const near = todoGrp.querySelector(".tlt-mgnear")?.textContent || "";
+  assert.match(near, /最近 \d{2}-\d{2}/, `折叠头要显示最近截止日，实际「${near}」`);
+
+  // 展开：点一下 → 不折叠 + 写进设置（按组名共享）
+  todoGrp.querySelector(".tlt-mgh").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 40));
+  assert.ok(!todoGrp.classList.contains("shut"), "点一下应该展开");
+  assert.ok((store.settings.taskGroupsOpen || []).includes("todo"), `展开状态要记进设置：${JSON.stringify(store.settings.taskGroupsOpen)}`);
+
+  // 组内细分隔线：上面是已开始的、下面是还没开始的
+  const body = grp("todo").querySelector(".tlt-mgrp-b");
+  const sep = body.querySelector(".tlt-sep");
+  assert.ok(sep, "「要做」组里两种状态都有时要插细分隔线");
+  assert.ok(!/[<>]/.test(sep.textContent), `分隔线不能漏出标签字面量：${sep.textContent}`);
+  assert.match(sep.textContent, /以下 2 条还没开始/, `分隔线要写清有几条：${sep.textContent}`);
+  assert.match(sep.textContent, /（\d{2}-\d{2} 起）/, `分隔线要写最早的开始日：${sep.textContent}`);
+  const nodes = [...body.children];
+  const sepAt = nodes.indexOf(sep);
+  const before = nodes.slice(0, sepAt).filter((n) => n.classList.contains("tlt-task")).map((n) => n.querySelector(".tlt-task-tx")?.textContent);
+  const after = nodes.slice(sepAt + 1).filter((n) => n.classList.contains("tlt-task")).map((n) => n.querySelector(".tlt-task-tx")?.textContent);
+  assert.deepEqual(before, ["已经开工的活"], `分隔线上面应是已开始的：${before}`);
+  assert.deepEqual(after, ["还没到点的活", "也还没开始"], `分隔线下面应是还没开始的：${after}`);
+
+  // 状态竖条：已开始＝实线(running)、未开始＝虚线(todo)
+  const barCls = (title) => [...body.querySelectorAll(".tlt-task")]
+    .find((r) => r.querySelector(".tlt-task-tx")?.textContent === title)?.querySelector(".tlt-sbar")?.className.replace("tlt-sbar", "").trim();
+  assert.equal(barCls("已经开工的活"), "running", "已开始的竖条应是实线");
+  assert.equal(barCls("还没到点的活"), "todo", "未开始的竖条应是虚线");
+
+  // 待排期（没写 🛫 也没写 📅）也要有竖条：点线。
+  files["TLT/tasks/待排期演示.md"] = `# 待排期演示\n\n## 一期\n\n- [ ] 还没排期的活 [scope:: 工作]\n`;
+  await store.load();
+  await view.render();
+  const pendGrp = [...view.contentEl.querySelectorAll(".tlt-mgrp")].find((g) => g.querySelector('.tlt-mgh[data-grpk="pending"]'));
+  const pendRow = pendGrp && [...pendGrp.querySelectorAll(".tlt-task")].find((r) => r.querySelector(".tlt-task-tx")?.textContent === "还没排期的活");
+  assert.ok(pendRow, "待排期任务要在「待排期」组里");
+  assert.equal((pendRow.querySelector(".tlt-sbar")?.className || "").replace("tlt-sbar", "").trim(), "unscheduled",
+    `待排期也要有竖条（点线）：${pendRow.innerHTML.slice(0, 90)}`);
+  delete files["TLT/tasks/待排期演示.md"];
+
+  // 组头小方块的颜色必须彼此能分清（逾期原来和未分配里程碑太像）
+  const dots = [...view.contentEl.querySelectorAll(".tlt-mgh .tlt-dot")].map((d) => d.style.background);
+  assert.ok(new Set(dots).size === dots.length, `组头颜色不能重复：${dots.join(" / ")}`);
+
+  // 记忆按组名共享：切到「本周」也还是展开的
+  view.taskDim = "w";
+  await view.render();
+  const todoW = [...view.contentEl.querySelectorAll(".tlt-mgrp")].find((g) => g.querySelector('.tlt-mgh[data-grpk="todo"]'));
+  assert.ok(todoW && !todoW.classList.contains("shut"), "切维度后仍应保持展开（按组名共享）");
+
+  // 搜索时临时展开有内容的组（不写记忆）
+  store.settings.taskGroupsOpen = [];
+  view.q = "还没到点";
+  await view.render();
+  const anyOpen = [...view.contentEl.querySelectorAll(".tlt-mgrp")].filter((g) => !g.classList.contains("shut"));
+  assert.ok(anyOpen.length > 0, "搜索/筛选进来时应自动展开有内容的组");
+  view.q = "";
+
+  store.settings.taskGroupsOpen = prevOpen ?? [];
+  delete files["TLT/tasks/分组演示.md"];
 });
 
 await t("左栏可折叠写进设置；消息中心是浮层（点 ✕ 关、点工作台也关）", async () => {

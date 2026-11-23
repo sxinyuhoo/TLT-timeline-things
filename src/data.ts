@@ -239,6 +239,23 @@ export function parseDate(s: string): Date {
 }
 
 export const D = (s?: string) => (s ? parseDate(s) : new Date(NaN));
+/**
+ * 任务的"状态"（唯一出处，别的界面都引用它）：
+ *   done      已完成
+ *   late      逾期：未完成 且 📅 < 今天（压过"未开始"）
+ *   todo      未开始：未完成、未逾期，且 🛫 > 今天
+ *   running   进行中：其余未完成的（**只有 📅 没写 🛫 的算这里**，沿用"只有截止日也算开展中"）
+ *   unscheduled 待排期：🛫 和 📅 都没写
+ */
+export type TaskState = "done" | "late" | "running" | "todo" | "unscheduled";
+export function taskState(t: Task, today = todayISO()): TaskState {
+  if (t.done) return "done";
+  if (!t.start && !t.due) return "unscheduled";
+  if (t.due && t.due < today) return "late";
+  if (t.start && t.start > today) return "todo";
+  return "running";
+}
+
 /** 归属只看 [scope::]：明确写了「个人」才算个人，没写＝未标注（既不默认工作也不默认个人） */
 export const isPersonal = (t: Task) => t.scope === "个人";
 
